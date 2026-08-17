@@ -2,7 +2,9 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.1.1  
+> **Version:** 0.2.0  
+> **Last Updated:** 2026-08-17
+> **Last Updated:** 2026-08-17
 > **Last Updated:** 2026-08-17
 
 ---
@@ -181,6 +183,15 @@ becoming/
     - Each interaction updates `creatureBehavior` and `currentActivity` so the state is visible in the system
 
 15. **Room coordinate system was incoherent** — Creature and objects shared percentage coordinates but the creature's movement targets were random, not tied to actual object positions. Fixed by:
+    - Behavior machine targets actual `roomObjects[i].x / .y` positions
+    - `dist()` helper calculates real distances for priority ordering (closest food, closest blanket)
+    - Canvas and DOM use the same percentage coordinate system
+
+### v0.2.0 — Name Input Hang
+
+16. **Hang when typing creature name** — The ambient particles in `EggHatching.tsx` were generated with `Math.random()` directly in the render loop. Every keystroke in the name input triggered a re-render, which destroyed and recreated 20 CSS-animated DOM nodes. On slower devices this caused the UI to freeze. Fixed by generating the particles once with `useMemo([], [])` so they remain stable across renders. Also added a `submittedRef` guard to prevent accidental double-submission.
+
+---
     - Behavior machine targets actual `roomObjects[i].x / .y` positions
     - `dist()` helper calculates real distances for priority ordering (closest food, closest blanket)
     - Canvas and DOM use the same percentage coordinate system
