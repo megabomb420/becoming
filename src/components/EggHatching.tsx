@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 
 interface EggHatchingProps {
   onHatch: () => void;
@@ -9,6 +9,22 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
   const [stage, setStage] = useState<'egg' | 'wobbling' | 'cracking' | 'hatched' | 'naming'>('egg');
   const [tapCount, setTapCount] = useState(0);
   const [name, setName] = useState('');
+  const submittedRef = useRef(false);
+
+  // Generate ambient particles once — NOT on every render.
+  // Previously Math.random() in render caused 20 DOM nodes to be destroyed
+  // and recreated on every keystroke, hanging the UI.
+  const particles = useMemo(() =>
+    Array.from({ length: 20 }).map(() => ({
+      width: 2 + Math.random() * 4,
+      height: 2 + Math.random() * 4,
+      left: Math.random() * 100,
+      top: Math.random() * 100,
+      duration: 4 + Math.random() * 6,
+      delay: Math.random() * 4,
+    })),
+    []
+  );
 
   useEffect(() => {
     // Auto-wobble after a few seconds
@@ -38,27 +54,30 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
   };
 
   const handleSubmitName = () => {
-    if (name.trim()) {
-      onNameChosen(name.trim());
+    if (submittedRef.current) return; // prevent double submission
+    const trimmed = name.trim();
+    if (trimmed) {
+      submittedRef.current = true;
+      onNameChosen(trimmed);
       onHatch();
     }
   };
 
   return (
     <div className="flex flex-col items-center justify-center h-full bg-room-dark relative overflow-hidden">
-      {/* Ambient particles */}
+      {/* Ambient particles — stable across re-renders */}
       <div className="absolute inset-0 opacity-20">
-        {Array.from({ length: 20 }).map((_, i) => (
+        {particles.map((p, i) => (
           <div
             key={i}
             className="absolute rounded-full bg-warm-200"
             style={{
-              width: `${2 + Math.random() * 4}px`,
-              height: `${2 + Math.random() * 4}px`,
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animation: `float ${4 + Math.random() * 6}s ease-in-out infinite`,
-              animationDelay: `${Math.random() * 4}s`,
+              width: `${p.width}px`,
+              height: `${p.height}px`,
+              left: `${p.left}%`,
+              top: `${p.top}%`,
+              animation: `float ${p.duration}s ease-in-out infinite`,
+              animationDelay: `${p.delay}s`,
             }}
           />
         ))}
