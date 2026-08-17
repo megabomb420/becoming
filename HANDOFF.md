@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.1.0  
+> **Version:** 0.1.1  
 > **Last Updated:** 2026-08-17
 
 ---
@@ -44,7 +44,7 @@ becoming/
 ├── src/
 │   ├── types/index.ts          # Core type definitions
 │   ├── systems/
-│   │   ├── persistence.ts      # IndexedDB save/load
+│   │   ├── persistence.ts      # IndexedDB save/load + migration
 │   │   ├── creatureFactory.ts  # Birth/egg generation, seeded traits
 │   │   ├── needsSystem.ts      # Hidden hunger, energy, comfort, stimulation, social
 │   │   ├── developmentSystem.ts # Stage progression, vocabulary acquisition
@@ -74,19 +74,19 @@ becoming/
 | Feature | Status | Notes |
 |---|---|---|
 | PWA installability | ✅ | Manifest, service worker, offline shell, icons |
-| Birth / hatching | ✅ | Tap-to-hatch egg, naming |
+| Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` flag prevents regression |
 | Creature rendering | ✅ | Canvas-based with breathing, blinking, tail wag, expressions |
 | Hidden needs system | ✅ | 5 internal needs decay over time; no visible stats |
 | Hidden personality | ✅ | Seeded traits (curiosity, caution, affection, independence, etc.) |
-| Development stages | ✅ | `egg → newborn → animal → communicating → first_words → combining → sentences → mature` |
+| Development stages | ✅ | `egg → newborn → animal → communicating → first_words → combining → sentences → mature`; stage regression prevented once hatched |
 | Language development | ✅ | Stage-constrained vocabulary; proto-sounds → words → combinations → sentences |
-| Feeding | ✅ | Drag apple/broccoli to creature |
-| Touch interactions | ✅ | Tap, stroke (drag), hold |
-| Sleep / wake cycle | ✅ | Room dims; "z z z" animation; energy restored on wake |
-| Idle movement | ✅ | Creature wanders, inspects objects, faces movement direction |
-| 10 interactive objects | ✅ | Bowl, apple, broccoli, ball, blanket, paper, pencil, box, stone, mirror |
-| Offline simulation | ✅ | Calculates what happened while app was closed; respects sleep state |
-| Persistent state | ✅ | IndexedDB survives refresh, restart, reopening |
+| Object system | ✅ | Inventory tray (📦) with 9 object types; drag to place; drag to reposition; room only contains placed objects |
+| Feeding | ✅ | Drag food from inventory into room; creature approaches and eats based on hunger |
+| Creature movement | ✅ | Intentional behavior state machine: idle → observing → walking → investigating/eating/playing; bounded walkable area; smooth canvas lerp; time-based arrival |
+| Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
+| Sleep / wake cycle | ✅ | Room dims; "z z z" animation; energy restored on wake via `sleepStartTimestamp` |
+| Offline simulation | ✅ | Calculates what happened while app was closed; respects sleep state; models night spans |
+| Persistent state | ✅ | IndexedDB survives refresh, restart, reopening; migration layer repairs old saves |
 | Memory Book | ✅ | Emergent biography from significant memories |
 | Mobile-first UX | ✅ | Safe areas, touch-optimized, no tutorials |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
@@ -121,9 +121,11 @@ becoming/
 
 ---
 
-## 5. Bugs Fixed in v0.1.0
+## 5. Bugs Fixed
 
-### Critical
+### v0.1.0
+
+#### Critical
 
 1. **Needs decay rate mismatch** — Active-play needs decay was ~30x slower than offline decay due to an incorrect `1/60` multiplier in `updateNeeds()`. Fixed: active and offline decay rates are now consistent.
 
@@ -141,11 +143,47 @@ becoming/
 
 8. **Offline sleep not modeled** — If the creature was sleeping when the app closed, `offlineSimulation` did not continue modeling sleep. It also used only the return-time hour for night detection, missing cases where the user left during evening and returned in morning. Fixed by modeling continued sleep and checking whether the absence spanned night hours.
 
-### Polish
+#### Polish
 
 9. **Touch scrolling during object drag** — Object drag could trigger page scroll on mobile. Fixed by adding `touchAction: 'none'` to object elements and the room container during drag.
 
 10. **Sleep toggle bypassed `putToSleep`/`wakeUp`** — The sleep button in `Room.tsx` directly mutated state instead of using the `needsSystem` functions, so `sleepStartTimestamp` was never set. Fixed to use the proper system functions.
+
+### v0.1.1 — Core Creature-Room Interaction Model
+
+#### Critical
+
+11. **Hatching state not permanent** — The creature could revert to the egg stage after hatching. `updateDevelopment()` calculated stage purely from cognitive/language levels, and a newborn starts at cognitive 0 (below the newborn threshold of 5), so it immediately regressed to `egg`. Fixed by:
+    - Adding `hatched: boolean` to `DevelopmentState` as the permanent lifecycle flag
+    - `createHatchedCreature()` sets `hatched: true` and `cognitiveLevel: max(5, ...)`
+    - `getStageFromLevels()` returns `'newborn'` as the minimum for any hatched creature
+    - `CreatureCanvas.tsx` renders the creature (never egg) when `hatched === true`
+    - `App.tsx` checks `saved.development.hatched` on load and never shows the egg for a hatched creature
+    - `persistence.ts` migrates old saves and repairs any corrupted `hatched=true + stage=egg` states
+
+12. **Objects scattered without meaning** — All 10 objects spawned at fixed positions in the room on every new game, creating visual clutter with no player agency. Fixed by:
+    - New games start with `roomObjects: []` and `inventory: [apple, broccoli, ball, blanket, paper, pencil, box, stone, mirror]`
+    - Added an inventory tray that slides up from the 📦 button
+    - Players drag objects from the tray into the room
+    - Objects can be repositioned by dragging
+    - The room only contains objects the player intentionally placed
+
+13. **Creature movement was random jumping** — The creature teleported to random coordinates every 3–11 seconds with no purpose. Fixed by:
+    - Replacing the random timer with a **behavior state machine**: `idle → observing → walking → investigating/eating/playing`
+    - Defined walkable bounds (`x: 12–88%, y: 48–78%`) and idle positions
+    - Movement is **need-driven**: hungry → food, sleepy → blanket, low stimulation → ball, curiosity → random object
+    - Smooth visual movement via canvas lerp (0.05 factor); state machine waits for visual arrival via elapsed-time check before triggering interactions
+    - Idle wandering is infrequent (~25% chance) with 4–10 second idle periods; creature is still most of the time
+
+14. **Object interactions were fake** — Dragging an object near the creature instantly triggered a feed with no creature involvement. Fixed by:
+    - Creature must **walk to the object** before interacting
+    - Per-object reaction logic: food → approach, sniff, eat or reject based on hunger; ball → approach, play; paper → inspect; blanket → rest; mirror → inspect
+    - Each interaction updates `creatureBehavior` and `currentActivity` so the state is visible in the system
+
+15. **Room coordinate system was incoherent** — Creature and objects shared percentage coordinates but the creature's movement targets were random, not tied to actual object positions. Fixed by:
+    - Behavior machine targets actual `roomObjects[i].x / .y` positions
+    - `dist()` helper calculates real distances for priority ordering (closest food, closest blanket)
+    - Canvas and DOM use the same percentage coordinate system
 
 ---
 
@@ -173,11 +211,11 @@ becoming/
 ### Priority: High
 1. **Add sound design** — subtle ambient vocalizations (proto-sounds, breath, blink) that play without requiring an API call. This is the single biggest missing sensory layer.
 2. **Mobile polish pass** — test on actual iOS Safari and Android Chrome. Fix any drag/touch issues. Add `navigator.vibrate()` for touch interactions.
-3. **Add more food/reaction types** — the current "drag apple → happy" loop is functional but shallow. The creature should sniff, reject, play with, or hide food based on personality.
+3. **Object state persistence** — objects in the room should remember their state across sessions (e.g. paper that was torn, ball that was moved).
 
 ### Priority: Medium
 4. **Creature visual evolution** — implement gradual morphological changes (eye size, roundness, markings) that respond to age, personality, and habits.
-5. **Interest system** — make interests emerge organically.
+5. **Interest system** — make interests emerge organically from object interactions.
 6. **True time-based milestones** — currently development is interaction-driven. Add soft time gates.
 7. **Test suite** — at minimum, unit tests for `socialLearningSystem.ts` parsing and `needsSystem.ts` decay math.
 
