@@ -66,7 +66,7 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
   return (
     <div className="flex flex-col items-center justify-center h-full bg-room-dark relative overflow-hidden">
       {/* Ambient particles — stable across re-renders */}
-      <div className="absolute inset-0 opacity-20">
+      <div className="absolute inset-0 opacity-20 pointer-events-none" aria-hidden="true">
         {particles.map((p, i) => (
           <div
             key={i}

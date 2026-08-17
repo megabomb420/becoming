@@ -17,6 +17,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
   const blinkStateRef = useRef({ isBlinking: false, blinkTimer: 0, nextBlink: 2000 + Math.random() * 3000 });
   const holdTimerRef = useRef<number>(0);
   const isHoldingRef = useRef(false);
+  const didHoldRef = useRef(false);
   const hasMovedRef = useRef(false);
   const strokeStartRef = useRef<{ x: number; y: number } | null>(null);
   const holdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -240,14 +241,24 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    // The canvas spans the room, but only the visible creature should react.
+    // Without hit testing, tapping empty floor or an object also counted as a
+    // creature touch.
+    const creatureX = (posRef.current.x / 100) * rect.width;
+    const creatureY = (posRef.current.y / 100) * rect.height;
+    if (Math.abs(x - creatureX) > 55 || Math.abs(y - creatureY) > 65) return;
+
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
     
     isHoldingRef.current = true;
+    didHoldRef.current = false;
     hasMovedRef.current = false;
     holdTimerRef.current = 0;
     strokeStartRef.current = { x, y };
@@ -255,6 +266,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     holdIntervalRef.current = setInterval(() => {
       holdTimerRef.current += 100;
       if (holdTimerRef.current >= 600 && isHoldingRef.current) {
+        didHoldRef.current = true;
         onHoldStart();
         clearHold();
       }
@@ -275,9 +287,11 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       const dy = y - strokeStartRef.current.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       
-      if (dist > 20 && !hasMovedRef.current) {
+      if (didHoldRef.current) {
+        onHoldEnd();
+      } else if (dist > 20) {
         onStroke();
-      } else if (holdTimerRef.current < 600 && dist <= 30) {
+      } else {
         onTap();
       }
     }
@@ -285,6 +299,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     isHoldingRef.current = false;
     strokeStartRef.current = null;
     hasMovedRef.current = false;
+    didHoldRef.current = false;
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -307,12 +322,15 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     isHoldingRef.current = false;
     strokeStartRef.current = null;
     hasMovedRef.current = false;
+    didHoldRef.current = false;
   };
 
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 w-full h-full cursor-pointer"
+      role="button"
+      aria-label={`Interact with ${state.identity.name || 'the creature'}`}
+      className="absolute inset-0 z-10 w-full h-full cursor-pointer"
       style={{ touchAction: 'none' }}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}

@@ -2,9 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.2.0  
-> **Last Updated:** 2026-08-17
-> **Last Updated:** 2026-08-17
+> **Version:** 0.3.0
 > **Last Updated:** 2026-08-17
 
 ---
@@ -82,9 +80,9 @@ becoming/
 | Hidden personality | ✅ | Seeded traits (curiosity, caution, affection, independence, etc.) |
 | Development stages | ✅ | `egg → newborn → animal → communicating → first_words → combining → sentences → mature`; stage regression prevented once hatched |
 | Language development | ✅ | Stage-constrained vocabulary; proto-sounds → words → combinations → sentences |
-| Object system | ✅ | Inventory tray (📦) with 9 object types; drag to place; drag to reposition; room only contains placed objects |
-| Feeding | ✅ | Drag food from inventory into room; creature approaches and eats based on hunger |
-| Creature movement | ✅ | Intentional behavior state machine: idle → observing → walking → investigating/eating/playing; bounded walkable area; smooth canvas lerp; time-based arrival |
+| Object system | ✅ | Inventory tray (📦) with 9 object types; tap to place, drag to position, tap a placed object to call the creature, and `Tidy room` to reset the space |
+| Feeding | ✅ | Food placement calls the creature immediately; food is consumed and returned to the tray for repeated use |
+| Creature movement | ✅ | Goal-driven state machine: idle → walking to a real target → investigating/eating/playing; bounded shared floor coordinates and smooth canvas movement |
 | Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
 | Sleep / wake cycle | ✅ | Room dims; "z z z" animation; energy restored on wake via `sleepStartTimestamp` |
 | Offline simulation | ✅ | Calculates what happened while app was closed; respects sleep state; models night spans |
@@ -191,10 +189,27 @@ becoming/
 
 16. **Hang when typing creature name** — The ambient particles in `EggHatching.tsx` were generated with `Math.random()` directly in the render loop. Every keystroke in the name input triggered a re-render, which destroyed and recreated 20 CSS-animated DOM nodes. On slower devices this caused the UI to freeze. Fixed by generating the particles once with `useMemo([], [])` so they remain stable across renders. Also added a `submittedRef` guard to prevent accidental double-submission.
 
----
-    - Behavior machine targets actual `roomObjects[i].x / .y` positions
-    - `dist()` helper calculates real distances for priority ordering (closest food, closest blanket)
-    - Canvas and DOM use the same percentage coordinate system
+### v0.3.0 — Playable Room Interactions
+
+17. **Movement targets were never applied** — Every goal branch returned before the shared target-position code ran. The UI said `walking`, but the creature never received that destination. Replaced this with an explicit movement pipeline that stores the target, animates toward it, waits for arrival, then performs the reaction.
+
+18. **Placed objects were blocked by the canvas** — The full-screen creature canvas painted above room objects and intercepted their pointer events. Objects now live on a dedicated interaction layer above the canvas, while canvas touches use creature-shaped hit testing instead of treating the whole room as the creature.
+
+19. **Mobile interaction was drag-only** — A short tap now places an inventory item automatically, tapping a placed object calls the creature, and dragging remains available for precise positioning. All objects have accessible button labels and 48px tray targets.
+
+20. **Object reactions had no persistent result** — Food is consumed and returns to inventory, the ball is pushed and restores stimulation, the blanket restores comfort, paper and boxes visibly change after investigation, and every object tracks interactions/state.
+
+21. **Interrupted actions could survive forever** — Reloading during a walk or reaction could persist `walking` with no timer capable of completing it. Persistence migration now resets transient actions to a coherent idle state while preserving real sleep.
+
+22. **Touch gestures misfired** — Empty-room taps no longer count as creature touches, long hold now completes correctly, and broad strokes are recognized instead of being discarded.
+
+23. **Old saves could lose their inventory** — Migration now restores each missing base object, constrains legacy object coordinates to the walkable floor, and clears stale `beingUsedByCreature` locks.
+
+24. **Naming button was covered by particles** — The full-screen ambient particle layer could intercept taps over the naming form. It is now decorative and ignores pointer events, so both the input and `Begin` button work normally on touch screens.
+
+25. **Needs timer restarted after every action** — The decay interval depended on the entire game-state object, so frequent interaction continually reset its one-minute countdown. It now depends only on whether a hatched game exists and runs continuously.
+
+26. **Very quick app closes could lose the last action** — Normal saves remain debounced, but the latest in-memory state is now flushed when the PWA is hidden or receives `pagehide`.
 
 ---
 

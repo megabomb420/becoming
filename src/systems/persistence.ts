@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { GameState, MemoryBookEntry } from '../types';
+import { GameState, MemoryBookEntry, ObjectType } from '../types';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -18,6 +18,7 @@ interface BecomingDB extends DBSchema {
 
 const DB_NAME = 'becoming-db';
 const DB_VERSION = 1;
+const BASE_INVENTORY: ObjectType[] = ['apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror'];
 
 let dbPromise: Promise<IDBPDatabase<BecomingDB>> | null = null;
 
@@ -46,24 +47,41 @@ function migrateState(state: GameState): GameState {
     };
   }
 
-  // Ensure creatureBehavior exists
-  if (!migrated.creatureBehavior) {
+  // Movement and reactions are transient UI processes. A reload cannot resume
+  // their timers safely, so restore a coherent idle/sleeping state instead of
+  // leaving the creature permanently "walking" toward an old target.
+  if (migrated.sleepState === 'sleeping') {
+    migrated.creatureBehavior = 'sleeping';
+    migrated.currentActivity = 'sleeping';
+  } else {
     migrated.creatureBehavior = 'idle';
-  }
-
-  // Ensure inventory exists (for old saves where everything was in roomObjects)
-  if (!migrated.inventory) {
-    migrated.inventory = [];
+    migrated.currentActivity = null;
   }
 
   // Ensure room objects have new fields
-  if (migrated.roomObjects) {
-    migrated.roomObjects = migrated.roomObjects.map(obj => ({
+  migrated.roomObjects = (migrated.roomObjects ?? []).map(obj => ({
       ...obj,
+      x: Math.max(10, Math.min(90, Number.isFinite(obj.x) ? obj.x : 50)),
+      y: Math.max(54, Math.min(76, Number.isFinite(obj.y) ? obj.y : 64)),
       placedByUser: obj.placedByUser ?? true,
-      beingUsedByCreature: obj.beingUsedByCreature ?? false,
+      // An interrupted animation must not leave an object permanently locked.
+      beingUsedByCreature: false,
     }));
-  }
+
+  // Recover inventory entries missing from older saves. Every base object is
+  // either in the tray or in the room; consumable food returns to the tray
+  // after it is eaten.
+  const roomTypes = new Set<ObjectType>(migrated.roomObjects.map(obj => obj.type));
+  const existingInventory = (Array.isArray(migrated.inventory) ? migrated.inventory : [])
+    .filter((type, index, all) => all.indexOf(type) === index && !roomTypes.has(type));
+  const presentTypes = new Set<ObjectType>([
+    ...existingInventory,
+    ...migrated.roomObjects.map(obj => obj.type),
+  ]);
+  migrated.inventory = [
+    ...existingInventory,
+    ...BASE_INVENTORY.filter(type => !presentTypes.has(type)),
+  ];
 
   // Ensure hatched creatures never have stage 'egg'
   if (migrated.development.hatched && migrated.development.stage === 'egg') {
