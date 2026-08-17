@@ -30,6 +30,7 @@ export default {
         'breathe': 'breathe 4s ease-in-out infinite',
         'fade-in': 'fadeIn 0.8s ease-out',
         'float': 'float 6s ease-in-out infinite',
+        'slide-up': 'slideUp 0.3s ease-out',
       },
       keyframes: {
         breathe: {
@@ -43,6 +44,10 @@ export default {
         float: {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-8px)' },
+        },
+        slideUp: {
+          '0%': { opacity: '0', transform: 'translateY(20px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
         },
       },
     },

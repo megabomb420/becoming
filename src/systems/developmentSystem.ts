@@ -11,12 +11,14 @@ const STAGE_THRESHOLDS: Record<DevelopmentStage, { cognitive: number; language: 
   mature: { cognitive: 90, language: 85 },
 };
 
-export function getStageFromLevels(cognitive: number, language: number): DevelopmentStage {
+export function getStageFromLevels(cognitive: number, language: number, hatched: boolean): DevelopmentStage {
   const stages: DevelopmentStage[] = ['mature', 'sentences', 'combining', 'first_words', 'communicating', 'animal', 'newborn', 'egg'];
   for (const stage of stages) {
     const t = STAGE_THRESHOLDS[stage];
     if (cognitive >= t.cognitive && language >= t.language) return stage;
   }
+  // Once hatched, never regress to egg. Minimum stage is newborn.
+  if (hatched) return 'newborn';
   return 'egg';
 }
 
@@ -33,7 +35,7 @@ export function updateDevelopment(state: GameState, activeMinutes: number): Game
 
   const newCognitive = Math.min(100, state.development.cognitiveLevel + cognitiveGain);
   const newLanguage = Math.min(100, state.development.languageLevel + languageGain);
-  const newStage = getStageFromLevels(newCognitive, newLanguage);
+  const newStage = getStageFromLevels(newCognitive, newLanguage, state.development.hatched);
 
   const newState: GameState = {
     ...state,

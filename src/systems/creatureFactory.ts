@@ -1,4 +1,4 @@
-import { CreatureIdentity, CreatureAppearance, GameState, DevelopmentState, Needs, PersonalityTraits, RelationshipModel, VocabularyEntry, RoomObject, Memory, Interest, SocialLearningState } from '../types';
+import { CreatureIdentity, CreatureAppearance, GameState, DevelopmentState, Needs, PersonalityTraits, RelationshipModel, VocabularyEntry, RoomObject, Memory, Interest, SocialLearningState, ObjectType } from '../types';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -35,20 +35,9 @@ function generatePersonality(rand: () => number): PersonalityTraits {
   };
 }
 
-function createInitialObjects(): RoomObject[] {
-  return [
-    { id: 'bowl', type: 'food_bowl', x: 80, y: 75, state: { filled: false }, interactions: 0 },
-    { id: 'apple', type: 'apple', x: 20, y: 80, state: {}, interactions: 0 },
-    { id: 'broccoli', type: 'broccoli', x: 30, y: 85, state: {}, interactions: 0 },
-    { id: 'ball', type: 'ball', x: 70, y: 70, state: {}, interactions: 0 },
-    { id: 'blanket', type: 'blanket', x: 15, y: 75, state: {}, interactions: 0 },
-    { id: 'paper', type: 'paper', x: 85, y: 60, state: { drawn: false }, interactions: 0 },
-    { id: 'pencil', type: 'pencil', x: 88, y: 62, state: {}, interactions: 0 },
-    { id: 'box', type: 'box', x: 50, y: 78, state: { open: true }, interactions: 0 },
-    { id: 'stone', type: 'stone', x: 60, y: 82, state: {}, interactions: 0 },
-    { id: 'mirror', type: 'mirror', x: 50, y: 30, state: {}, interactions: 0 },
-  ];
-}
+const ALL_INVENTORY_ITEMS: ObjectType[] = [
+  'apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror',
+];
 
 export function createNewCreature(name: string | null = null, seed = Date.now()): GameState {
   const rand = seededRandom(seed);
@@ -69,6 +58,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     emotionalLevel: 0,
     independence: 0,
     stage: 'egg',
+    hatched: false,
   };
 
   const needs: Needs = {
@@ -105,7 +95,8 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     memories: [],
     vocabulary: [],
     relationship,
-    roomObjects: createInitialObjects(),
+    roomObjects: [],
+    inventory: [...ALL_INVENTORY_ITEMS],
     interests: [],
     socialLearning,
     lastSaved: birthTime,
@@ -114,6 +105,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     sleepState: 'awake',
     position: { x: 50, y: 60 },
     facing: 'right',
+    creatureBehavior: 'idle',
   };
 
   return state;
@@ -126,7 +118,12 @@ export function createHatchedCreature(eggState: GameState): GameState {
       ...eggState.development,
       stage: 'newborn',
       chronologicalAge: 0,
+      hatched: true,
+      // Ensure newborn starts with enough cognitive level so
+      // development system never regresses to egg
+      cognitiveLevel: Math.max(5, eggState.development.cognitiveLevel),
     },
     emotionalState: 'curious',
+    creatureBehavior: 'idle',
   };
 }

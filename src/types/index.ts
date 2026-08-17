@@ -45,6 +45,7 @@ export interface DevelopmentState {
   emotionalLevel: number;      // 0-100
   independence: number;        // 0-100
   stage: DevelopmentStage;
+  hatched: boolean;            // permanent — once true, never false
 }
 
 export type DevelopmentStage =
@@ -56,6 +57,16 @@ export type DevelopmentStage =
   | 'combining'
   | 'sentences'
   | 'mature';
+
+export type CreatureBehavior =
+  | 'idle'
+  | 'observing'
+  | 'walking'
+  | 'investigating'
+  | 'eating'
+  | 'playing'
+  | 'sleeping'
+  | 'reacting';
 
 export interface Memory {
   id: string;
@@ -99,6 +110,8 @@ export interface RoomObject {
   y: number;
   state: Record<string, unknown>;
   interactions: number;
+  placedByUser: boolean;
+  beingUsedByCreature: boolean;
 }
 
 export type ObjectType =
@@ -205,6 +218,7 @@ export interface GameState {
   vocabulary: VocabularyEntry[];
   relationship: RelationshipModel;
   roomObjects: RoomObject[];
+  inventory: ObjectType[];
   interests: Interest[];
   // Social learning state
   socialLearning: SocialLearningState;
@@ -215,6 +229,7 @@ export interface GameState {
   sleepStartTimestamp?: number;
   position: { x: number; y: number };
   facing: 'left' | 'right';
+  creatureBehavior: CreatureBehavior;
 }
 
 export interface MemoryBookEntry {

@@ -20,15 +20,24 @@ function App() {
   useEffect(() => {
     loadGameState().then(saved => {
       if (saved) {
-        // Simulate offline time
-        const awayMs = Date.now() - saved.lastSaved;
-        if (awayMs > 60000) {
-          const { state: updated, activities } = simulateOfflineTime(saved, awayMs);
-          setGameState(updated);
+        // CRITICAL: If the creature has already hatched, never show the egg again.
+        // The hatched flag is a permanent lifecycle transition.
+        if (saved.development.hatched) {
+          // Simulate offline time
+          const awayMs = Date.now() - saved.lastSaved;
+          if (awayMs > 60000) {
+            const { state: updated, activities } = simulateOfflineTime(saved, awayMs);
+            setGameState(updated);
+          } else {
+            setGameState(saved);
+          }
+          setShowEgg(false);
         } else {
-          setGameState(saved);
+          // Not yet hatched — show the egg
+          setShowEgg(true);
         }
       } else {
+        // No saved state — new game, show egg
         setShowEgg(true);
       }
       setLoading(false);
@@ -103,9 +112,15 @@ function App() {
 
   if (!gameState) return null;
 
+  // Defensive: if gameState exists but somehow hatched is false, force it true
+  // This prevents any edge case where a saved state slips through
+  const safeState = gameState.development.hatched
+    ? gameState
+    : { ...gameState, development: { ...gameState.development, hatched: true, stage: 'newborn' as const, cognitiveLevel: Math.max(5, gameState.development.cognitiveLevel) } };
+
   return (
     <div className="h-screen w-screen overflow-hidden relative">
-      <Room state={gameState} onStateChange={handleStateChange} version={APP_VERSION} />
+      <Room state={safeState} onStateChange={handleStateChange} version={APP_VERSION} />
       
       {/* Hidden reset */}
       <button

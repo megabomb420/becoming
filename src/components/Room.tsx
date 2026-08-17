@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { GameState, ObjectType } from '../types';
+import { GameState, ObjectType, RoomObject, CreatureBehavior } from '../types';
 import CreatureCanvas from './CreatureCanvas';
 import ChatInterface from './ChatInterface';
 import { touchCreature, feedCreature, putToSleep, wakeUp } from '../systems/needsSystem';
@@ -26,65 +26,326 @@ const objectEmojis: Record<ObjectType, string> = {
   mirror: '🪞',
 };
 
+// Walkable area bounds (percentage of room)
+const WALK_BOUNDS = { minX: 12, maxX: 88, minY: 48, maxY: 78 };
+
+// Idle positions the creature prefers when nothing else to do
+const IDLE_POSITIONS = [
+  { x: 30, y: 60 },
+  { x: 50, y: 55 },
+  { x: 70, y: 62 },
+  { x: 40, y: 68 },
+  { x: 60, y: 58 },
+];
+
+function clampToWalkable(pos: { x: number; y: number }) {
+  return {
+    x: Math.max(WALK_BOUNDS.minX, Math.min(WALK_BOUNDS.maxX, pos.x)),
+    y: Math.max(WALK_BOUNDS.minY, Math.min(WALK_BOUNDS.maxY, pos.y)),
+  };
+}
+
+function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
 const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const [speech, setSpeech] = useState<string | null>(null);
   const [showMemoryBook, setShowMemoryBook] = useState(false);
-  const [draggingObj, setDraggingObj] = useState<string | null>(null);
-  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
-  const [creatureEmotion, setCreatureEmotion] = useState(state.emotionalState);
-  const [showObjectMenu, setShowObjectMenu] = useState(false);
+  const [showInventory, setShowInventory] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [creatureEmotion, setCreatureEmotion] = useState(state.emotionalState);
+  const [initiatedTopic, setInitiatedTopic] = useState<string | null>(null);
+
+  // Drag state
+  const [draggingType, setDraggingType] = useState<ObjectType | null>(null);
+  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
+  const [dragFromInventory, setDragFromInventory] = useState(false);
+
+  // Creature movement
   const [creaturePos, setCreaturePos] = useState(state.position);
   const [isMoving, setIsMoving] = useState(false);
-  const [initiatedTopic, setInitiatedTopic] = useState<string | null>(null);
-  const activityTimerRef = useRef<ReturnType<typeof setInterval>>();
-  const moveTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const speechTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const initiateTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const roomRef = useRef<HTMLDivElement>(null);
+
+  // Refs for latest state in callbacks / intervals
   const stateRef = useRef(state);
   const creatureEmotionRef = useRef(creatureEmotion);
+  const creaturePosRef = useRef(creaturePos);
+  const behaviorRef = useRef<CreatureBehavior>(state.creatureBehavior);
+  const targetPosRef = useRef(state.position);
+  const behaviorTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const walkStartTimeRef = useRef<number>(0);
+  const speechTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const initiateTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const activityTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const roomRef = useRef<HTMLDivElement>(null);
 
   // Keep refs in sync with latest state
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { creatureEmotionRef.current = creatureEmotion; }, [creatureEmotion]);
+  useEffect(() => { creaturePosRef.current = creaturePos; }, [creaturePos]);
+  useEffect(() => { behaviorRef.current = state.creatureBehavior; }, [state.creatureBehavior]);
 
-  // Idle movement
+  // ========== BEHAVIOUR STATE MACHINE ==========
+  // Decides what the creature should do next based on needs, objects, and randomness.
+  // Runs on a variable timer so the creature doesn't feel robotic.
   useEffect(() => {
-    if (state.sleepState === 'sleeping' || state.development.stage === 'egg') return;
-    const scheduleMove = () => {
-      const delay = 3000 + Math.random() * 8000;
-      moveTimerRef.current = setTimeout(() => {
-        if (Math.random() < 0.6) {
-          const objects = stateRef.current.roomObjects;
-          const target = objects[Math.floor(Math.random() * objects.length)];
-          const offsetX = (Math.random() - 0.5) * 15;
-          const offsetY = (Math.random() - 0.5) * 10;
-          setCreaturePos({
-            x: Math.max(15, Math.min(85, target.x + offsetX)),
-            y: Math.max(40, Math.min(80, target.y + offsetY)),
-          });
-          setIsMoving(true);
-          setTimeout(() => setIsMoving(false), 2000);
-        } else {
-          setCreaturePos({ x: 20 + Math.random() * 60, y: 45 + Math.random() * 30 });
-          setIsMoving(true);
-          setTimeout(() => setIsMoving(false), 2000);
-        }
-        scheduleMove();
-      }, delay);
-    };
-    scheduleMove();
-    return () => clearTimeout(moveTimerRef.current);
-  }, [state.sleepState, state.development.stage]);
+    if (state.sleepState === 'sleeping') {
+      onStateChange(prev => ({ ...prev, creatureBehavior: 'sleeping' }));
+      return;
+    }
 
-  // Sync position to state when idle
+    const chooseBehavior = () => {
+      const currentState = stateRef.current;
+      const currentPos = creaturePosRef.current;
+      const roomObjects = currentState.roomObjects;
+      const needs = currentState.needs;
+      const personality = currentState.personality;
+
+      // If currently walking, wait for visual arrival before deciding again.
+      // We use elapsed time because creaturePos is set immediately to the target
+      // for visual lerp smoothing; the state machine must not outrun the canvas.
+      if (behaviorRef.current === 'walking') {
+        const elapsed = Date.now() - walkStartTimeRef.current;
+        const travelDist = dist(currentPos, targetPosRef.current);
+        // Minimum 1.2s walk, or longer for far distances
+        const minWalkTime = 1200 + travelDist * 25;
+        if (elapsed < minWalkTime) {
+          scheduleNext(400);
+          return;
+        }
+        // Arrived
+        setIsMoving(false);
+      }
+
+      // Check dominant needs
+      let target: { x: number; y: number } | null = null;
+
+      // Priority 1: Very hungry + food in room → eat
+      if (needs.hunger < 35) {
+        const foods = roomObjects.filter(o => o.type === 'apple' || o.type === 'broccoli');
+        if (foods.length > 0) {
+          const closest = foods.reduce((a, b) => dist(currentPos, a) < dist(currentPos, b) ? a : b);
+          target = { x: closest.x, y: closest.y };
+          onStateChange(prev => ({
+            ...prev,
+            creatureBehavior: 'walking',
+            currentActivity: 'going to eat',
+          }));
+          // Schedule the actual eating after arrival
+          setTimeout(() => {
+            const food = foods[0];
+            onStateChange(prev => {
+              const fed = feedCreature(prev, food.type);
+              const updated = learnWord(fed, food.type, 'food');
+              setCreatureEmotion('happy');
+              setTimeout(() => setCreatureEmotion('neutral'), 3000);
+              triggerSpeech(food.type);
+              return {
+                ...updated,
+                creatureBehavior: 'eating',
+                currentActivity: `eating ${food.type}`,
+              };
+            });
+            // After eating, clear behavior
+            setTimeout(() => {
+              onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
+            }, 3000);
+          }, 2000);
+          scheduleNext(6000);
+          return;
+        }
+      }
+
+      // Priority 2: Sleepy + blanket in room → go to blanket
+      if (!target && needs.energy < 25) {
+        const blankets = roomObjects.filter(o => o.type === 'blanket');
+        if (blankets.length > 0) {
+          const closest = blankets.reduce((a, b) => dist(currentPos, a) < dist(currentPos, b) ? a : b);
+          target = { x: closest.x, y: closest.y };
+          onStateChange(prev => ({
+            ...prev,
+            creatureBehavior: 'walking',
+            currentActivity: 'going to rest',
+          }));
+          scheduleNext(5000);
+          return;
+        }
+      }
+
+      // Priority 3: Investigate nearby objects
+      if (!target && roomObjects.length > 0 && Math.random() < 0.4 + personality.curiosity / 200) {
+        const interesting = roomObjects.filter(o => !o.beingUsedByCreature);
+        if (interesting.length > 0) {
+          const obj = interesting[Math.floor(Math.random() * interesting.length)];
+          target = { x: obj.x, y: obj.y };
+          onStateChange(prev => ({
+            ...prev,
+            creatureBehavior: 'walking',
+            currentActivity: `investigating ${obj.type}`,
+          }));
+
+          // On arrival, react based on object type
+          const arrivalTime = 1500 + dist(currentPos, target) * 20;
+          setTimeout(() => {
+            handleObjectReaction(obj.type);
+          }, arrivalTime);
+
+          scheduleNext(arrivalTime + 4000);
+          return;
+        }
+      }
+
+      // Priority 4: Low stimulation + ball in room → play
+      if (!target && needs.stimulation < 40) {
+        const balls = roomObjects.filter(o => o.type === 'ball');
+        if (balls.length > 0 && Math.random() < 0.5) {
+          const ball = balls[0];
+          target = { x: ball.x + (Math.random() - 0.5) * 10, y: ball.y };
+          onStateChange(prev => ({
+            ...prev,
+            creatureBehavior: 'walking',
+            currentActivity: 'going to play',
+          }));
+          setTimeout(() => {
+            setCreatureEmotion('happy');
+            setTimeout(() => setCreatureEmotion('neutral'), 3000);
+            onStateChange(prev => ({ ...prev, creatureBehavior: 'playing', currentActivity: 'playing with ball' }));
+            triggerSpeech('play');
+            setTimeout(() => {
+              onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
+            }, 4000);
+          }, 2000);
+          scheduleNext(8000);
+          return;
+        }
+      }
+
+      // Priority 5: Wander to an idle position (infrequent)
+      if (!target && Math.random() < 0.25) {
+        const idleSpot = IDLE_POSITIONS[Math.floor(Math.random() * IDLE_POSITIONS.length)];
+        // Add slight randomness so it's not identical every time
+        target = {
+          x: idleSpot.x + (Math.random() - 0.5) * 8,
+          y: idleSpot.y + (Math.random() - 0.5) * 6,
+        };
+        target = clampToWalkable(target);
+        onStateChange(prev => ({
+          ...prev,
+          creatureBehavior: 'walking',
+          currentActivity: null,
+        }));
+        scheduleNext(5000);
+        return;
+      }
+
+      // Priority 6: Just idle / observe
+      if (!target) {
+        const nextBehavior = Math.random() < 0.3 ? 'observing' : 'idle';
+        onStateChange(prev => ({
+          ...prev,
+          creatureBehavior: nextBehavior,
+          currentActivity: null,
+        }));
+        scheduleNext(4000 + Math.random() * 6000);
+        return;
+      }
+
+      if (target) {
+        targetPosRef.current = clampToWalkable(target);
+        walkStartTimeRef.current = Date.now();
+        setIsMoving(true);
+        setCreaturePos(targetPosRef.current);
+      }
+    };
+
+    const scheduleNext = (delay: number) => {
+      clearTimeout(behaviorTimerRef.current);
+      behaviorTimerRef.current = setTimeout(chooseBehavior, delay);
+    };
+
+    // Initial behavior kickoff
+    scheduleNext(2000 + Math.random() * 3000);
+
+    return () => clearTimeout(behaviorTimerRef.current);
+  }, [state.sleepState, onStateChange]);
+
+  // React to specific object types when investigated
+  const handleObjectReaction = useCallback((type: ObjectType) => {
+    const currentState = stateRef.current;
+    switch (type) {
+      case 'apple':
+      case 'broccoli': {
+        if (currentState.needs.hunger < 60) {
+          onStateChange(prev => {
+            const fed = feedCreature(prev, type);
+            const updated = learnWord(fed, type, 'food');
+            setCreatureEmotion('happy');
+            setTimeout(() => setCreatureEmotion('neutral'), 3000);
+            triggerSpeech(type);
+            return { ...updated, creatureBehavior: 'eating', currentActivity: `eating ${type}` };
+          });
+          setTimeout(() => onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null })), 4000);
+        } else {
+          setCreatureEmotion('curious');
+          setTimeout(() => setCreatureEmotion('neutral'), 2000);
+          onStateChange(prev => ({ ...prev, creatureBehavior: 'investigating', currentActivity: `sniffing ${type}` }));
+          triggerSpeech('smell');
+          setTimeout(() => onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null })), 3000);
+        }
+        break;
+      }
+      case 'ball': {
+        setCreatureEmotion('happy');
+        setTimeout(() => setCreatureEmotion('neutral'), 3000);
+        onStateChange(prev => ({ ...prev, creatureBehavior: 'playing', currentActivity: 'playing with ball' }));
+        triggerSpeech('ball');
+        setTimeout(() => onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null })), 3000);
+        break;
+      }
+      case 'paper': {
+        setCreatureEmotion('curious');
+        setTimeout(() => setCreatureEmotion('neutral'), 2000);
+        onStateChange(prev => ({ ...prev, creatureBehavior: 'investigating', currentActivity: 'inspecting paper' }));
+        setTimeout(() => onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null })), 3000);
+        break;
+      }
+      case 'blanket': {
+        onStateChange(prev => ({ ...prev, creatureBehavior: 'observing', currentActivity: 'resting on blanket' }));
+        setTimeout(() => onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null })), 5000);
+        break;
+      }
+      case 'mirror': {
+        setCreatureEmotion('curious');
+        setTimeout(() => setCreatureEmotion('neutral'), 2000);
+        onStateChange(prev => ({ ...prev, creatureBehavior: 'investigating', currentActivity: 'looking at mirror' }));
+        setTimeout(() => onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null })), 3000);
+        break;
+      }
+      case 'box':
+      case 'stone':
+      case 'pencil': {
+        setCreatureEmotion('curious');
+        setTimeout(() => setCreatureEmotion('neutral'), 2000);
+        onStateChange(prev => ({ ...prev, creatureBehavior: 'investigating', currentActivity: `inspecting ${type}` }));
+        setTimeout(() => onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null })), 2500);
+        break;
+      }
+      default:
+        onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
+    }
+  }, [onStateChange]);
+
+  // Sync local creature position to game state (but not while walking)
   useEffect(() => {
     if (isMoving) return;
     const dx = Math.abs(creaturePos.x - state.position.x);
     const dy = Math.abs(creaturePos.y - state.position.y);
     if (dx > 1 || dy > 1) {
-      onStateChange(prev => ({ ...prev, position: creaturePos, facing: creaturePos.x > prev.position.x ? 'right' : creaturePos.x < prev.position.x ? 'left' : prev.facing }));
+      onStateChange(prev => ({
+        ...prev,
+        position: creaturePos,
+        facing: creaturePos.x > prev.position.x ? 'right' : creaturePos.x < prev.position.x ? 'left' : prev.facing,
+      }));
     }
   }, [creaturePos, isMoving, state.position.x, state.position.y, onStateChange]);
 
@@ -99,7 +360,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     return () => clearInterval(activityTimerRef.current);
   }, [onStateChange]);
 
-  // Random speech — uses refs to avoid stale closures
+  // Random speech
   useEffect(() => {
     const interval = setInterval(() => {
       const currentState = stateRef.current;
@@ -116,10 +377,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Creature-initiated conversation check — uses refs to avoid stale closures
+  // Creature-initiated conversation check
   useEffect(() => {
     if (state.sleepState === 'sleeping' || showChat || initiatedTopic) return;
-    
+
     const checkInitiate = () => {
       const delay = 15000 + Math.random() * 20000;
       initiateTimerRef.current = setTimeout(() => {
@@ -182,54 +443,113 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     });
   }, [onStateChange]);
 
-  const handleObjectDragStart = (objId: string, e: React.PointerEvent) => {
+  // ========== DRAG & DROP ==========
+  // Drag from inventory
+  const handleInventoryDragStart = (type: ObjectType, e: React.PointerEvent) => {
     e.preventDefault();
-    setDraggingObj(objId);
+    setDraggingType(type);
+    setDragFromInventory(true);
     const rect = roomRef.current?.getBoundingClientRect();
     if (rect) setDragPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
 
+  // Drag existing room object
+  const handleObjectDragStart = (objId: string, e: React.PointerEvent) => {
+    e.preventDefault();
+    const obj = state.roomObjects.find(o => o.id === objId);
+    if (!obj) return;
+    setDraggingType(obj.type);
+    setDragFromInventory(false);
+    const rect = roomRef.current?.getBoundingClientRect();
+    if (rect) setDragPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    // Mark this object as being dragged by removing it temporarily
+    onStateChange(prev => ({
+      ...prev,
+      roomObjects: prev.roomObjects.filter(o => o.id !== objId),
+    }));
+    // Store the object data on a ref for later
+    (roomRef.current as any).__draggingObj = obj;
+  };
+
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!draggingObj) return;
+    if (!draggingType) return;
     e.preventDefault();
     const rect = roomRef.current?.getBoundingClientRect();
     if (rect) setDragPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    if (!draggingObj) return;
+    if (!draggingType) return;
     const rect = roomRef.current?.getBoundingClientRect();
-    if (rect) {
-      const currentState = stateRef.current;
-      const creatureX = (currentState.position.x / 100) * rect.width;
-      const creatureY = (currentState.position.y / 100) * rect.height;
-      const dropX = e.clientX - rect.left;
-      const dropY = e.clientY - rect.top;
-      const dist = Math.sqrt((dropX - creatureX) ** 2 + (dropY - creatureY) ** 2);
-      const obj = currentState.roomObjects.find(o => o.id === draggingObj);
-      if (obj && dist < 80) {
-        if (obj.type === 'apple' || obj.type === 'broccoli') {
-          onStateChange(prev => {
-            const fed = feedCreature(prev, obj.type);
-            const updated = learnWord(fed, obj.type, 'food');
-            setCreatureEmotion('happy');
-            setTimeout(() => setCreatureEmotion('neutral'), 3000);
-            triggerSpeech(obj.type);
-            return updated;
-          });
-        } else {
-          onStateChange(prev => {
-            const updated = learnWord(prev, obj.type, 'object');
-            setCreatureEmotion('curious');
-            setTimeout(() => setCreatureEmotion('neutral'), 2000);
-            return updated;
-          });
-        }
+    if (!rect) {
+      setDraggingType(null);
+      setDragFromInventory(false);
+      return;
+    }
+
+    const dropX = e.clientX - rect.left;
+    const dropY = e.clientY - rect.top;
+    const pctX = (dropX / rect.width) * 100;
+    const pctY = (dropY / rect.height) * 100;
+
+    // Only allow dropping in the room area (not on the bottom controls)
+    if (pctY > 88) {
+      // Dropped in bottom bar area — cancel
+      if (!dragFromInventory && (roomRef.current as any).__draggingObj) {
+        // Restore the object to its original position
+        const obj = (roomRef.current as any).__draggingObj;
+        onStateChange(prev => ({
+          ...prev,
+          roomObjects: [...prev.roomObjects, obj],
+        }));
+      }
+      setDraggingType(null);
+      setDragFromInventory(false);
+      (roomRef.current as any).__draggingObj = null;
+      return;
+    }
+
+    if (dragFromInventory) {
+      // Placing new object from inventory
+      const newObject: RoomObject = {
+        id: `${draggingType}-${Date.now()}`,
+        type: draggingType,
+        x: Math.max(5, Math.min(95, pctX)),
+        y: Math.max(5, Math.min(90, pctY)),
+        state: {},
+        interactions: 0,
+        placedByUser: true,
+        beingUsedByCreature: false,
+      };
+      onStateChange(prev => ({
+        ...prev,
+        roomObjects: [...prev.roomObjects, newObject],
+        inventory: prev.inventory.filter(i => i !== draggingType),
+      }));
+    } else {
+      // Moving existing object
+      const obj = (roomRef.current as any).__draggingObj;
+      if (obj) {
+        onStateChange(prev => ({
+          ...prev,
+          roomObjects: [
+            ...prev.roomObjects,
+            {
+              ...obj,
+              x: Math.max(5, Math.min(95, pctX)),
+              y: Math.max(5, Math.min(90, pctY)),
+            },
+          ],
+        }));
       }
     }
-    setDraggingObj(null);
+
+    setDraggingType(null);
+    setDragFromInventory(false);
+    (roomRef.current as any).__draggingObj = null;
   };
 
+  // ========== SLEEP ==========
   const handleSleepToggle = () => {
     if (state.sleepState === 'sleeping') {
       onStateChange(prev => wakeUp(prev));
@@ -246,11 +566,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const ageDays = Math.floor(state.development.chronologicalAge / (24 * 60 * 60 * 1000));
 
   return (
-    <div 
-      ref={roomRef} 
-      className="relative w-full h-full overflow-hidden" 
-      style={{ touchAction: draggingObj ? 'none' : 'pan-y' }}
-      onPointerMove={handlePointerMove} 
+    <div
+      ref={roomRef}
+      className="relative w-full h-full overflow-hidden"
+      style={{ touchAction: draggingType ? 'none' : 'pan-y' }}
+      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
       {/* Room background */}
@@ -270,15 +590,15 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
         </div>
       )}
 
-      {/* Objects */}
+      {/* Room objects (only placed ones) */}
       {state.roomObjects.map(obj => (
         <div
           key={obj.id}
-          className={`absolute select-none transition-transform ${draggingObj === obj.id ? 'scale-125 z-50' : 'hover:scale-110'}`}
+          className="absolute select-none hover:scale-110 transition-transform"
           style={{
-            left: draggingObj === obj.id ? `${dragPos.x}px` : `${obj.x}%`,
-            top: draggingObj === obj.id ? `${dragPos.y}px` : `${obj.y}%`,
-            transform: draggingObj === obj.id ? 'translate(-50%, -50%)' : 'translate(-50%, -50%)',
+            left: `${obj.x}%`,
+            top: `${obj.y}%`,
+            transform: 'translate(-50%, -50%)',
             fontSize: '2rem',
             cursor: 'grab',
             touchAction: 'none',
@@ -289,6 +609,23 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
           {objectEmojis[obj.type]}
         </div>
       ))}
+
+      {/* Dragging ghost (inventory or moved object) */}
+      {draggingType && (
+        <div
+          className="absolute select-none scale-125 z-50 pointer-events-none"
+          style={{
+            left: `${dragPos.x}px`,
+            top: `${dragPos.y}px`,
+            transform: 'translate(-50%, -50%)',
+            fontSize: '2rem',
+            filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))',
+            opacity: 0.9,
+          }}
+        >
+          {objectEmojis[draggingType]}
+        </div>
+      )}
 
       {/* Creature */}
       <CreatureCanvas
@@ -314,9 +651,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
         </div>
       )}
 
-      {/* Creature-initiated chat prompt — subtle, near the creature */}
+      {/* Creature-initiated chat prompt */}
       {initiatedTopic && !showChat && (
-        <div 
+        <div
           className="absolute top-[38%] left-1/2 -translate-x-1/2 z-40 animate-fade-in cursor-pointer"
           onClick={handleOpenChatWithTopic}
         >
@@ -348,20 +685,31 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
         <button onClick={() => setShowChat(true)} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
           💬
         </button>
-        <button onClick={() => setShowObjectMenu(!showObjectMenu)} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
+        <button onClick={() => setShowInventory(!showInventory)} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
           📦
         </button>
       </div>
 
-      {/* Object menu */}
-      {showObjectMenu && (
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-room-mid/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl z-40 animate-fade-in">
-          <p className="text-warm-200/60 text-xs mb-2 text-center font-serif">Drag objects to the creature</p>
-          <div className="flex gap-3 flex-wrap justify-center max-w-[200px]">
-            {state.roomObjects.map(obj => (
-              <div key={obj.id} className="text-2xl opacity-60">{objectEmojis[obj.type]}</div>
-            ))}
-          </div>
+      {/* Inventory tray */}
+      {showInventory && (
+        <div className="absolute bottom-20 left-4 right-4 bg-room-mid/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl z-40 animate-slide-up">
+          <p className="text-warm-200/60 text-xs mb-3 text-center font-serif">Drag an object into the room</p>
+          {state.inventory.length === 0 ? (
+            <p className="text-warm-200/30 text-xs text-center font-serif italic">No objects left</p>
+          ) : (
+            <div className="flex gap-4 flex-wrap justify-center">
+              {state.inventory.map(type => (
+                <div
+                  key={type}
+                  className="text-3xl cursor-grab active:scale-110 transition-transform select-none"
+                  style={{ touchAction: 'none', filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))' }}
+                  onPointerDown={(e) => handleInventoryDragStart(type, e)}
+                >
+                  {objectEmojis[type]}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

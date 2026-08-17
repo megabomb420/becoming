@@ -24,7 +24,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
   // Smooth position interpolation
   useEffect(() => {
     targetPosRef.current = { ...state.position };
-  }, [state.position]);
+  }, [state.position.x, state.position.y]);
 
   const renderEgg = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, time: number) => {
     const pulse = Math.sin(time * 0.002) * 0.03 + 1;
@@ -212,7 +212,9 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
 
       ctx.clearRect(0, 0, rect.width, rect.height);
 
-      if (state.development.stage === 'egg') {
+      // CRITICAL: Never render egg if creature has already hatched.
+      // The hatched flag is the source of truth for lifecycle state.
+      if (!state.development.hatched && state.development.stage === 'egg') {
         renderEgg(ctx, px, py, time);
       } else {
         renderCreature(ctx, px, py, time);
@@ -227,7 +229,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       cancelAnimationFrame(animFrameRef.current);
       window.removeEventListener('resize', resizeCanvas);
     };
-  }, [state.development.stage, renderEgg, renderCreature]);
+  }, [state.development.hatched, state.development.stage, renderEgg, renderCreature]);
 
   // Touch handlers
   const clearHold = () => {
