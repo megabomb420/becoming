@@ -70,6 +70,18 @@ export function generateCreatureSpeech(state: GameState, context: SpeechContext)
 
   if (stage === 'sentences' || stage === 'mature') {
     const words = vocabulary.map(v => v.word);
+    const relationshipTemplates = state.bond.stage === 'bonded'
+      ? [
+          () => 'you came back',
+          () => 'stay here with me',
+          () => 'I knew it was you',
+        ]
+      : state.bond.stage === 'close'
+        ? [
+            () => 'I was looking for you',
+            () => 'do you remember our game?',
+          ]
+        : [];
     const complexTemplates = [
       () => `where you go?`,
       () => `don't want that`,
@@ -79,6 +91,7 @@ export function generateCreatureSpeech(state: GameState, context: SpeechContext)
       () => `I made something`,
       () => `do you like it?`,
       () => context.trigger === 'food' ? 'food?' : `where ${words[Math.floor(Math.random() * words.length)]}?`,
+      ...relationshipTemplates,
     ];
     return complexTemplates[Math.floor(Math.random() * complexTemplates.length)]();
   }

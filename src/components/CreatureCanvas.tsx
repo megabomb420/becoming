@@ -12,6 +12,7 @@ interface CreatureCanvasProps {
 const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke, onHoldStart, onHoldEnd }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
+  const lastFrameTimeRef = useRef<number | null>(null);
   const posRef = useRef({ x: state.position.x, y: state.position.y });
   const targetPosRef = useRef({ x: state.position.x, y: state.position.y });
   const blinkStateRef = useRef({ isBlinking: false, blinkTimer: 0, nextBlink: 2000 + Math.random() * 3000 });
@@ -67,9 +68,54 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
   const renderCreature = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, time: number) => {
     const app = state.identity.appearance;
     const isSleeping = state.sleepState === 'sleeping';
-    const breath = Math.sin(time * 0.003) * 0.02 + 1;
+    const behavior = state.creatureBehavior;
+    const breathSpeed = isSleeping ? 0.0016 : 0.003;
+    const breathAmount = isSleeping ? 0.035 : 0.02;
+    const breath = Math.sin(time * breathSpeed) * breathAmount + 1;
     const { eyeSize, roundness } = app;
     const hue = app.baseHue;
+
+    // Each state has its own body language. The movement is deliberately
+    // small: it should make the creature readable without turning it into a
+    // collection of disconnected canned animations.
+    let motionY = 0;
+    let motionRotation = 0;
+    let motionScaleX = 1;
+    let motionScaleY = 1;
+    if (isSleeping || behavior === 'sleeping') {
+      motionY = 3;
+      motionRotation = 0.035;
+      motionScaleX = 1.06;
+      motionScaleY = 0.94;
+    } else if (behavior === 'walking') {
+      const step = Math.sin(time * 0.012);
+      motionY = -Math.abs(step) * 4;
+      motionRotation = step * 0.025;
+      motionScaleX = 1.02;
+      motionScaleY = 0.98;
+    } else if (behavior === 'observing') {
+      motionY = -1.5;
+      motionRotation = Math.sin(time * 0.0025) * 0.055;
+    } else if (behavior === 'investigating') {
+      motionY = Math.sin(time * 0.005) * 1.5 + 1;
+      motionRotation = 0.065 + Math.sin(time * 0.003) * 0.018;
+    } else if (behavior === 'eating') {
+      motionY = Math.abs(Math.sin(time * 0.009)) * 5;
+      motionRotation = Math.sin(time * 0.009) * 0.018;
+      motionScaleX = 1.025;
+      motionScaleY = 0.975;
+    } else if (behavior === 'playing') {
+      const bounce = Math.abs(Math.sin(time * 0.009));
+      motionY = -bounce * 9;
+      motionRotation = Math.sin(time * 0.009) * 0.045;
+      motionScaleX = 1 - bounce * 0.035;
+      motionScaleY = 1 + bounce * 0.05;
+    } else if (behavior === 'reacting') {
+      const settle = Math.sin(time * 0.006);
+      motionY = -Math.max(0, settle) * 2;
+      motionScaleX = 1 + settle * 0.025;
+      motionScaleY = 1 - settle * 0.018;
+    }
     
     // Blink logic
     const blink = blinkStateRef.current;
@@ -84,9 +130,10 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     }
 
     ctx.save();
-    ctx.translate(x, y);
+    ctx.translate(x, y + motionY);
     ctx.scale(state.facing === 'left' ? -1 : 1, 1);
-    ctx.scale(breath, breath);
+    ctx.rotate(motionRotation);
+    ctx.scale(breath * motionScaleX, breath * motionScaleY);
 
     // Body shadow
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
@@ -96,7 +143,8 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
 
     // Tail
     if (app.tailLength > 0) {
-      const tailWag = Math.sin(time * 0.005) * 0.3;
+      const excited = behavior === 'playing' || state.emotionalState === 'happy';
+      const tailWag = Math.sin(time * (excited ? 0.014 : 0.005)) * (excited ? 0.55 : 0.28);
       ctx.save();
       ctx.rotate(tailWag - 0.2);
       ctx.fillStyle = `hsl(${hue}, 25%, 55%)`;
@@ -119,7 +167,8 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     if (app.earShape !== 'none') {
       ctx.fillStyle = `hsl(${hue}, 25%, 48%)`;
       const earW = app.earShape === 'pointy' ? 12 : 16;
-      const earH = app.earShape === 'pointy' ? 22 : 18;
+      const perk = behavior === 'observing' || behavior === 'investigating' ? 4 : 0;
+      const earH = (app.earShape === 'pointy' ? 22 : 18) + perk;
       // Left ear
       ctx.beginPath();
       ctx.ellipse(-22, -22, earW, earH, -0.4, 0, Math.PI * 2);
@@ -137,8 +186,10 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.fill();
 
     // Eyes
-    const eyeW = 10 * eyeSize;
-    const eyeH = blink.isBlinking ? 1 : 10 * eyeSize;
+    const attentive = behavior === 'observing' || behavior === 'investigating';
+    const eyeW = 10 * eyeSize * (attentive ? 1.08 : 1);
+    const openEyeHeight = 10 * eyeSize * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
+    const eyeH = isSleeping || blink.isBlinking ? 1 : openEyeHeight;
     ctx.fillStyle = isSleeping ? '#4a4035' : '#2a2018';
     
     // Left eye
@@ -160,6 +211,16 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.beginPath();
       ctx.arc(14, -15, 3, 0, Math.PI * 2);
       ctx.fill();
+
+      if (attentive) {
+        ctx.fillStyle = 'rgba(255,255,255,0.28)';
+        ctx.beginPath();
+        ctx.arc(-14, -9, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(10, -9, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // Nose
@@ -184,6 +245,27 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.stroke();
 
     ctx.restore();
+
+    // A few restrained reaction marks make delight visible even before the
+    // creature has language. They are canvas-native and require no asset load.
+    if (behavior === 'playing' || (behavior === 'reacting' && state.emotionalState === 'happy')) {
+      const pulse = (Math.sin(time * 0.008) + 1) / 2;
+      ctx.save();
+      ctx.strokeStyle = `rgba(232, 213, 183, ${0.3 + pulse * 0.35})`;
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
+      [-1, 1].forEach(side => {
+        const markX = x + side * (49 + pulse * 4);
+        const markY = y - 28 - pulse * 5;
+        ctx.beginPath();
+        ctx.moveTo(markX, markY - 4);
+        ctx.lineTo(markX, markY + 4);
+        ctx.moveTo(markX - 4, markY);
+        ctx.lineTo(markX + 4, markY);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
   }, [state]);
 
   useEffect(() => {
@@ -204,9 +286,15 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       const rect = canvas.getBoundingClientRect();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Smooth position
-      posRef.current.x += (targetPosRef.current.x - posRef.current.x) * 0.05;
-      posRef.current.y += (targetPosRef.current.y - posRef.current.y) * 0.05;
+      // Smooth position at the same perceived speed on 60 Hz and 120 Hz
+      // screens. The previous fixed per-frame factor moved twice as fast on
+      // high-refresh phones.
+      const previousTime = lastFrameTimeRef.current ?? time - 16;
+      const deltaMs = Math.min(48, Math.max(1, time - previousTime));
+      lastFrameTimeRef.current = time;
+      const follow = 1 - Math.exp(-deltaMs * 0.0032);
+      posRef.current.x += (targetPosRef.current.x - posRef.current.x) * follow;
+      posRef.current.y += (targetPosRef.current.y - posRef.current.y) * follow;
 
       const px = (posRef.current.x / 100) * rect.width;
       const py = (posRef.current.y / 100) * rect.height;
@@ -228,6 +316,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     window.addEventListener('resize', resizeCanvas);
     return () => {
       cancelAnimationFrame(animFrameRef.current);
+      lastFrameTimeRef.current = null;
       window.removeEventListener('resize', resizeCanvas);
     };
   }, [state.development.hatched, state.development.stage, renderEgg, renderCreature]);

@@ -2,8 +2,8 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.3.0
-> **Last Updated:** 2026-08-17
+> **Version:** 0.6.0
+> **Last Updated:** 2026-08-22
 
 ---
 
@@ -75,14 +75,16 @@ becoming/
 |---|---|---|
 | PWA installability | ✅ | Manifest, service worker, offline shell, icons |
 | Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` flag prevents regression |
-| Creature rendering | ✅ | Canvas-based with breathing, blinking, tail wag, expressions |
+| Creature rendering | ✅ | Canvas-based with breathing, blinking, expressive eyes/ears/tail, and distinct walking, observing, investigating, eating, playing, and settling body language |
 | Hidden needs system | ✅ | 5 internal needs decay over time; no visible stats |
-| Hidden personality | ✅ | Seeded traits (curiosity, caution, affection, independence, etc.) |
+| Hidden personality | ✅ | Seeded traits that now evolve through care, play, touch, exploration, and conversation |
+| Bond development | ✅ | Persistent tentative → familiar → close → bonded relationship arc with milestone memories, bond-aware idle behavior, and later-stage speech |
 | Development stages | ✅ | `egg → newborn → animal → communicating → first_words → combining → sentences → mature`; stage regression prevented once hatched |
 | Language development | ✅ | Stage-constrained vocabulary; proto-sounds → words → combinations → sentences |
 | Object system | ✅ | Inventory tray (📦) with 9 object types; tap to place, drag to position, tap a placed object to call the creature, and `Tidy room` to reset the space |
+| Object preferences | ✅ | Individual seeded tastes that evolve through experience; favorites, uncertainty, refusals, learned play, drawing, box hiding, and mirror recognition |
 | Feeding | ✅ | Food placement calls the creature immediately; food is consumed and returned to the tray for repeated use |
-| Creature movement | ✅ | Goal-driven state machine: idle → walking to a real target → investigating/eating/playing; bounded shared floor coordinates and smooth canvas movement |
+| Creature movement | ✅ | Goal-driven state machine: idle → notice → look → approach → react; bounded shared floor coordinates and refresh-rate-independent canvas movement |
 | Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
 | Sleep / wake cycle | ✅ | Room dims; "z z z" animation; energy restored on wake via `sleepStartTimestamp` |
 | Offline simulation | ✅ | Calculates what happened while app was closed; respects sleep state; models night spans |
@@ -211,6 +213,38 @@ becoming/
 
 26. **Very quick app closes could lose the last action** — Normal saves remain debounced, but the latest in-memory state is now flushed when the PWA is hidden or receives `pagehide`.
 
+### v0.4.0 — Creature Feels Alive
+
+27. **Interactions looked like instant commands** — Object interactions now begin with a personality-adjusted noticing pause. The creature faces the selected object, shows its intent, walks over, and only then performs the reaction.
+
+28. **Behavior states looked visually identical** — The canvas renderer now gives walking, observing, investigating, eating, playing, reacting, and sleeping their own restrained body language. Eyes widen with attention, ears perk, happy tails accelerate, and playful reactions produce subtle marks.
+
+29. **The creature felt switched off between player actions** — Idle time can now produce short nonverbal moments such as listening to the room, watching dust, stretching, sniffing the air, yawning, or looking for the player. Hidden needs influence which moments are available.
+
+30. **Status text was disconnected from the creature** — Contextual intent cues and speech now follow the creature around the room. Object focus remains visible throughout the notice → approach → reaction sequence.
+
+31. **Movement speed varied with screen refresh rate** — Canvas interpolation now uses elapsed time, keeping motion consistent on both 60 Hz and 120 Hz phones.
+
+### v0.5.0 — Object Depth
+
+32. **Every object always produced the same response** — Reactions now depend on hidden needs, personality, learned affinity, prior interactions, cognitive development, and nearby companion objects.
+
+33. **The creature had no persistent tastes** — Every creature receives deterministic starting affinities from its seed and personality. Experiences strengthen favorites or uncertainty, survive reloads, influence autonomous choices, and appear naturally in the Memory Book after enough evidence.
+
+34. **Objects did not teach new behavior** — Repeated ball play can become a learned return game, paper and pencil unlock the first scribble, boxes progress from cautious inspection to hiding, and the mirror advances from startle to early self-recognition.
+
+35. **Food could not be refused** — A full creature or one that distrusts broccoli can leave food for later. It will reconsider when genuinely hungry instead of repeatedly auto-selecting a refused meal.
+
+### v0.6.0 — Bond & Personality
+
+36. **Personality was frozen at birth** — Touch, care, play, comfort, discovery, and conversation now apply small persistent changes to relevant traits. Strong initial tendencies remain recognizable, but upbringing gradually matters.
+
+37. **The relationship model had no visible arc** — Bond development now moves through tentative → familiar → close → bonded stages. Milestones create important memories and later stages change idle behavior and advanced speech.
+
+38. **Autonomous play incorrectly counted as player bonding** — Self-initiated object use still develops taste and skill, but only user-initiated care contributes to the relationship.
+
+39. **Players could not read what was emerging** — The Memory Book now describes the creature's strongest traits, relationship state, and sufficiently established likes or uncertainties without exposing numerical meters.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -235,9 +269,9 @@ becoming/
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Add sound design** — subtle ambient vocalizations (proto-sounds, breath, blink) that play without requiring an API call. This is the single biggest missing sensory layer.
-2. **Mobile polish pass** — test on actual iOS Safari and Android Chrome. Fix any drag/touch issues. Add `navigator.vibrate()` for touch interactions.
-3. **Object state persistence** — objects in the room should remember their state across sessions (e.g. paper that was torn, ball that was moved).
+1. **Add sound design** — subtle ambient vocalizations and interaction sounds that respect browser autoplay constraints.
+2. **Mobile device polish pass** — test on actual iOS Safari and Android Chrome; add restrained optional haptics for direct touch interactions.
+3. **Balance telemetry** — add a local debug-only summary for tuning preference and bond progression without exposing stats in the player UI.
 
 ### Priority: Medium
 4. **Creature visual evolution** — implement gradual morphological changes (eye size, roundness, markings) that respond to age, personality, and habits.

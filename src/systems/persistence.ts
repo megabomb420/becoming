@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { GameState, MemoryBookEntry, ObjectType } from '../types';
+import { migrateBondState, migrateObjectPreferences } from './relationshipSystem';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -82,6 +83,15 @@ function migrateState(state: GameState): GameState {
     ...existingInventory,
     ...BASE_INVENTORY.filter(type => !presentTypes.has(type)),
   ];
+
+  // v0.5–v0.6: preserve learned tastes and relationship development while
+  // giving older saves deterministic starting preferences.
+  migrated.objectPreferences = migrateObjectPreferences(
+    migrated.objectPreferences,
+    migrated.personality,
+    migrated.identity.seed,
+  );
+  migrated.bond = migrateBondState(migrated.bond, migrated.relationship);
 
   // Ensure hatched creatures never have stage 'egg'
   if (migrated.development.hatched && migrated.development.stage === 'egg') {

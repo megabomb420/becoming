@@ -1,4 +1,5 @@
 import { CreatureIdentity, CreatureAppearance, GameState, DevelopmentState, Needs, PersonalityTraits, RelationshipModel, VocabularyEntry, RoomObject, Memory, Interest, SocialLearningState, ObjectType } from '../types';
+import { createBondState, createObjectPreferences } from './relationshipSystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -95,8 +96,10 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     memories: [],
     vocabulary: [],
     relationship,
+    bond: createBondState(relationship),
     roomObjects: [],
     inventory: [...ALL_INVENTORY_ITEMS],
+    objectPreferences: createObjectPreferences(personality, seed),
     interests: [],
     socialLearning,
     lastSaved: birthTime,

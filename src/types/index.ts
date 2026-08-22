@@ -96,6 +96,34 @@ export interface RelationshipModel {
   routines: UserRoutine[];
 }
 
+export type BondStage = 'tentative' | 'familiar' | 'close' | 'bonded';
+
+export type BondEventType =
+  | 'tap'
+  | 'stroke'
+  | 'hold'
+  | 'care'
+  | 'play'
+  | 'comfort'
+  | 'discover'
+  | 'conversation';
+
+export interface BondEvent {
+  type: BondEventType;
+  timestamp: number;
+}
+
+export interface BondState {
+  stage: BondStage;
+  score: number;
+  totalInteractions: number;
+  careActions: number;
+  playActions: number;
+  conversations: number;
+  lastInteraction: number;
+  history: BondEvent[];
+}
+
 export interface UserRoutine {
   type: string;
   typicalHour: number;
@@ -125,6 +153,18 @@ export type ObjectType =
   | 'box'
   | 'stone'
   | 'mirror';
+
+export type ObjectReactionOutcome = 'love' | 'enjoy' | 'curious' | 'neutral' | 'avoid';
+
+export interface ObjectPreference {
+  affinity: number;
+  interactions: number;
+  positiveExperiences: number;
+  refusals: number;
+  lastOutcome: ObjectReactionOutcome | null;
+  lastReaction: string | null;
+  lastInteracted: number;
+}
 
 export interface Interest {
   type: string;
@@ -217,8 +257,10 @@ export interface GameState {
   memories: Memory[];
   vocabulary: VocabularyEntry[];
   relationship: RelationshipModel;
+  bond: BondState;
   roomObjects: RoomObject[];
   inventory: ObjectType[];
+  objectPreferences: Record<ObjectType, ObjectPreference>;
   interests: Interest[];
   // Social learning state
   socialLearning: SocialLearningState;

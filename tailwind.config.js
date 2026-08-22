@@ -31,6 +31,7 @@ export default {
         'fade-in': 'fadeIn 0.8s ease-out',
         'float': 'float 6s ease-in-out infinite',
         'slide-up': 'slideUp 0.3s ease-out',
+        'cue-pop': 'cuePop 0.28s cubic-bezier(0.2, 0.9, 0.25, 1.2)',
       },
       keyframes: {
         breathe: {
@@ -48,6 +49,10 @@ export default {
         slideUp: {
           '0%': { opacity: '0', transform: 'translateY(20px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        cuePop: {
+          '0%': { opacity: '0', transform: 'translateY(5px) scale(0.86)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
       },
     },

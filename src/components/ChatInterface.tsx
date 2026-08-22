@@ -3,6 +3,7 @@ import { GameState, ChatMessage } from '../types';
 import { generateCreatureSpeech, shouldSpeak } from '../systems/languageSystem';
 import { recordObservation, generateSocialSpeech, shouldSpeakSocially } from '../systems/socialLearningSystem';
 import { updateDevelopment, learnWord } from '../systems/developmentSystem';
+import { recordBondEvent } from '../systems/relationshipSystem';
 
 interface ChatInterfaceProps {
   state: GameState;
@@ -145,7 +146,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
           updated = learnWord(updated, word, 'chat');
         }
       }
-      return updated;
+      return recordBondEvent(updated, 'conversation');
     });
     const thinkDelay = 800 + Math.random() * 1500;
     setTimeout(() => {

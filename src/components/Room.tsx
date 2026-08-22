@@ -6,6 +6,13 @@ import { touchCreature, feedCreature, putToSleep, wakeUp } from '../systems/need
 import { updateDevelopment, learnWord } from '../systems/developmentSystem';
 import { generateCreatureSpeech, shouldSpeak } from '../systems/languageSystem';
 import { shouldInitiateConversation, generateInitiatedTopic, clearInitiatedTopic } from '../systems/socialLearningSystem';
+import {
+  chooseObjectReaction,
+  getBondDescription,
+  getEmergingTraitLabels,
+  recordBondEvent,
+  recordObjectExperience,
+} from '../systems/relationshipSystem';
 
 interface RoomProps {
   state: GameState;
@@ -97,6 +104,7 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 function getObjectEmoji(obj: RoomObject) {
+  if (obj.type === 'paper' && obj.state.status === 'scribbled') return '📝';
   if (obj.type === 'paper' && obj.state.status === 'creased') return '📃';
   if (obj.type === 'box' && obj.state.status === 'opened') return '📭';
   return objectEmojis[obj.type];
@@ -112,6 +120,14 @@ interface DragSession {
   pointerId: number;
 }
 
+type CueTone = 'notice' | 'movement' | 'reaction' | 'ambient';
+
+interface CreatureCue {
+  icon: string;
+  label: string;
+  tone: CueTone;
+}
+
 const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const [speech, setSpeech] = useState<string | null>(null);
   const [showMemoryBook, setShowMemoryBook] = useState(false);
@@ -119,6 +135,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const [showChat, setShowChat] = useState(false);
   const [creatureEmotion, setCreatureEmotion] = useState(state.emotionalState);
   const [initiatedTopic, setInitiatedTopic] = useState<string | null>(null);
+  const [creatureCue, setCreatureCue] = useState<CreatureCue | null>(null);
 
   // Drag state
   const [draggingType, setDraggingType] = useState<ObjectType | null>(null);
@@ -137,7 +154,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const targetPosRef = useRef(state.position);
   const behaviorTimerRef = useRef<ReturnType<typeof setInterval>>();
   const movementTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const ambientTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const cueTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const emotionTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const speechTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const initiateTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -164,99 +184,98 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     emotionTimerRef.current = setTimeout(() => setCreatureEmotion('neutral'), duration);
   }, []);
 
-  const clearActionTimers = useCallback(() => {
-    clearTimeout(movementTimerRef.current);
-    clearTimeout(reactionTimerRef.current);
+  const showCreatureCue = useCallback((cue: CreatureCue | null, duration?: number) => {
+    clearTimeout(cueTimerRef.current);
+    setCreatureCue(cue);
+    if (cue && duration) {
+      cueTimerRef.current = setTimeout(() => setCreatureCue(null), duration);
+    }
   }, []);
 
-  const finishObjectInteraction = useCallback((objectId: string, type: ObjectType, target: { x: number; y: number }) => {
+  const clearActionTimers = useCallback(() => {
+    clearTimeout(noticeTimerRef.current);
+    clearTimeout(movementTimerRef.current);
+    clearTimeout(reactionTimerRef.current);
+    clearTimeout(ambientTimerRef.current);
+    clearTimeout(cueTimerRef.current);
+    setCreatureCue(null);
+  }, []);
+
+  const finishObjectInteraction = useCallback((
+    objectId: string,
+    type: ObjectType,
+    target: { x: number; y: number },
+    initiatedByUser: boolean,
+  ) => {
     setIsMoving(false);
 
-    const reactionDuration = type === 'ball' ? 3600 : type === 'apple' || type === 'broccoli' ? 3200 : 3000;
-    const reactionEmotion = type === 'ball' || type === 'apple' || type === 'broccoli' ? 'happy' : 'curious';
+    const reaction = chooseObjectReaction(stateRef.current, type);
+    const reactionDuration = reaction.duration;
+    const reactionEmotion = reaction.emotion;
     const speechTrigger = type === 'ball' ? 'play' : type === 'apple' || type === 'broccoli' ? 'food' : type;
 
     onStateChange(prev => {
       const facing = target.x > prev.position.x ? 'right' : target.x < prev.position.x ? 'left' : prev.facing;
-      const base: GameState = {
+      let next: GameState = {
         ...prev,
         position: target,
         facing,
+        creatureBehavior: reaction.behavior,
+        currentActivity: reaction.activity,
+        needs: {
+          hunger: Math.max(0, Math.min(100, prev.needs.hunger + (reaction.needDelta.hunger ?? 0))),
+          energy: Math.max(0, Math.min(100, prev.needs.energy + (reaction.needDelta.energy ?? 0))),
+          comfort: Math.max(0, Math.min(100, prev.needs.comfort + (reaction.needDelta.comfort ?? 0))),
+          stimulation: Math.max(0, Math.min(100, prev.needs.stimulation + (reaction.needDelta.stimulation ?? 0))),
+          social: Math.max(0, Math.min(100, prev.needs.social + (reaction.needDelta.social ?? 0))),
+        },
       };
 
-      if (type === 'apple' || type === 'broccoli') {
-        const fed = feedCreature(base, type);
-        const developed = updateDevelopment(fed, 0.75);
-        const learned = learnWord(developed, type, 'food');
-        return {
-          ...learned,
-          roomObjects: learned.roomObjects.filter(obj => obj.id !== objectId),
-          inventory: learned.inventory.includes(type) ? learned.inventory : [...learned.inventory, type],
-          creatureBehavior: 'eating',
-          currentActivity: `eating ${objectLabels[type]}`,
+      if ((type === 'apple' || type === 'broccoli') && reaction.consumes) {
+        next = feedCreature(next, type);
+        next = {
+          ...next,
+          roomObjects: next.roomObjects.filter(obj => obj.id !== objectId),
+          inventory: next.inventory.includes(type) ? next.inventory : [...next.inventory, type],
+        };
+      } else {
+        next = {
+          ...next,
+          roomObjects: next.roomObjects.map(obj => {
+            if (obj.id === objectId) {
+              const movedX = reaction.moveObjectBy
+                ? clampObjectPosition({ x: obj.x + (obj.x >= target.x ? reaction.moveObjectBy : -reaction.moveObjectBy), y: obj.y }).x
+                : obj.x;
+              return {
+                ...obj,
+                x: movedX,
+                interactions: obj.interactions + 1,
+                beingUsedByCreature: true,
+                state: { ...obj.state, status: reaction.objectStatus },
+              };
+            }
+            if (reaction.secondaryObjectType && obj.type === reaction.secondaryObjectType) {
+              return {
+                ...obj,
+                interactions: obj.interactions + 1,
+                beingUsedByCreature: true,
+                state: { ...obj.state, status: reaction.secondaryStatus ?? 'used' },
+              };
+            }
+            return obj;
+          }),
         };
       }
 
-      if (type === 'ball') {
-        return updateDevelopment({
-          ...base,
-          needs: {
-            ...base.needs,
-            stimulation: Math.min(100, base.needs.stimulation + 28),
-            comfort: Math.min(100, base.needs.comfort + 4),
-          },
-          roomObjects: base.roomObjects.map(obj => obj.id === objectId ? {
-            ...obj,
-            x: clampObjectPosition({ x: obj.x + (obj.x >= target.x ? 12 : -12), y: obj.y }).x,
-            interactions: obj.interactions + 1,
-            beingUsedByCreature: true,
-            state: { ...obj.state, status: 'played' },
-          } : obj),
-          creatureBehavior: 'playing',
-          currentActivity: 'nudging the ball',
-        }, 0.75);
+      next = updateDevelopment(next, reaction.developmentGain);
+      if (type === 'apple' || type === 'broccoli') {
+        next = learnWord(next, type, 'food');
       }
-
-      const activityByType: Partial<Record<ObjectType, string>> = {
-        blanket: 'curling up on the blanket',
-        paper: 'pawing at the paper',
-        pencil: 'sniffing the pencil',
-        box: 'peeking inside the box',
-        stone: 'examining the stone',
-        mirror: 'watching the reflection',
-        food_bowl: 'checking the bowl',
-      };
-
-      const developed = updateDevelopment({
-        ...base,
-        needs: {
-          ...base.needs,
-          comfort: Math.min(100, base.needs.comfort + (type === 'blanket' ? 22 : 2)),
-          energy: Math.min(100, base.needs.energy + (type === 'blanket' ? 6 : 0)),
-          stimulation: Math.min(100, base.needs.stimulation + (type === 'mirror' || type === 'paper' ? 10 : 5)),
-        },
-        roomObjects: base.roomObjects.map(obj => {
-          if (obj.id !== objectId) return obj;
-          const status = type === 'paper'
-            ? 'creased'
-            : type === 'box'
-              ? 'opened'
-              : 'inspected';
-          return {
-            ...obj,
-            interactions: obj.interactions + 1,
-            beingUsedByCreature: true,
-            state: { ...obj.state, status },
-          };
-        }),
-        creatureBehavior: type === 'blanket' ? 'reacting' : 'investigating',
-        currentActivity: activityByType[type] ?? `inspecting ${objectLabels[type]}`,
-      }, 0.5);
-
-      return developed;
+      return recordObjectExperience(next, type, reaction, initiatedByUser);
     });
 
-    behaviorRef.current = type === 'ball' ? 'playing' : type === 'apple' || type === 'broccoli' ? 'eating' : 'investigating';
+    behaviorRef.current = reaction.behavior;
+    showCreatureCue({ icon: reaction.icon, label: reaction.label, tone: 'reaction' }, reactionDuration);
     setTemporaryEmotion(reactionEmotion, reactionDuration);
     const spoken = generateCreatureSpeech(stateRef.current, {
       trigger: speechTrigger,
@@ -268,6 +287,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     reactionTimerRef.current = setTimeout(() => {
       activeObjectRef.current = null;
       behaviorRef.current = 'idle';
+      showCreatureCue(null);
       onStateChange(prev => ({
         ...prev,
         creatureBehavior: 'idle',
@@ -275,14 +295,15 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
         roomObjects: prev.roomObjects.map(obj => obj.beingUsedByCreature ? { ...obj, beingUsedByCreature: false } : obj),
       }));
     }, reactionDuration);
-  }, [onStateChange, setTemporaryEmotion, triggerSpeech]);
+  }, [onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
 
-  const beginObjectInteraction = useCallback((object: RoomObject) => {
+  const beginObjectInteraction = useCallback((object: RoomObject, initiatedByUser = true) => {
     const currentState = stateRef.current;
     if (currentState.sleepState === 'sleeping') return;
 
     clearActionTimers();
     activeObjectRef.current = object.id;
+    setIsMoving(false);
     const currentPos = creaturePosRef.current;
     const nearSameX = Math.abs(object.x - currentPos.x) < 3;
     const approachOffset = nearSameX
@@ -291,26 +312,45 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     const target = clampToWalkable({ x: object.x + approachOffset, y: object.y });
     const travelDistance = dist(currentPos, target);
     const travelTime = Math.max(900, Math.min(2600, 650 + travelDistance * 28));
+    const noticeDelay = Math.max(380, Math.min(850,
+      420 + currentState.personality.caution * 4 - currentState.personality.curiosity * 2,
+    ));
 
-    targetPosRef.current = target;
-    behaviorRef.current = 'walking';
-    setIsMoving(true);
-    setCreaturePos(target);
+    behaviorRef.current = 'observing';
+    setTemporaryEmotion('curious', noticeDelay + 900);
+    showCreatureCue({ icon: '!', label: `notices the ${objectLabels[object.type]}`, tone: 'notice' });
     onStateChange(prev => ({
       ...prev,
-      facing: target.x > prev.position.x ? 'right' : target.x < prev.position.x ? 'left' : prev.facing,
-      creatureBehavior: 'walking',
-      currentActivity: `approaching ${objectLabels[object.type]}`,
+      facing: object.x > currentPos.x ? 'right' : object.x < currentPos.x ? 'left' : prev.facing,
+      creatureBehavior: 'observing',
+      currentActivity: `noticing the ${objectLabels[object.type]}`,
       roomObjects: prev.roomObjects.map(obj => ({
         ...obj,
         beingUsedByCreature: obj.id === object.id,
       })),
     }));
 
-    movementTimerRef.current = setTimeout(() => {
-      finishObjectInteraction(object.id, object.type, target);
-    }, travelTime);
-  }, [clearActionTimers, finishObjectInteraction, onStateChange]);
+    noticeTimerRef.current = setTimeout(() => {
+      if (activeObjectRef.current !== object.id) return;
+      targetPosRef.current = target;
+      behaviorRef.current = 'walking';
+      setIsMoving(true);
+      setCreaturePos(target);
+      showCreatureCue({ icon: '→', label: `goes to the ${objectLabels[object.type]}`, tone: 'movement' });
+      onStateChange(prev => ({
+        ...prev,
+        facing: target.x > prev.position.x ? 'right' : target.x < prev.position.x ? 'left' : prev.facing,
+        creatureBehavior: 'walking',
+        currentActivity: `approaching the ${objectLabels[object.type]}`,
+      }));
+
+      movementTimerRef.current = setTimeout(() => {
+        if (activeObjectRef.current === object.id) {
+          finishObjectInteraction(object.id, object.type, target, initiatedByUser);
+        }
+      }, travelTime);
+    }, noticeDelay);
+  }, [clearActionTimers, finishObjectInteraction, onStateChange, setTemporaryEmotion, showCreatureCue]);
 
   const walkToIdlePosition = useCallback((targetInput: { x: number; y: number }) => {
     if (activeObjectRef.current || stateRef.current.sleepState === 'sleeping') return;
@@ -337,11 +377,48 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     }, travelTime);
   }, [onStateChange]);
 
+  const startAmbientMoment = useCallback(() => {
+    const currentState = stateRef.current;
+    if (activeObjectRef.current || currentState.sleepState === 'sleeping' || behaviorRef.current !== 'idle') return;
+
+    const moments: Array<CreatureCue & { behavior: CreatureBehavior; emotion: string; duration: number }> = [
+      { icon: '·', label: 'listens to the room', tone: 'ambient', behavior: 'observing', emotion: 'curious', duration: 2200 },
+      { icon: '✦', label: 'watches a speck of dust', tone: 'ambient', behavior: 'observing', emotion: 'curious', duration: 2600 },
+      { icon: '~', label: 'stretches from nose to tail', tone: 'ambient', behavior: 'reacting', emotion: 'neutral', duration: 2100 },
+      { icon: '·', label: 'sniffs the air', tone: 'ambient', behavior: 'investigating', emotion: 'curious', duration: 2300 },
+    ];
+
+    if (currentState.needs.energy < 45) {
+      moments.push({ icon: '~', label: 'lets out a tiny yawn', tone: 'ambient', behavior: 'reacting', emotion: 'neutral', duration: 2500 });
+    }
+    if (currentState.needs.social < 55) {
+      moments.push({ icon: '♡', label: 'looks around for you', tone: 'ambient', behavior: 'observing', emotion: 'curious', duration: 2700 });
+    }
+    if (currentState.bond.stage === 'close' || currentState.bond.stage === 'bonded') {
+      moments.push({ icon: '♡', label: 'settles where it can see you', tone: 'ambient', behavior: 'reacting', emotion: 'happy', duration: 2800 });
+    }
+
+    const moment = moments[Math.floor(Math.random() * moments.length)];
+    behaviorRef.current = moment.behavior;
+    setTemporaryEmotion(moment.emotion, moment.duration);
+    showCreatureCue(moment, moment.duration);
+    onStateChange(prev => ({ ...prev, creatureBehavior: moment.behavior, currentActivity: moment.label }));
+
+    ambientTimerRef.current = setTimeout(() => {
+      if (activeObjectRef.current || behaviorRef.current !== moment.behavior) return;
+      behaviorRef.current = 'idle';
+      onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
+    }, moment.duration);
+  }, [onStateChange, setTemporaryEmotion, showCreatureCue]);
+
   // Intentional autonomous behaviour. The interval only chooses a new goal
   // while the creature is idle; user-selected objects always take priority.
   useEffect(() => {
     if (state.sleepState === 'sleeping') {
       clearActionTimers();
+      clearTimeout(speechTimeoutRef.current);
+      setSpeech(null);
+      setInitiatedTopic(null);
       activeObjectRef.current = null;
       setIsMoving(false);
       behaviorRef.current = 'sleeping';
@@ -359,9 +436,20 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
 
       const currentPos = creaturePosRef.current;
       const closestOfType = (types: ObjectType[]) => {
-        const matches = currentState.roomObjects.filter(obj => types.includes(obj.type));
+        const matches = currentState.roomObjects.filter(obj => {
+          if (!types.includes(obj.type)) return false;
+          const preference = currentState.objectPreferences[obj.type];
+          const isRefusedFood = (obj.type === 'apple' || obj.type === 'broccoli')
+            && preference.lastOutcome === 'avoid'
+            && currentState.needs.hunger > 30;
+          return !isRefusedFood;
+        });
         if (matches.length === 0) return null;
-        return matches.reduce((closest, candidate) => dist(currentPos, closest) <= dist(currentPos, candidate) ? closest : candidate);
+        return matches.reduce((best, candidate) => {
+          const bestScore = dist(currentPos, best) - currentState.objectPreferences[best.type].affinity * 0.12;
+          const candidateScore = dist(currentPos, candidate) - currentState.objectPreferences[candidate.type].affinity * 0.12;
+          return bestScore <= candidateScore ? best : candidate;
+        });
       };
 
       let goal: RoomObject | null = null;
@@ -372,21 +460,29 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       if (!goal && currentState.roomObjects.length > 0) {
         const curiosityChance = 0.12 + currentState.personality.curiosity / 500;
         if (Math.random() < curiosityChance) {
-          goal = currentState.roomObjects[Math.floor(Math.random() * currentState.roomObjects.length)];
+          const unseen = currentState.roomObjects.filter(obj => currentState.objectPreferences[obj.type].interactions === 0);
+          const familiar = [...currentState.roomObjects].sort((a, b) =>
+            currentState.objectPreferences[b.type].affinity - currentState.objectPreferences[a.type].affinity,
+          );
+          const pool = unseen.length > 0 && Math.random() < 0.65 ? unseen : familiar.slice(0, Math.max(1, Math.ceil(familiar.length / 2)));
+          goal = pool[Math.floor(Math.random() * pool.length)];
         }
       }
 
       if (goal) {
-        beginObjectInteraction(goal);
+        beginObjectInteraction(goal, false);
         return;
       }
 
-      if (Math.random() < 0.18) {
+      const idleRoll = Math.random();
+      if (idleRoll < 0.18) {
         const idleSpot = IDLE_POSITIONS[Math.floor(Math.random() * IDLE_POSITIONS.length)];
         walkToIdlePosition({
           x: idleSpot.x + (Math.random() - 0.5) * 6,
           y: idleSpot.y + (Math.random() - 0.5) * 4,
         });
+      } else if (idleRoll < 0.5) {
+        startAmbientMoment();
       }
     };
 
@@ -396,12 +492,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       clearTimeout(kickoff);
       clearInterval(behaviorTimerRef.current);
     };
-  }, [beginObjectInteraction, clearActionTimers, onStateChange, showChat, state.sleepState, walkToIdlePosition]);
+  }, [beginObjectInteraction, clearActionTimers, onStateChange, showChat, startAmbientMoment, state.sleepState, walkToIdlePosition]);
 
   useEffect(() => () => {
     clearActionTimers();
     clearTimeout(emotionTimerRef.current);
     clearTimeout(speechTimeoutRef.current);
+    clearTimeout(cueTimerRef.current);
   }, [clearActionTimers]);
 
   // External state changes (load/offline simulation) can update the stored
@@ -428,7 +525,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     const interval = setInterval(() => {
       const currentState = stateRef.current;
       const currentEmotion = creatureEmotionRef.current;
-      if (shouldSpeak(currentState)) {
+      if (!showChat && !activeObjectRef.current && behaviorRef.current === 'idle' && shouldSpeak(currentState)) {
         const text = generateCreatureSpeech(currentState, { trigger: 'idle', emotionalState: currentEmotion });
         if (text) {
           setSpeech(text);
@@ -438,7 +535,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       }
     }, 8000 + Math.random() * 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [showChat]);
 
   // Creature-initiated conversation check
   useEffect(() => {
@@ -464,8 +561,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   }, [state.sleepState, showChat, initiatedTopic, onStateChange]);
 
   const handleTapCreature = useCallback(() => {
+    showCreatureCue({ icon: '?', label: 'notices your touch', tone: 'notice' }, 1600);
     onStateChange(prev => {
-      const updated = touchCreature(prev, 'tap');
+      const updated = recordBondEvent(touchCreature(prev, 'tap'), 'tap');
       setTemporaryEmotion('curious', 2000);
       if (shouldSpeak(updated)) {
         const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'curious' });
@@ -473,11 +571,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       }
       return updated;
     });
-  }, [onStateChange, setTemporaryEmotion, triggerSpeech]);
+  }, [onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
 
   const handleStrokeCreature = useCallback(() => {
+    showCreatureCue({ icon: '♡', label: 'leans into your hand', tone: 'reaction' }, 2400);
     onStateChange(prev => {
-      const updated = touchCreature(prev, 'stroke');
+      const updated = recordBondEvent(touchCreature(prev, 'stroke'), 'stroke');
       setTemporaryEmotion('happy', 3000);
       if (shouldSpeak(updated)) {
         const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'happy' });
@@ -485,17 +584,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       }
       return updated;
     });
-  }, [onStateChange, setTemporaryEmotion, triggerSpeech]);
+  }, [onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
 
   const handleHoldStart = useCallback(() => {}, []);
 
   const handleHoldEnd = useCallback(() => {
+    showCreatureCue({ icon: '♡', label: 'settles close', tone: 'reaction' }, 2600);
     onStateChange(prev => {
-      const updated = touchCreature(prev, 'hold');
+      const updated = recordBondEvent(touchCreature(prev, 'hold'), 'hold');
       setTemporaryEmotion('happy', 3000);
       return updated;
     });
-  }, [onStateChange, setTemporaryEmotion]);
+  }, [onStateChange, setTemporaryEmotion, showCreatureCue]);
 
   // ========== OBJECT INPUT ==========
   // A short press places/uses an object. A moved pointer repositions it. This
@@ -659,6 +759,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   };
 
   const ageDays = Math.floor(state.development.chronologicalAge / (24 * 60 * 60 * 1000));
+  const emergingTraits = getEmergingTraitLabels(state.personality);
+  const discoveredPreferences = INVENTORY_ORDER
+    .map(type => ({ type, preference: state.objectPreferences[type] }))
+    .filter(({ preference }) => preference.interactions >= 2 && (preference.affinity >= 12 || preference.affinity <= -8))
+    .sort((a, b) => Math.abs(b.preference.affinity) - Math.abs(a.preference.affinity))
+    .slice(0, 3);
 
   return (
     <div
@@ -746,9 +852,30 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
         onHoldEnd={handleHoldEnd}
       />
 
+      {/* Intent is shown close to the creature, so every action reads as a
+          small decision instead of a system status message. */}
+      {creatureCue && state.sleepState !== 'sleeping' && (
+        <div
+          className="absolute z-30 pointer-events-none -translate-x-1/2 -translate-y-full transition-all duration-300"
+          style={{ left: `${Math.max(28, Math.min(72, creaturePos.x))}%`, top: `${Math.max(24, creaturePos.y - 10)}%` }}
+          aria-live="polite"
+        >
+          <div className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 shadow-lg backdrop-blur-md animate-cue-pop ${
+            creatureCue.tone === 'reaction'
+              ? 'bg-warm-100/90 border-warm-50/50 text-room-dark'
+              : creatureCue.tone === 'notice'
+                ? 'bg-room-light/90 border-warm-300/35 text-warm-100'
+                : 'bg-room-mid/85 border-warm-200/15 text-warm-200/80'
+          }`}>
+            <span className="text-[11px] leading-none" aria-hidden="true">{creatureCue.icon}</span>
+            <span className="text-[10px] font-serif italic whitespace-nowrap">{creatureCue.label}</span>
+          </div>
+        </div>
+      )}
+
       {/* A quiet action caption makes cause and effect readable without
           exposing the creature's hidden numerical needs. */}
-      {state.currentActivity && state.sleepState !== 'sleeping' && (
+      {state.currentActivity && !creatureCue && state.sleepState !== 'sleeping' && (
         <div className="absolute top-[10%] left-1/2 -translate-x-1/2 z-30 pointer-events-none" aria-live="polite">
           <p className="text-warm-200/45 text-[11px] font-serif italic tracking-wide whitespace-nowrap animate-fade-in">
             {state.identity.name || 'The creature'} is {state.currentActivity}
@@ -758,7 +885,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
 
       {/* Speech bubble */}
       {speech && (
-        <div className="absolute top-[15%] left-1/2 -translate-x-1/2 animate-fade-in z-40">
+        <div
+          className="absolute -translate-x-1/2 -translate-y-full animate-fade-in z-40 pointer-events-none transition-all duration-300"
+          style={{ left: `${Math.max(30, Math.min(70, creaturePos.x))}%`, top: `${Math.max(18, creaturePos.y - 19)}%` }}
+        >
           <div className="relative bg-warm-100/90 text-room-dark px-4 py-2 rounded-2xl text-sm font-serif shadow-lg backdrop-blur-sm max-w-[200px] text-center">
             {speech}
             <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-warm-100/90 rotate-45" />
@@ -858,6 +988,24 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
               <div className="border-l-2 border-warm-300/30 pl-4">
                 <div className="text-warm-200/40 text-xs mb-1">Day 1</div>
                 <div className="text-warm-100 text-sm font-serif">Arrived.</div>
+              </div>
+              <div className="border-l-2 border-warm-300/30 pl-4">
+                <div className="text-warm-200/40 text-xs mb-1">Becoming</div>
+                <div className="text-warm-100 text-sm font-serif capitalize">
+                  {emergingTraits.join(' · ')}
+                </div>
+                <p className="text-warm-200/55 text-xs font-serif italic mt-1.5">
+                  {getBondDescription(state.bond.stage, state.identity.name)}
+                </p>
+                {discoveredPreferences.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {discoveredPreferences.map(({ type, preference }) => (
+                      <span key={type} className="rounded-full bg-room-mid/70 border border-warm-200/10 px-2 py-1 text-[10px] text-warm-200/70">
+                        {objectEmojis[type]} {preference.affinity >= 12 ? 'favorite' : 'unsure'}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               {state.vocabulary.length > 0 && (
                 <div className="border-l-2 border-warm-300/30 pl-4">

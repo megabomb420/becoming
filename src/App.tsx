@@ -7,7 +7,7 @@ import { updateNeeds } from './systems/needsSystem';
 import EggHatching from './components/EggHatching';
 import Room from './components/Room';
 
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.6.0';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
