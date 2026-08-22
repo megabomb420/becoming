@@ -336,7 +336,7 @@ function generateReply(state: GameState, text: string, fact: LearnedUserFact | n
       : choose(['understand a little', 'why?', 'tell me more', 'you teach me'], state, text.length);
   }
   if (stage === 'combining') {
-    const remembered = state.conversation.facts.at(-1);
+    const remembered = state.conversation.facts[state.conversation.facts.length - 1];
     if (remembered && state.conversation.totalUserMessages % 3 === 0) return shortFactReply(stage, remembered, language, state);
     return language === 'pl'
       ? choose(['Jeszcze składam to w głowie. Co masz na myśli?', 'To brzmi ważnie. Powiesz więcej?', 'Nie wiem, czy myślę tak samo. Dlaczego tak uważasz?'], state, text.length)
@@ -365,7 +365,7 @@ function generateReply(state: GameState, text: string, fact: LearnedUserFact | n
     return choose(questionLines, state, text.length);
   }
 
-  const remembered = state.conversation.facts.at(-1);
+  const remembered = state.conversation.facts[state.conversation.facts.length - 1];
   if (remembered && state.conversation.totalUserMessages % 4 === 0) return shortFactReply(stage, remembered, language, state);
   return language === 'pl'
     ? choose(['Słucham. Co w tym jest dla ciebie najważniejsze?', 'To zostawia mi nowe pytanie. Co wydarzyło się potem?', 'Jeszcze nie mam gotowej opinii. Chcę najpierw lepiej poznać twoją.', 'Zapamiętam ton tej wiadomości, nawet jeśli nie rozumiem jeszcze wszystkiego.'], state, text.length)
@@ -412,7 +412,7 @@ export function beginConversationTurn(state: GameState, text: string, now = Date
 
 export function appendCreatureMessage(state: GameState, text: string, now = Date.now()): GameState {
   if (!text.trim()) return state;
-  const last = state.conversation.messages.at(-1);
+  const last = state.conversation.messages[state.conversation.messages.length - 1];
   if (last?.sender === 'creature' && last.text === text) return state;
   const message: ChatMessage = {
     id: `msg-${now}-creature`,
