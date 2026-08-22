@@ -7,6 +7,7 @@ import {
   getMindStatus,
 } from '../systems/conversationSystem';
 import { getDevelopmentDescription } from '../systems/developmentSystem';
+import { isLlmAvailable, requestCreatureReply } from '../systems/llmConversation';
 
 interface ChatInterfaceProps {
   state: GameState;
@@ -18,6 +19,7 @@ interface ChatInterfaceProps {
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onClose, initialMessage }) => {
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [mindState, setMindState] = useState<'ready' | 'connecting' | 'online' | 'instinct'>('ready');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const initRef = useRef(false);
@@ -56,19 +58,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
     };
   }, [initialMessage, onStateChange]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim() || isThinking) return;
     const userText = input.trim();
     const turn = beginConversationTurn(state, userText);
     setInput('');
     setIsThinking(true);
+    setMindState('connecting');
     onStateChange(turn.state);
-
-    const thinkDelay = Math.max(550, 1150 - state.development.cognitiveLevel * 5) + Math.random() * 500;
-    window.setTimeout(() => {
+    try {
+      const reply = await requestCreatureReply(turn.state);
+      onStateChange(prev => appendCreatureMessage(prev, reply));
+      if (mountedRef.current) setMindState('online');
+    } catch (error) {
+      console.warn('AI reply unavailable; using the creature\'s local instincts.', error);
       onStateChange(prev => appendCreatureMessage(prev, turn.reply));
+      if (mountedRef.current) setMindState('instinct');
+    } finally {
       if (mountedRef.current) setIsThinking(false);
-    }, thinkDelay);
+    }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -103,7 +111,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
               <h1 className="text-warm-100 text-base font-serif truncate">{state.identity.name || 'The creature'}</h1>
               <span className="text-warm-300/55 text-[10px] uppercase tracking-widest">growing</span>
             </div>
-            <p className="text-warm-200/45 text-[11px] font-serif">{getMindStatus(state)}</p>
+            <p className="text-warm-200/45 text-[11px] font-serif">
+              {getMindStatus(state)} · {mindState === 'connecting' ? 'connecting mind…' : mindState === 'online' ? 'AI mind online' : mindState === 'instinct' ? 'local instinct' : isLlmAvailable() ? 'AI mind ready' : 'local instinct'}
+            </p>
             <div className="h-0.5 mt-1.5 bg-room-mid rounded-full overflow-hidden max-w-48">
               <div className="h-full bg-warm-300/45 transition-all duration-700" style={{ width: `${Math.max(4, progress)}%` }} />
             </div>
@@ -182,8 +192,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
             </button>
           </div>
           <p className="text-warm-200/20 text-[9px] mt-2 text-center font-serif">
-            {isPolish ? 'Rozmowy i wspomnienia zostają na tym urządzeniu.' : 'Conversations and memories stay on this device.'}
-          </p>
+              {isPolish
+                ? 'Pamięć zostaje na tym urządzeniu. Ostatnie wiadomości są wysyłane do AI przez Puter.'
+                : 'Memory stays on this device. Recent messages are sent to AI through Puter.'}
+            </p>
         </div>
       </footer>
     </div>

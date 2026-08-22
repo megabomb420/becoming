@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.7.0
+> **Version:** 0.7.1
 > **Last Updated:** 2026-08-22
 
 ---
@@ -259,6 +259,10 @@ becoming/
 44. **The app treated chat as a secondary toy** — Talk is now the visual primary action, first-time players receive a direct conversation invitation, and the chat shows the creature's developmental state and persistent history.
 
 45. **Polish conversations taught the creature almost nothing** — v0.7 detects Polish conversation, remembers common personal facts, observes several everyday good and bad habits, and answers with stage-appropriate Polish language.
+
+### v0.7.1 — Live AI Mind
+
+The creature now answers through GPT-5.6 Luna from the first conversation. Puter provides browser-safe, user-funded access without placing an API key in the public GitHub Pages bundle. Age changes vocabulary, depth, and confidence rather than disabling speech. The existing local dialogue engine remains only as an offline fallback, while facts, conversation growth, bonding, and social-habit learning still persist on-device.
 
 ---
 

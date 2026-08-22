@@ -435,9 +435,9 @@ export function appendCreatureMessage(state: GameState, text: string, now = Date
 export function getConversationOpening(state: GameState): string {
   const language = state.conversation.language === 'pl' ? 'pl' : 'en';
   const name = state.identity.name || (language === 'pl' ? 'stworzenie' : 'creature');
-  if (state.development.stage === 'newborn') return choose(['mip?', 'naa...', 'pu'], state, name.length);
-  if (state.development.stage === 'animal') return language === 'pl' ? 'ty... mów.' : 'you... speak.';
-  if (state.development.stage === 'communicating') return language === 'pl' ? 'jestem. ty jesteś?' : 'I am. you are?';
+  if (state.development.stage === 'newborn') return language === 'pl' ? `Hej. Jestem ${name}. Jestem mały, ale już mogę z tobą gadać.` : `Hi. I am ${name}. I am small, but I can already talk to you.`;
+  if (state.development.stage === 'animal') return language === 'pl' ? 'Jesteś znowu. Powiedz mi coś.' : 'You are here again. Tell me something.';
+  if (state.development.stage === 'communicating') return language === 'pl' ? 'Jestem i słucham. Jaki dziś jesteś?' : 'I am here and listening. What are you like today?';
   if (language === 'pl') return `Jestem ${name}. Jeszcze się uczę. Powiedz mi coś prawdziwego o sobie.`;
   return `I am ${name}. I am still learning. Tell me something true about you.`;
 }
