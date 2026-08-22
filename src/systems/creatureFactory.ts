@@ -1,4 +1,4 @@
-import { CreatureIdentity, CreatureAppearance, GameState, DevelopmentState, Needs, PersonalityTraits, RelationshipModel, VocabularyEntry, RoomObject, Memory, Interest, SocialLearningState, ObjectType } from '../types';
+import { CreatureIdentity, CreatureAppearance, GameState, DevelopmentState, Needs, PersonalityTraits, RelationshipModel, SocialLearningState, ConversationState, ObjectType } from '../types';
 import { createBondState, createObjectPreferences } from './relationshipSystem';
 
 function seededRandom(seed: number): () => number {
@@ -88,6 +88,16 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     lastBehaviourQuestion: 0,
   };
 
+  const conversation: ConversationState = {
+    messages: [],
+    facts: [],
+    totalUserMessages: 0,
+    totalCreatureMessages: 0,
+    language: 'unknown',
+    lastConversationAt: 0,
+    lastCreatureMessage: null,
+  };
+
   const state: GameState = {
     identity,
     needs,
@@ -102,6 +112,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     objectPreferences: createObjectPreferences(personality, seed),
     interests: [],
     socialLearning,
+    conversation,
     lastSaved: birthTime,
     currentActivity: null,
     emotionalState: 'neutral',

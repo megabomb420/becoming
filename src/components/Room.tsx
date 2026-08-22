@@ -3,7 +3,7 @@ import { GameState, ObjectType, RoomObject, CreatureBehavior } from '../types';
 import CreatureCanvas from './CreatureCanvas';
 import ChatInterface from './ChatInterface';
 import { touchCreature, feedCreature, putToSleep, wakeUp } from '../systems/needsSystem';
-import { updateDevelopment, learnWord } from '../systems/developmentSystem';
+import { getDevelopmentDescription, getDevelopmentLabel, updateDevelopment, learnWord } from '../systems/developmentSystem';
 import { generateCreatureSpeech, shouldSpeak } from '../systems/languageSystem';
 import { shouldInitiateConversation, generateInitiatedTopic, clearInitiatedTopic } from '../systems/socialLearningSystem';
 import {
@@ -759,6 +759,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   };
 
   const ageDays = Math.floor(state.development.chronologicalAge / (24 * 60 * 60 * 1000));
+  const developmentLabel = getDevelopmentLabel(state.development.stage);
   const emergingTraits = getEmergingTraitLabels(state.personality);
   const discoveredPreferences = INVENTORY_ORDER
     .map(type => ({ type, preference: state.objectPreferences[type] }))
@@ -915,20 +916,31 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 safe-top px-4 py-3 flex justify-between items-center z-30">
         <div className="text-warm-200/60 text-xs font-serif tracking-wider">
-          {state.identity.name || 'New'} · {ageDays === 0 ? 'New' : `Day ${ageDays}`}
+          {state.identity.name || 'New'} · {developmentLabel}
         </div>
         <button onClick={() => setShowMemoryBook(true)} className="text-warm-200/60 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
           Memories
         </button>
       </div>
 
+      {/* Conversation is the primary way this creature grows. */}
+      {state.conversation.totalUserMessages === 0 && !showInventory && state.sleepState !== 'sleeping' && (
+        <button
+          onClick={() => setShowChat(true)}
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 rounded-full bg-warm-100/90 text-room-dark px-4 py-2 text-xs font-serif shadow-xl animate-cue-pop"
+        >
+          Talk to {state.identity.name || 'the creature'}
+        </button>
+      )}
+
       {/* Bottom controls */}
-      <div className="absolute bottom-0 left-0 right-0 safe-bottom px-4 py-4 flex justify-center gap-3 z-30">
+      <div className="absolute bottom-0 left-0 right-0 safe-bottom px-4 py-4 flex justify-center items-end gap-3 z-30">
         <button aria-label={state.sleepState === 'sleeping' ? 'Wake creature' : 'Put creature to sleep'} title={state.sleepState === 'sleeping' ? 'Wake creature' : 'Sleep'} onClick={handleSleepToggle} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
           {state.sleepState === 'sleeping' ? '☀️' : '🌙'}
         </button>
-        <button aria-label="Talk to creature" title="Talk" onClick={() => setShowChat(true)} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
-          💬
+        <button aria-label="Talk to creature" title="Talk" onClick={() => setShowChat(true)} className="w-[4.5rem] h-14 rounded-2xl bg-warm-100/90 text-room-dark backdrop-blur-sm border border-warm-50/30 flex flex-col items-center justify-center shadow-xl active:scale-95 transition-transform">
+          <span className="text-lg leading-none" aria-hidden="true">💬</span>
+          <span className="text-[10px] font-serif mt-0.5">Talk</span>
         </button>
         <button aria-label="Open things" title="Things" aria-expanded={showInventory} onClick={() => setShowInventory(!showInventory)} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
           📦
@@ -988,6 +1000,34 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
               <div className="border-l-2 border-warm-300/30 pl-4">
                 <div className="text-warm-200/40 text-xs mb-1">Day 1</div>
                 <div className="text-warm-100 text-sm font-serif">Arrived.</div>
+              </div>
+              <div className="border-l-2 border-warm-300/30 pl-4">
+                <div className="text-warm-200/40 text-xs mb-1">Growing mind</div>
+                <div className="text-warm-100 text-sm font-serif">{developmentLabel}</div>
+                <p className="text-warm-200/55 text-xs font-serif italic mt-1.5">
+                  {getDevelopmentDescription(state.development.stage)}
+                </p>
+                <p className="text-warm-200/35 text-[10px] font-serif mt-2">
+                  {state.conversation.totalUserMessages} conversation{state.conversation.totalUserMessages === 1 ? '' : 's'} remembered
+                  {ageDays > 0 ? ` · Day ${ageDays}` : ''}
+                </p>
+                {state.conversation.facts.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {[...state.conversation.facts]
+                      .sort((a, b) => b.confidence - a.confidence)
+                      .slice(0, 4)
+                      .map(fact => (
+                        <span key={fact.id} className="rounded-full bg-room-mid/70 border border-warm-200/10 px-2 py-1 text-[10px] text-warm-200/70">
+                          {fact.kind === 'name' ? 'you' : fact.kind}: {fact.value}
+                        </span>
+                      ))}
+                  </div>
+                )}
+                {state.socialLearning.imitated.length > 0 && (
+                  <p className="text-warm-200/45 text-[10px] font-serif mt-2">
+                    Learning from you: {state.socialLearning.imitated.slice(-3).map(habit => `${habit.action} ${habit.target}`).join(', ')}
+                  </p>
+                )}
               </div>
               <div className="border-l-2 border-warm-300/30 pl-4">
                 <div className="text-warm-200/40 text-xs mb-1">Becoming</div>

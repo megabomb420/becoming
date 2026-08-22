@@ -13,6 +13,70 @@ interface BehaviourPattern {
 
 const BEHAVIOUR_PATTERNS: BehaviourPattern[] = [
   {
+    regex: /(?:piję|pije|piłem|pilem|piłam|pilam|wypiłem|wypilem|wypiłam|wypilam)\s+(?:sobie\s+)?(kawę|kawe|herbatę|herbate|wodę|wode|sok|piwo|wino|alkohol)/i,
+    behaviourType: 'consumption',
+    extractAction: (m) => ({ action: 'drink', target: m[1].toLowerCase(), context: '' }),
+    detectEmotion: (t) => /lubię|lubie|uwielbiam|dobre|pomaga|smakuje/.test(t) ? 'positive' : /żałuję|zaluje|niedobre|szkodzi/.test(t) ? 'negative' : 'neutral',
+    detectReward: (t) => /lubię|lubie|uwielbiam|pomaga|relaks|energia/.test(t) ? 0.6 : /żałuję|zaluje|szkodzi/.test(t) ? -0.3 : 0.1,
+    detectNegative: (t) => /za dużo|za duzo|kac|chory|szkodzi|problem/.test(t) ? 0.7 : 0,
+  },
+  {
+    regex: /(?:biegam|biegałem|biegalem|biegałam|biegalam|ćwiczę|cwicze|trenowałem|trenowalem|trenowałam|trenowalam|chodzę na|chodze na)\s*(siłownię|silownie|jogę|joge|trening|spacer|basen|rower)?/i,
+    behaviourType: 'activity',
+    extractAction: (m) => ({ action: 'exercise', target: (m[1] || 'ruch').toLowerCase(), context: '' }),
+    detectEmotion: (t) => /lubię|lubie|dobrze|energia|siln/.test(t) ? 'positive' : /nienawidzę|nienawidze|zmęcz|zmecz|ból|bol/.test(t) ? 'negative' : 'neutral',
+    detectReward: (t) => /dobrze|energia|siln|zdrow/.test(t) ? 0.7 : /zmęcz|zmecz/.test(t) ? -0.2 : 0.35,
+    detectNegative: (t) => /kontuz|ból|bol|za dużo|za duzo/.test(t) ? 0.5 : 0,
+  },
+  {
+    regex: /(?:czytam|czytałem|czytalem|czytałam|czytalam|przeczytałem|przeczytalem|przeczytałam|przeczytalam)\s+(książkę|ksiazke|komiks|powieść|powiesc|artykuł|artykul)/i,
+    behaviourType: 'activity',
+    extractAction: (m) => ({ action: 'read', target: m[1].toLowerCase(), context: '' }),
+    detectEmotion: (t) => /lubię|lubie|ciekawe|świetne|swietne/.test(t) ? 'positive' : /nudne|nienawidzę|nienawidze/.test(t) ? 'negative' : 'neutral',
+    detectReward: (t) => /lubię|lubie|ciekawe|uczę|ucze/.test(t) ? 0.6 : 0.2,
+    detectNegative: () => 0,
+  },
+  {
+    regex: /(?:nie śpię|nie spie|siedzę|siedze|zarywam noc|kładę się|klade sie)\s*(?:do|bardzo)?\s*(późna|pozna|późno|pozno|nocy)?/i,
+    behaviourType: 'habit',
+    extractAction: () => ({ action: 'stay up', target: 'late', context: 'evening' }),
+    detectEmotion: (t) => /zmęcz|zmecz|źle|zle|żałuję|zaluje/.test(t) ? 'negative' : /lubię|lubie|spokój|spokoj/.test(t) ? 'positive' : 'neutral',
+    detectReward: (t) => /spokój|spokoj|lubię|lubie/.test(t) ? 0.3 : /zmęcz|zmecz/.test(t) ? -0.5 : 0,
+    detectNegative: (t) => /zmęcz|zmecz|zaspa|praca|szkoła|szkola/.test(t) ? 0.7 : 0.4,
+  },
+  {
+    regex: /(?:odkładam|odkladam|odłożyłem|odlozylem|odłożyłam|odlozylam|prokrastynuję|prokrastynuje|unikam)\s+(.+)/i,
+    behaviourType: 'work',
+    extractAction: (m) => ({ action: 'avoid', target: m[1].trim().toLowerCase(), context: '' }),
+    detectEmotion: (t) => /ulga|spokój|spokoj/.test(t) ? 'positive' : /wina|stres|źle|zle/.test(t) ? 'negative' : 'mixed',
+    detectReward: (t) => /ulga|spokój|spokoj/.test(t) ? 0.4 : /stres|wina/.test(t) ? -0.4 : 0,
+    detectNegative: (t) => /stres|wina|późno|pozno|nie zdąż|nie zdaz/.test(t) ? 0.7 : 0.25,
+  },
+  {
+    regex: /(?:pomagam|pomogłem|pomoglem|pomogłam|pomoglam|wsparłem|wsparlem|wsparłam|wsparlam)\s+(.+)/i,
+    behaviourType: 'social',
+    extractAction: () => ({ action: 'help', target: 'someone', context: '' }),
+    detectEmotion: (t) => /dobrze|dumn|ciesz/.test(t) ? 'positive' : 'neutral',
+    detectReward: (t) => /dobrze|dumn|wdzięcz|wdziecz/.test(t) ? 0.8 : 0.5,
+    detectNegative: (t) => /wykorzyst/.test(t) ? 0.4 : 0,
+  },
+  {
+    regex: /\b(kurwa|chuj|pierdolić|pierdolic|fuck|fucking|shit)\b/i,
+    behaviourType: 'language',
+    extractAction: () => ({ action: 'swear', target: 'when talking', context: '' }),
+    detectEmotion: (t) => /haha|śmiesz|smiesz|funny|joke/.test(t) ? 'positive' : /zły|zly|wkur|angry|hate/.test(t) ? 'negative' : 'mixed',
+    detectReward: () => 0.15,
+    detectNegative: () => 0.15,
+  },
+  {
+    regex: /\b(dziękuję|dziekuje|proszę|prosze|thanks|thank you|please)\b/i,
+    behaviourType: 'language',
+    extractAction: () => ({ action: 'speak kindly', target: 'to others', context: '' }),
+    detectEmotion: () => 'positive',
+    detectReward: () => 0.65,
+    detectNegative: () => 0,
+  },
+  {
     regex: /(?:drink|drank|had|consume)\s+(?:some\s+)?(coffee|tea|water|juice|soda|beer|wine|alcohol|weed|cannabis|pot)/i,
     behaviourType: 'consumption',
     extractAction: (m) => ({ action: 'drink', target: m[1].toLowerCase(), context: '' }),
@@ -152,15 +216,15 @@ const BEHAVIOUR_PATTERNS: BehaviourPattern[] = [
 
 function extractContext(text: string): string {
   const contexts: string[] = [];
-  if (/morning|breakfast|AM/.test(text)) contexts.push('morning');
-  if (/afternoon|lunch|noon/.test(text)) contexts.push('afternoon');
-  if (/evening|dinner|night|PM|bed/.test(text)) contexts.push('evening');
-  if (/weekend|saturday|sunday/.test(text)) contexts.push('weekend');
-  if (/alone|by myself/.test(text)) contexts.push('alone');
+  if (/morning|breakfast|AM|rano|śniadanie|sniadanie/i.test(text)) contexts.push('morning');
+  if (/afternoon|lunch|noon|południe|poludnie|obiad/i.test(text)) contexts.push('afternoon');
+  if (/evening|dinner|night|PM|bed|wieczór|wieczor|noc|łóżko|lozko/i.test(text)) contexts.push('evening');
+  if (/weekend|saturday|sunday|sobota|niedziela/i.test(text)) contexts.push('weekend');
+  if (/alone|by myself|sam|sama/i.test(text)) contexts.push('alone');
   if (/with (friends?|someone|them|him|her|people)/.test(text)) contexts.push('with others');
   if (/before bed|before sleep/.test(text)) contexts.push('before bed');
   if (/after work|after class/.test(text)) contexts.push('after work');
-  if (/every day|always|usually|every morning|every night/.test(text)) contexts.push('routine');
+  if (/every day|always|usually|every morning|every night|codziennie|zawsze|zwykle|co rano|co noc/i.test(text)) contexts.push('routine');
   if (/first time|never before|tried/.test(text)) contexts.push('first time');
   return contexts.join(', ');
 }
@@ -325,6 +389,9 @@ export function attemptImitation(state: GameState, obsId: string): GameState {
   let opinion: ObservedBehaviour['creatureOpinion'] = 'neutral';
   if (rand < likeThreshold) opinion = 'liked';
   else if (rand > likeThreshold + 0.4) opinion = 'disliked';
+  // The creature can notice risky behaviour without presenting substances as
+  // a cute reward loop. It may copy ordinary flaws, but forms caution here.
+  if (obs.behaviourType === 'substance') opinion = 'disliked';
 
   const updatedObs = { ...obs, imitated: true, creatureOpinion: opinion, lastThoughtAbout: Date.now() };
   const imitated: ImitatedBehaviour = {
@@ -352,8 +419,26 @@ export function attemptImitation(state: GameState, obsId: string): GameState {
     compressed: false,
   };
 
+  const influence = opinion === 'liked' ? 1 : opinion === 'neutral' ? 0.45 : -0.2;
+  const clampTrait = (value: number) => Math.max(0, Math.min(100, value));
+  const personality = { ...state.personality };
+  if (obs.action === 'help' || obs.action === 'speak kindly') {
+    personality.affection = clampTrait(personality.affection + 1.6 * influence);
+    personality.sociability = clampTrait(personality.sociability + 1.1 * influence);
+  } else if (obs.action === 'exercise' || obs.action === 'read' || obs.action === 'do') {
+    personality.confidence = clampTrait(personality.confidence + 1.2 * influence);
+    personality.curiosity = clampTrait(personality.curiosity + 0.8 * influence);
+  } else if (obs.action === 'stay up' || obs.action === 'avoid' || obs.action === 'skip') {
+    personality.impulsiveness = clampTrait(personality.impulsiveness + 1.4 * influence);
+    personality.calmness = clampTrait(personality.calmness - 0.8 * influence);
+  } else if (obs.action === 'swear') {
+    personality.impulsiveness = clampTrait(personality.impulsiveness + 1.1 * influence);
+    personality.caution = clampTrait(personality.caution - 0.5 * influence);
+  }
+
   return {
     ...state,
+    personality,
     socialLearning: {
       ...state.socialLearning,
       observations: state.socialLearning.observations.map(o => o.id === obsId ? updatedObs : o),

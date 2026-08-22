@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.6.0
+> **Version:** 0.7.0
 > **Last Updated:** 2026-08-22
 
 ---
@@ -49,6 +49,7 @@ becoming/
 │   │   ├── needsSystem.ts      # Hidden hunger, energy, comfort, stimulation, social
 │   │   ├── developmentSystem.ts # Stage progression, vocabulary acquisition
 │   │   ├── languageSystem.ts   # Stage-constrained speech generation
+│   │   ├── conversationSystem.ts # Persistent dialogue, user facts, growing mind
 │   │   ├── offlineSimulation.ts # Time-passed simulation when app closed
 │   │   ├── memoryBook.ts       # Emergent biography generation
 │   │   └── socialLearningSystem.ts  # SOCIAL LEARNING & IMITATION
@@ -245,6 +246,20 @@ becoming/
 
 39. **Players could not read what was emerging** — The Memory Book now describes the creature's strongest traits, relationship state, and sufficiently established likes or uncertainties without exposing numerical meters.
 
+### v0.7.0 — Conversation & Growing Mind
+
+40. **Conversation was disposable** — The full dialogue now persists in IndexedDB, survives closing the chat and reloading the PWA, and migrates safely into existing v0.6 creatures.
+
+41. **The creature did not remember the person behind the messages** — Conversation parsing now learns durable facts such as the user's name, likes, dislikes, feelings, goals, place, and work. Established facts appear in chat and the Memory Book and can be recalled later.
+
+42. **Growing older had almost no visible effect on intelligence** — Real age now provides non-regressing cognitive, language, emotional, and independence floors. Conversation also provides meaningful development, allowing an active creature to learn faster without making time irrelevant.
+
+43. **Speech did not feel like one developing mind** — Replies are now constrained by life stage, language ability, memories, current emotion, learned routines, and dominant personality traits. Early creatures vocalise and echo; older ones ask questions, recall facts, and form distinct tentative opinions.
+
+44. **The app treated chat as a secondary toy** — Talk is now the visual primary action, first-time players receive a direct conversation invitation, and the chat shows the creature's developmental state and persistent history.
+
+45. **Polish conversations taught the creature almost nothing** — v0.7 detects Polish conversation, remembers common personal facts, observes several everyday good and bad habits, and answers with stage-appropriate Polish language.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -253,14 +268,13 @@ becoming/
 - **None currently.** Build passes cleanly (`npm run build` → 0 errors).
 
 ### Logic / UX
-- **ChatInterface initialMessage ref:** `initRef` ensures the initiated opening line only fires once, but if the component remounts, the ref resets. Acceptable for current flow.
 - **No sound:** The creature is completely silent. Vocalizations should be added as an ambient layer.
 - **Needs decay may feel too slow or too fast:** Tuned for 1-minute intervals. Real-world testing on mobile is needed.
 - **Object drag on mobile:** Pointer events should work on most mobile browsers, but long-press vs drag detection could conflict with browser gestures on some devices.
 - **Offline simulation is simple:** Does not model complex chained activities.
 
 ### Architecture
-- **Language system is template-based:** Adding an LLM later will require refactoring `generateCreatureSpeech()` and `generateSocialSpeech()` while maintaining stage constraints.
+- **Conversation brain is local and bounded:** It has persistent context, facts, stage-aware replies, Polish/English recognition, and personality voice, but broad open-domain knowledge still requires a secure server-side LLM gateway.
 - **No test suite:** No unit tests for any system.
 - **Memory compression not implemented:** `compressed: boolean` exists on `Memory` but is never used.
 
@@ -269,18 +283,18 @@ becoming/
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Add sound design** — subtle ambient vocalizations and interaction sounds that respect browser autoplay constraints.
-2. **Mobile device polish pass** — test on actual iOS Safari and Android Chrome; add restrained optional haptics for direct touch interactions.
-3. **Balance telemetry** — add a local debug-only summary for tuning preference and bond progression without exposing stats in the player UI.
+1. **Secure model gateway** — add a small server-side endpoint that can enrich mature-stage replies without exposing an API key in the PWA. All model output must remain constrained by the local creature state.
+2. **Conversation summarisation** — compress older dialogue into durable memories before the local message window rolls over.
+3. **Add sound design** — subtle ambient vocalizations and interaction sounds that respect browser autoplay constraints.
 
 ### Priority: Medium
 4. **Creature visual evolution** — implement gradual morphological changes (eye size, roundness, markings) that respond to age, personality, and habits.
 5. **Interest system** — make interests emerge organically from object interactions.
-6. **True time-based milestones** — currently development is interaction-driven. Add soft time gates.
-7. **Test suite** — at minimum, unit tests for `socialLearningSystem.ts` parsing and `needsSystem.ts` decay math.
+6. **Mobile device polish pass** — test on actual iOS Safari and Android Chrome; add restrained optional haptics for direct touch interactions.
+7. **Test suite** — at minimum, unit tests for conversation parsing, social learning, age floors, and needs decay.
 
 ### Priority: Low / Future
-8. **LLM integration** — design the `AIController` system.
+8. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
 9. **Dream generator** — remix recent memories into surreal proto-sentences after sleep.
 10. **Mirror sequence** — special object interaction with multi-stage emotional arc.
 11. **Cloud sync / export** — allow players to back up or share their creature's save state.

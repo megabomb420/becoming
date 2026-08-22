@@ -1,6 +1,8 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { GameState, MemoryBookEntry, ObjectType } from '../types';
 import { migrateBondState, migrateObjectPreferences } from './relationshipSystem';
+import { migrateConversationState } from './conversationSystem';
+import { syncDevelopmentWithAge } from './developmentSystem';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -93,6 +95,17 @@ function migrateState(state: GameState): GameState {
   );
   migrated.bond = migrateBondState(migrated.bond, migrated.relationship);
 
+  // v0.7: conversations now survive closing the chat and facts learned from
+  // the user remain part of the creature's mind. Older saves begin cleanly.
+  migrated.socialLearning = {
+    observations: migrated.socialLearning?.observations ?? [],
+    imitated: migrated.socialLearning?.imitated ?? [],
+    activeCuriosities: migrated.socialLearning?.activeCuriosities ?? [],
+    noticedUserConsistency: migrated.socialLearning?.noticedUserConsistency ?? false,
+    lastBehaviourQuestion: migrated.socialLearning?.lastBehaviourQuestion ?? 0,
+  };
+  migrated.conversation = migrateConversationState(migrated.conversation);
+
   // Ensure hatched creatures never have stage 'egg'
   if (migrated.development.hatched && migrated.development.stage === 'egg') {
     migrated.development = {
@@ -102,7 +115,7 @@ function migrateState(state: GameState): GameState {
     };
   }
 
-  return migrated;
+  return syncDevelopmentWithAge(migrated);
 }
 
 export async function loadGameState(): Promise<GameState | null> {

@@ -249,6 +249,44 @@ export interface SocialLearningState {
 
 // === END SOCIAL LEARNING TYPES ===
 
+// === CONVERSATION / GROWING MIND TYPES ===
+
+export type ConversationLanguage = 'unknown' | 'en' | 'pl';
+
+export type UserFactKind =
+  | 'name'
+  | 'like'
+  | 'dislike'
+  | 'feeling'
+  | 'goal'
+  | 'place'
+  | 'work'
+  | 'other';
+
+export interface LearnedUserFact {
+  id: string;
+  kind: UserFactKind;
+  value: string;
+  normalizedValue: string;
+  sentiment: number; // -1 to 1
+  confidence: number; // 0 to 1
+  mentions: number;
+  learnedAt: number;
+  lastMentioned: number;
+}
+
+export interface ConversationState {
+  messages: ChatMessage[];
+  facts: LearnedUserFact[];
+  totalUserMessages: number;
+  totalCreatureMessages: number;
+  language: ConversationLanguage;
+  lastConversationAt: number;
+  lastCreatureMessage: string | null;
+}
+
+// === END CONVERSATION / GROWING MIND TYPES ===
+
 export interface GameState {
   identity: CreatureIdentity;
   needs: Needs;
@@ -264,6 +302,8 @@ export interface GameState {
   interests: Interest[];
   // Social learning state
   socialLearning: SocialLearningState;
+  // Persistent conversations and facts learned directly from the user
+  conversation: ConversationState;
   lastSaved: number;
   currentActivity: string | null;
   emotionalState: string;
