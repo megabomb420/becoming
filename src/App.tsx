@@ -11,8 +11,16 @@ import { detectUiLanguage } from './systems/uiLanguage';
 import { uiLanguage } from './systems/uiLanguage';
 import PwaUpdateNotice from './components/PwaUpdateNotice';
 import { getTimeOfDay, shouldBeDrowsy } from './systems/timeSystem';
+import { fetchWeather } from './systems/weatherService';
+import {
+  beginWeatherRefresh,
+  failWeatherRefresh,
+  receiveWeatherSnapshot,
+  shouldRefreshWeather,
+  weatherLocationKey,
+} from './systems/environmentSystem';
 
-const APP_VERSION = '0.10.0';
+const APP_VERSION = '0.11.0';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -22,6 +30,10 @@ function App() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const needsTimerRef = useRef<ReturnType<typeof setInterval>>();
   const hasGameState = gameState !== null;
+  const weatherMode = gameState?.world.settings.mode;
+  const selectedWeatherLocationKey = gameState?.world.settings.location
+    ? weatherLocationKey(gameState.world.settings.location)
+    : null;
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -66,6 +78,87 @@ function App() {
     }, 1000);
   }, []);
 
+  // Open-Meteo is a source, never a gameplay controller. This lifecycle only
+  // refreshes the central WorldEnvironment cache. Needs, behaviour and memory
+  // interpret that shared state in their own systems.
+  const refreshWorldWeather = useCallback(async (force = false) => {
+    const currentState = gameStateRef.current;
+    const world = currentState?.world;
+    const location = world?.settings.location;
+    if (!currentState || !world || !location || (world.settings.mode !== 'device' && world.settings.mode !== 'city')) return;
+    const now = Date.now();
+    if (!navigator.onLine) {
+      const due = !world.current || now >= world.nextRefreshAt;
+      if (due && world.lastError !== 'offline') {
+        setGameState(previous => {
+          if (!previous) return previous;
+          const updated = { ...previous, world: failWeatherRefresh(previous.world, 'offline', now) };
+          gameStateRef.current = updated;
+          queueSave(updated);
+          return updated;
+        });
+      }
+      return;
+    }
+    if (!force && !shouldRefreshWeather(world, now, true)) return;
+    const requestedLocationKey = weatherLocationKey(location);
+
+    setGameState(previous => {
+      const selected = previous?.world.settings.location;
+      const selectedMode = previous?.world.settings.mode;
+      if (!previous || !selected || (selectedMode !== 'device' && selectedMode !== 'city')) return previous;
+      if (weatherLocationKey(selected) !== requestedLocationKey) return previous;
+      const updated = { ...previous, world: beginWeatherRefresh(previous.world, now) };
+      gameStateRef.current = updated;
+      return updated;
+    });
+    try {
+      const snapshot = await fetchWeather(location, fetch, now);
+      setGameState(previous => {
+        const selected = previous?.world.settings.location;
+        const selectedMode = previous?.world.settings.mode;
+        if (!previous || !selected || (selectedMode !== 'device' && selectedMode !== 'city')) return previous;
+        if (weatherLocationKey(selected) !== requestedLocationKey || snapshot.locationKey !== requestedLocationKey) return previous;
+        const updated = { ...previous, world: receiveWeatherSnapshot(previous.world, snapshot) };
+        gameStateRef.current = updated;
+        queueSave(updated);
+        return updated;
+      });
+    } catch {
+      setGameState(previous => {
+        const selected = previous?.world.settings.location;
+        const selectedMode = previous?.world.settings.mode;
+        if (!previous || !selected || (selectedMode !== 'device' && selectedMode !== 'city')) return previous;
+        if (weatherLocationKey(selected) !== requestedLocationKey) return previous;
+        const updated = { ...previous, world: failWeatherRefresh(previous.world, 'weather_unavailable', Date.now()) };
+        gameStateRef.current = updated;
+        queueSave(updated);
+        return updated;
+      });
+    }
+  }, [queueSave]);
+
+  // The five-minute check normally performs no request: the persisted cache
+  // has a 45-minute refresh deadline. Visibility and reconnect events only
+  // fetch when that deadline has passed or the selected place changed.
+  useEffect(() => {
+    if (!hasGameState || showEgg || (weatherMode !== 'device' && weatherMode !== 'city') || !selectedWeatherLocationKey) return;
+    const check = () => void refreshWorldWeather();
+    check();
+    const interval = setInterval(check, 5 * 60_000);
+    const handleOnline = () => check();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [hasGameState, refreshWorldWeather, selectedWeatherLocationKey, showEgg, weatherMode]);
+
   // Flush the latest state when the PWA is backgrounded or closed. The regular
   // one-second debounce keeps interaction writes cheap, while this closes the
   // window where a quick app switch could otherwise lose the last action.
@@ -95,7 +188,7 @@ function App() {
         if (!prev) return prev;
         const now = Date.now();
         const advanced = advanceNeeds(prev, now);
-        const time = getTimeOfDay(now);
+        const time = getTimeOfDay(now, advanced.world);
         const updated = prev.sleepState === 'sleeping'
           ? advanced
           : { ...advanced, sleepState: shouldBeDrowsy(time, advanced.needs.energy) ? 'drowsy' as const : 'awake' as const };

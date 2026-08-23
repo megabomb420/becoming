@@ -3,6 +3,8 @@ import { GameState, ObjectType, RoomObject, CreatureBehavior } from '../types';
 import CreatureCanvas from './CreatureCanvas';
 import ChatInterface from './ChatInterface';
 import ObjectIcon from './ObjectIcon';
+import WeatherControls from './WeatherControls';
+import WeatherLayer from './WeatherLayer';
 import {
   NEED_COPY,
   NEED_ORDER,
@@ -69,6 +71,12 @@ import {
   getRoomLighting,
   getTimeOfDay,
 } from '../systems/timeSystem';
+import {
+  chooseEnvironmentReaction,
+  getWeatherConditionLabel,
+  getWeatherIcon,
+  recordEnvironmentReaction,
+} from '../systems/environmentSystem';
 
 interface RoomProps {
   state: GameState;
@@ -598,6 +606,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const startAmbientMoment = useCallback(() => {
     const currentState = stateRef.current;
     if (activeObjectRef.current || currentState.sleepState === 'sleeping' || behaviorRef.current !== 'idle') return;
+    const now = Date.now();
 
     const moments: Array<CreatureCue & { behavior: CreatureBehavior; emotion: string; duration: number }> = [
       { icon: '·', label: polish ? 'nasłuchuje pokoju' : 'listens to the room', tone: 'ambient', behavior: 'observing', emotion: 'curious', duration: 2200 },
@@ -615,9 +624,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     if (currentState.bond.stage === 'close' || currentState.bond.stage === 'bonded') {
       moments.push({ icon: '♡', label: polish ? 'układa się tak, żeby cię widzieć' : 'settles where it can see you', tone: 'ambient', behavior: 'reacting', emotion: 'happy', duration: 2800 });
     }
-    const ambientTime = getTimeOfDay();
+    const ambientTime = getTimeOfDay(now, currentState.world);
     if (ambientTime.phase === 'dawn') {
       moments.push({ icon: '◌', label: polish ? 'obserwuje, jak do pokoju wraca światło' : 'watches light return to the room', tone: 'ambient', behavior: 'observing', emotion: 'curious', duration: 3000 });
+    } else if (ambientTime.phase === 'golden_hour') {
+      moments.push({ icon: '◐', label: polish ? 'zatrzymuje się w ostatnim ciepłym świetle' : 'pauses in the last warm light', tone: 'ambient', behavior: 'observing', emotion: 'curious', duration: 3200 });
     } else if (ambientTime.phase === 'dusk') {
       moments.push({ icon: '◐', label: polish ? 'cichnie razem z pokojem' : 'grows quiet with the room', tone: 'ambient', behavior: 'reacting', emotion: 'neutral', duration: 3000 });
     } else if (ambientTime.phase === 'night') {
@@ -633,20 +644,38 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       emotion: needSignal.urgency === 'urgent' ? 'uncertain' : 'neutral',
       duration: needSignal.urgency === 'urgent' ? 3400 : 2800,
     } : null;
+    const weatherReaction = chooseEnvironmentReaction(currentState, ui, now);
+    const environmentMoment = weatherReaction ? {
+      icon: weatherReaction.icon,
+      label: weatherReaction.label,
+      tone: 'ambient' as const,
+      behavior: weatherReaction.behavior,
+      emotion: weatherReaction.emotion,
+      duration: weatherReaction.duration,
+    } : null;
     const moment = needMoment && (needSignal.urgency === 'urgent' || needSignal.urgency === 'attention' || Math.random() < 0.48)
       ? needMoment
-      : moments[Math.floor(Math.random() * moments.length)];
+      : environmentMoment && Math.random() < 0.74
+        ? environmentMoment
+        : moments[Math.floor(Math.random() * moments.length)];
     behaviorRef.current = moment.behavior;
     setTemporaryEmotion(moment.emotion, moment.duration);
     showCreatureCue(moment, moment.duration);
-    onStateChange(prev => ({ ...prev, creatureBehavior: moment.behavior, currentActivity: moment.label }));
+    onStateChange(prev => {
+      let next: GameState = { ...prev, creatureBehavior: moment.behavior, currentActivity: moment.label };
+      if (weatherReaction && moment === environmentMoment) {
+        next = applyNeedDelta(next, weatherReaction.needDelta, now);
+        next = recordEnvironmentReaction(next, weatherReaction, now);
+      }
+      return next;
+    });
 
     ambientTimerRef.current = setTimeout(() => {
       if (activeObjectRef.current || behaviorRef.current !== moment.behavior) return;
       behaviorRef.current = 'idle';
       onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
     }, moment.duration);
-  }, [onStateChange, polish, setTemporaryEmotion, showCreatureCue]);
+  }, [onStateChange, polish, setTemporaryEmotion, showCreatureCue, ui]);
 
   // Intentional autonomous behaviour. The interval only chooses a new goal
   // while the creature is idle; user-selected objects always take priority.
@@ -694,10 +723,31 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       if (!goal && (currentState.needs.bladder < 48 || currentState.needs.bowel < 48)) goal = closestOfType(['litter_box']);
       if (!goal && currentState.needs.hunger < 48) goal = closestOfType(['apple', 'broccoli']);
       if (!goal && currentState.needs.hygiene < 48) goal = closestOfType(['wash_basin']);
-      const disposition = getCircadianDisposition(getTimeOfDay(), currentState.needs.energy, false);
+      const disposition = getCircadianDisposition(getTimeOfDay(Date.now(), currentState.world), currentState.needs.energy, false);
       if (!goal && (currentState.needs.energy < 40 || disposition === 'ready_to_sleep')) goal = closestOfType(['blanket']);
       if (!goal && currentState.needs.comfort < 48) goal = closestOfType(['blanket']);
       if (!goal && currentState.needs.stimulation < 48 && (disposition === 'active' || currentState.needs.stimulation < 25)) goal = closestOfType(['ball']);
+
+      // Weather first suggests a place in the room; only after arriving can
+      // the normal ambient loop show the individual reaction. This keeps the
+      // chain visible: outside stimulus → choice of place → body language.
+      if (!goal) {
+        const environmentReaction = chooseEnvironmentReaction(currentState, ui, Date.now());
+        if (environmentReaction?.positionHint) {
+          const blanket = currentState.roomObjects.find(object => object.type === 'blanket');
+          const environmentTarget = environmentReaction.positionHint === 'window'
+            ? { x: 50, y: 50 }
+            : environmentReaction.positionHint === 'shelter'
+              ? { x: 24, y: 65 }
+              : environmentReaction.positionHint === 'warm'
+                ? blanket ? { x: blanket.x + (blanket.x < 50 ? 9 : -9), y: blanket.y } : { x: 34, y: 69 }
+                : { x: 73, y: 71 };
+          if (dist(currentPos, environmentTarget) > 8) {
+            walkToIdlePosition(environmentTarget);
+            return;
+          }
+        }
+      }
 
       if (!goal && currentState.roomObjects.length > 0) {
         const quietMultiplier = disposition === 'active' ? 1 : disposition === 'waking' || disposition === 'winding_down' ? 0.58 : 0.4;
@@ -737,7 +787,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       clearTimeout(kickoff);
       clearInterval(behaviorTimerRef.current);
     };
-  }, [beginObjectInteraction, clearActionTimers, onStateChange, showChat, startAmbientMoment, state.sleepState, walkToIdlePosition]);
+  }, [beginObjectInteraction, clearActionTimers, onStateChange, showChat, startAmbientMoment, state.sleepState, ui, walkToIdlePosition]);
 
   useEffect(() => () => {
     clearActionTimers();
@@ -1062,7 +1112,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         setTemporaryEmotion('uncertain', 3200);
         return;
       }
-      const disposition = getCircadianDisposition(getTimeOfDay(), state.needs.energy, false);
+      const disposition = getCircadianDisposition(getTimeOfDay(Date.now(), state.world), state.needs.energy, false);
       if (disposition === 'active' && state.needs.energy > 72) {
         showCreatureCue({ icon: '·', label: t('is not sleepy yet', 'jeszcze nie jest senny'), tone: 'notice' }, 2800);
         return;
@@ -1118,15 +1168,24 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     .filter(({ preference }) => preference.interactions >= 2 && (preference.affinity >= 12 || preference.affinity <= -8))
     .sort((a, b) => Math.abs(b.preference.affinity) - Math.abs(a.preference.affinity))
     .slice(0, 3);
+  const learnedWeatherPreferences = (Object.keys(state.world.preferences) as Array<keyof typeof state.world.preferences>)
+    .map(condition => ({ condition, preference: state.world.preferences[condition] }))
+    .filter(({ preference }) => preference.exposures >= 2 && Math.abs(preference.affinity) >= 3)
+    .sort((a, b) => Math.abs(b.preference.affinity) - Math.abs(a.preference.affinity))
+    .slice(0, 3);
   const selectedObject = selectedObjectId
     ? state.roomObjects.find(object => object.id === selectedObjectId) ?? null
     : null;
   const activeInventoryGroup = INVENTORY_GROUPS.find(group => group.id === inventoryGroupId) ?? INVENTORY_GROUPS[0];
   const activeInventoryItems = activeInventoryGroup.items.filter(type => state.inventory.includes(type));
-  const timeOfDay = getTimeOfDay(clockNow);
-  const lighting = getRoomLighting(timeOfDay);
+  const timeOfDay = getTimeOfDay(clockNow, state.world);
+  const lighting = getRoomLighting(timeOfDay, state.world, clockNow);
   const visibleNeedSignals = getVisibleNeedSignals(state, 3);
   const dominantNeed = getDominantNeed(state, true);
+  const weatherActive = state.world.settings.mode === 'device' || state.world.settings.mode === 'city';
+  const weatherSummary = weatherActive && state.world.current
+    ? `${getWeatherConditionLabel(state.world.current.condition, ui)}, ${Math.round(state.world.current.temperatureC)}°`
+    : null;
 
   return (
     <div
@@ -1161,6 +1220,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <div className="absolute bottom-0 left-0 right-0 h-[35%]" style={{ background: `linear-gradient(180deg, ${lighting.floorTop} 0%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear' }} />
         <div className="absolute top-[64.7%] left-0 right-0 h-[2px] bg-[#100f0d]/70 shadow-[0_-1px_0_rgba(224,203,176,0.05)]" />
         <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)' }} />
+        <WeatherLayer world={state.world} lighting={lighting} time={timeOfDay} seed={state.identity.seed} now={clockNow} />
         <div className="absolute top-[16%] left-[50%] w-[390px] h-[390px] -translate-x-1/2 rounded-full" style={{ background: `radial-gradient(circle, ${lighting.ambientGlow} 0%, transparent 70%)`, transition: 'background 30s linear' }} />
         <div className="absolute inset-0 transition-colors duration-[1800ms]" style={{ background: pathVisual.roomTint }} />
         <div className="absolute inset-0" style={{ background: lighting.veil, transition: 'background 30s linear' }} />
@@ -1354,12 +1414,17 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <button
           type="button"
           onClick={() => setShowNeeds(true)}
-          aria-label={t('Open care and needs', 'Otwórz opiekę i potrzeby')}
+          aria-label={`${t('Open care and needs', 'Otwórz opiekę i potrzeby')}${weatherSummary ? ` · ${weatherSummary}` : ''}`}
           className="pointer-events-auto mx-auto mt-12 flex min-h-9 max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border border-warm-200/10 bg-room-dark/68 px-3 py-1.5 text-left shadow-lg backdrop-blur-md transition-colors hover:bg-room-dark/82"
         >
           <span className="shrink-0 whitespace-nowrap text-[9px] font-serif uppercase tracking-[0.13em] text-warm-200/50">
             {getPhaseLabel(timeOfDay.phase, ui)} · {formatLocalClock(timeOfDay)}
           </span>
+          {weatherSummary && state.world.current && (
+            <span className={`shrink-0 whitespace-nowrap text-[9px] font-serif text-warm-200/48 ${state.world.status === 'stale' || state.world.lastError ? 'opacity-55' : ''}`} title={weatherSummary}>
+              <span aria-hidden="true">{getWeatherIcon(state.world.current.condition)}</span> {Math.round(state.world.current.temperatureC)}°
+            </span>
+          )}
           <span className="h-3 w-px shrink-0 bg-warm-200/10" />
           {visibleNeedSignals.length > 0 ? (
             <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
@@ -1717,6 +1782,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                     ))}
                   </div>
                 )}
+                {learnedWeatherPreferences.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[9px] uppercase tracking-widest text-warm-300/35">{t('Weather becoming familiar', 'Oswajana pogoda')}</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {learnedWeatherPreferences.map(({ condition, preference }) => (
+                        <span key={condition} className="rounded-full border border-warm-200/10 bg-room-mid/70 px-2 py-1 text-[10px] font-serif text-warm-200/65">
+                          {getWeatherIcon(condition)} {getWeatherConditionLabel(condition, ui)} · {preference.affinity >= 6 ? t('drawn to it', 'lubi ją') : preference.affinity <= -3 ? t('wary', 'podchodzi ostrożnie') : t('learning', 'poznaje ją')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               {state.vocabulary.length > 0 && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
@@ -1850,6 +1927,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       )}
 
+      {!state.world.settings.onboardingSeen && (
+        <WeatherControls state={state} language={ui} onStateChange={onStateChange} variant="onboarding" />
+      )}
+
       {/* Small local controls keep sensory feedback optional. No account or
           permission prompt is required; unsupported devices simply stay quiet. */}
       {showSettings && (
@@ -1879,6 +1960,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   ))}
                 </div>
               </div>
+              <WeatherControls state={state} language={ui} onStateChange={onStateChange} variant="settings" />
               <label className="flex items-center justify-between gap-5 rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 cursor-pointer">
                 <span>
                   <span className="block text-warm-100/85 text-sm font-serif">{t('Quiet sounds', 'Ciche dźwięki')}</span>
@@ -1895,13 +1977,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               </label>
               <div className="rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4">
                 <div className="text-warm-100/85 text-sm font-serif">{t('Keep this creature', 'Zachowaj tego stworka')}</div>
-                <p className="text-warm-200/40 text-[10px] font-serif mt-1 leading-relaxed">{t('A private file can carry the whole life, memories, chats and creations to another device. Nothing is uploaded.', 'Prywatny plik przeniesie całe życie, wspomnienia, rozmowy i prace na inne urządzenie. Nic nie jest wysyłane.')}</p>
+                <p className="text-warm-200/40 text-[10px] font-serif mt-1 leading-relaxed">{t('A private file can carry the whole life, memories, chats, creations and chosen weather place to another device. Nothing is uploaded.', 'Prywatny plik przeniesie całe życie, wspomnienia, rozmowy, prace i wybrane miejsce pogody na inne urządzenie. Nic nie jest wysyłane.')}</p>
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <button onClick={exportCreature} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">{t('Save backup', 'Zapisz backup')}</button>
                   <button onClick={() => importInputRef.current?.click()} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">{t('Open backup', 'Otwórz backup')}</button>
                 </div>
                 <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={event => void importCreature(event.target.files?.[0])} />
-                <p className="text-warm-300/35 text-[9px] font-serif mt-3">{t('The file contains personal conversations. Store it somewhere you trust.', 'Plik zawiera prywatne rozmowy. Przechowuj go w zaufanym miejscu.')}</p>
+                <p className="text-warm-300/35 text-[9px] font-serif mt-3">{t('The file contains personal conversations and the rounded weather location. Store it somewhere you trust.', 'Plik zawiera prywatne rozmowy i zaokrągloną lokalizację pogody. Przechowuj go w zaufanym miejscu.')}</p>
               </div>
               {onReset && (
                 <div className="rounded-2xl border border-red-200/10 bg-room-mid/25 p-4">

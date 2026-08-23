@@ -6,6 +6,7 @@ import { createContinuityState } from './continuitySystem';
 import { createPresenceState } from './presenceSystem';
 import { createTouchBoundaryState } from './boundarySystem';
 import { createSharedLanguageState } from './sharedLanguageSystem';
+import { createWorldEnvironment } from './environmentSystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -112,6 +113,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
   const state: GameState = {
     identity,
     needs,
+    world: createWorldEnvironment(),
     personality,
     lifePath: createLifePathState(personality, birthTime),
     development,

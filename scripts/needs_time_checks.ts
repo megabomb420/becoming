@@ -107,14 +107,16 @@ assert.ok(migrated.inventory.includes('litter_box'));
 assert.ok(migrated.inventory.includes('wash_basin'));
 
 const utc = (hour: number, minute = 0) => Date.UTC(2026, 7, 23, hour, minute);
-assert.equal(getTimeOfDay(utc(4, 59), 0).phase, 'night');
-assert.equal(getTimeOfDay(utc(5), 0).phase, 'dawn');
-assert.equal(getTimeOfDay(utc(7, 59), 0).phase, 'dawn');
-assert.equal(getTimeOfDay(utc(8), 0).phase, 'day');
-assert.equal(getTimeOfDay(utc(17, 59), 0).phase, 'day');
-assert.equal(getTimeOfDay(utc(18), 0).phase, 'dusk');
-assert.equal(getTimeOfDay(utc(20, 59), 0).phase, 'dusk');
-assert.equal(getTimeOfDay(utc(21), 0).phase, 'night');
+assert.equal(getTimeOfDay(utc(0), 0).phase, 'night');
+assert.equal(getTimeOfDay(utc(12), 0).phase, 'day');
+assert.ok(getTimeOfDay(utc(6), 0).solarFactor > getTimeOfDay(utc(4), 0).solarFactor, 'morning light must rise continuously around the seasonally estimated sunrise');
+const fallbackSchedule = getTimeOfDay(utc(12), 0);
+const atLocalMinute = (minute: number) => Date.UTC(2026, 7, 23, 0, Math.round(minute));
+assert.ok(
+  getTimeOfDay(atLocalMinute(fallbackSchedule.sunsetMinute - 45), 0).solarFactor
+    > getTimeOfDay(atLocalMinute(fallbackSchedule.sunsetMinute + 90), 0).solarFactor,
+  'evening light must fall continuously around the seasonally estimated sunset',
+);
 
 assert.equal(getLocalDateKey(Date.UTC(2026, 7, 23, 23, 59), 0), '2026-08-23');
 assert.equal(getLocalDateKey(Date.UTC(2026, 7, 24, 0, 0), 0), '2026-08-24');
@@ -129,12 +131,14 @@ const beforeNightBoundary = getRoomLighting(getTimeOfDay(utc(20, 59), 0));
 const afterNightBoundary = getRoomLighting(getTimeOfDay(utc(21), 0));
 assert.ok(Math.abs(beforeNightBoundary.brightness - afterNightBoundary.brightness) < 0.01, 'phase labels may change, but lighting must stay continuous');
 
-// Dublin changes from UTC+0 to UTC+1 at 01:00 UTC on 29 March 2026.
-// A local 00:00–07:00 rest window is six real hours on that date.
+// Dublin changes from UTC+0 to UTC+1 at 01:00 UTC on 29 March 2026. The same
+// solar-night slice therefore contains one fewer real hour than a fixed-offset
+// clock, even though both are sampled from identical UTC endpoints.
 const dstStart = Date.UTC(2026, 2, 29, 0, 0);
 const dstEnd = Date.UTC(2026, 2, 29, 8, 0);
 const dstRest = estimateNightRestMs(dstStart, dstEnd, timestamp => timestamp < Date.UTC(2026, 2, 29, 1, 0) ? 0 : -60);
-assert.equal(dstRest, 6 * HOUR);
+const fixedOffsetRest = estimateNightRestMs(dstStart, dstEnd, () => 0);
+assert.equal(fixedOffsetRest - dstRest, HOUR);
 
 const returnStart = Date.UTC(2026, 7, 22, 12, 0);
 const returnNow = returnStart + 26 * HOUR;

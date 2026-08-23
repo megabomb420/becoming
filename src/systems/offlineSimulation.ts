@@ -19,7 +19,7 @@ export function simulateOfflineTime(
 
   if (awayMinutes < 1) return { state, activities };
 
-  const naturalNightRestMs = estimateNightRestMs(needsFrom, now, timezoneOffsetAt);
+  const naturalNightRestMs = estimateNightRestMs(needsFrom, now, timezoneOffsetAt, state.world);
   const wasSleeping = state.sleepState === 'sleeping';
   const sleepStart = state.sleepStartTimestamp ?? leftAt;
   const manualSleepMs = wasSleeping ? Math.min(Math.max(0, now - sleepStart), 8 * 60 * 60_000) : 0;
@@ -65,7 +65,7 @@ export function simulateOfflineTime(
   }
 
   const localOffset = timezoneOffsetAt(now);
-  const time = getTimeOfDay(now, localOffset);
+  const time = getTimeOfDay(now, currentState.world, localOffset);
   const shortUnfinishedSleep = wasSleeping && manualSleepMs > 0 && manualSleepMs < 8 * 60 * 60_000;
   const sleepState: GameState['sleepState'] = shortUnfinishedSleep
     ? 'sleeping'

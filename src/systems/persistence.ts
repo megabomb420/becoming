@@ -10,6 +10,7 @@ import { migratePresenceState } from './presenceSystem';
 import { migrateCreations } from './creationSystem';
 import { migrateTouchBoundaryState } from './boundarySystem';
 import { migrateSharedLanguageState } from './sharedLanguageSystem';
+import { migrateWorldEnvironment } from './environmentSystem';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -86,6 +87,12 @@ export function migrateGameState(state: GameState): GameState {
   };
   const savedAt = Number.isFinite(migrated.lastSaved) ? migrated.lastSaved : migrated.identity.birthTimestamp;
   migrated.needsUpdatedAt = Number.isFinite(migrated.needsUpdatedAt) ? migrated.needsUpdatedAt : savedAt;
+
+  // v0.11: weather consent, the rounded selected place, the last successful
+  // Open-Meteo snapshot, learned weather preferences, and cache timestamps all
+  // live with the creature in IndexedDB. Older saves begin unconfigured and
+  // receive the same one-time consent choice as a fresh creature.
+  migrated.world = migrateWorldEnvironment(migrated.world);
 
   // Ensure development.hatched exists
   if (typeof migrated.development?.hatched !== 'boolean') {

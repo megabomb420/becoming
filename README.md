@@ -12,6 +12,7 @@ The project is a polished vertical slice built around one principle: the player 
 
 - **Readable without raw stats.** Needs first appear through body language and a compact room signal; an optional care sheet names urgency and the helpful action without percentages or permanent bars. Bond, personality, and life paths remain behavioural.
 - **Local-first.** The complete creature and conversation history live in IndexedDB on the device.
+- **The outside world is interpreted, not displayed.** Optional Open-Meteo weather becomes light, soundless atmosphere, need pressure, behaviour, preference, and memory instead of a forecast dashboard.
 - **One persistent individual.** Seeded temperament provides continuity while care and experience gradually change the creature.
 - **No death from neglect.** Time away affects the relationship without punishing the player or deleting progress.
 - **AI is optional infrastructure.** Higher-level conversation uses a private gateway; the game retains a local fallback.
@@ -23,6 +24,7 @@ The project is a polished vertical slice built around one principle: the player 
 - Tailwind CSS 3
 - IndexedDB through `idb`
 - HTML5 Canvas for the creature
+- Open-Meteo Forecast and Geocoding APIs, without an API key
 - Cloudflare Worker gateway for DeepSeek V4 Flash
 - GitHub Pages deployment through GitHub Actions
 
@@ -55,7 +57,7 @@ npm run check  # complete pre-deploy verification
 |---|---|
 | Application lifecycle and persistence | `src/App.tsx`, `src/systems/persistence.ts` |
 | Creature data model | `src/types/index.ts` |
-| Needs, real local time, development, and relationship | `needsSystem.ts`, `timeSystem.ts`, `developmentSystem.ts`, `relationshipSystem.ts` |
+| Needs, solar time, weather, development, and relationship | `needsSystem.ts`, `timeSystem.ts`, `weatherService.ts`, `environmentSystem.ts`, `developmentSystem.ts`, `relationshipSystem.ts` |
 | Conversation and local fallback | `conversationSystem.ts`, `languageSystem.ts`, `llmConversation.ts` |
 | Memory and continuity | `memoryBook.ts`, `continuitySystem.ts`, `presenceSystem.ts` |
 | Identity, interests, and life paths | `lifePathSystem.ts`, `innerLifeSystem.ts` |
@@ -67,7 +69,7 @@ The full implementation history, current feature inventory, architecture decisio
 
 ## Privacy and backup
 
-There is no account or automatic cloud sync. A player can export a validated JSON backup containing the creature's complete history and restore it on another device. That file can include personal conversation content and should be treated as private.
+There is no account or automatic cloud sync. Weather is opt-in. Device coordinates are rounded to two decimal places before Open-Meteo receives them; a manually selected city and the last successful forecast are cached with the creature in IndexedDB. A validated JSON backup can include personal conversation content and the rounded weather location, so it should be treated as private.
 
 ## Deployment
 

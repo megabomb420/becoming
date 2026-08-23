@@ -1,5 +1,6 @@
 import { GameState, Memory, Needs } from '../types';
 import { generateDreamAfterSleep } from './innerLifeSystem';
+import { getEnvironmentalNeedMultiplier } from './environmentSystem';
 
 export type NeedKey = keyof Needs;
 export type NeedUrgency = 'settled' | 'notice' | 'attention' | 'urgent';
@@ -94,10 +95,12 @@ function applyRates(
   rates: Record<NeedKey, number>,
   minutes: number,
   offline: boolean,
+  at: number,
 ) {
   const result = { ...source };
   for (const key of NEED_ORDER) {
-    const rate = rates[key] * personalityMultiplier(state, key);
+    const environmentalMultiplier = rates[key] > 0 ? getEnvironmentalNeedMultiplier(state, key, at) : 1;
+    const rate = rates[key] * personalityMultiplier(state, key) * environmentalMultiplier;
     const next = clamp(source[key] - rate * minutes);
     if (offline && rate > 0) {
       // Never make a need better just because it was already below the floor.
@@ -114,6 +117,7 @@ export function calculateNeeds(
   realMinutes: number,
   mode: 'active' | 'offline' = 'active',
   sleepingMinutes = state.sleepState === 'sleeping' ? realMinutes : 0,
+  at = (Number.isFinite(state.needsUpdatedAt) ? state.needsUpdatedAt : state.lastSaved) + Math.max(0, realMinutes) * 60_000,
 ): Needs {
   const elapsed = Math.max(0, realMinutes);
   const sleep = Math.max(0, Math.min(elapsed, sleepingMinutes));
@@ -123,8 +127,8 @@ export function calculateNeeds(
   const sleepShare = elapsed > 0 ? sleep / elapsed : 0;
   const effectiveSleep = effectiveTotal * sleepShare;
   const effectiveAwake = effectiveTotal - effectiveSleep;
-  const afterAwake = applyRates(state, state.needs, AWAKE_RATES, effectiveAwake, offline);
-  return applyRates(state, afterAwake, SLEEP_RATES, effectiveSleep, offline);
+  const afterAwake = applyRates(state, state.needs, AWAKE_RATES, effectiveAwake, offline, at);
+  return applyRates(state, afterAwake, SLEEP_RATES, effectiveSleep, offline, at);
 }
 
 // Kept for small callers and old tests. New runtime code should prefer
@@ -144,7 +148,7 @@ export function advanceNeeds(
   if (elapsedMinutes <= 0) return state;
   return {
     ...state,
-    needs: calculateNeeds(state, elapsedMinutes, mode, sleepingMinutes),
+    needs: calculateNeeds(state, elapsedMinutes, mode, sleepingMinutes, now),
     needsUpdatedAt: now,
   };
 }
