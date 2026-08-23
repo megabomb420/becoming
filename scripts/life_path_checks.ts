@@ -16,7 +16,7 @@ import {
 } from '../src/systems/innerLifeSystem';
 import { appendCreatureMessage, beginConversationTurn } from '../src/systems/conversationSystem';
 import { getDueOpenLoop, markOpenLoopAsked, migrateContinuityState } from '../src/systems/continuitySystem';
-import { consumeReturnGreeting, getVisitRitual, migratePresenceState, registerReturn } from '../src/systems/presenceSystem';
+import { consumeReturnGreeting, getAbsenceSummary, getPresenceReply, getVisitRitual, migratePresenceState, registerReturn } from '../src/systems/presenceSystem';
 import { evolveCreationFromObject, migrateCreations } from '../src/systems/creationSystem';
 import { parseImportedGameState, serializeGameState } from '../src/systems/persistence';
 import { uiLanguage, uiText } from '../src/systems/uiLanguage';
@@ -176,8 +176,12 @@ present = {
     lastVisitDay: '2027-1-15',
   },
 };
-present = registerReturn(present, 3 * 60 * 60_000, returnStart);
+present = registerReturn(present, 3 * 60 * 60_000, returnStart, [{ type: 'explored room', duration: 40, timestamp: returnStart - 1_000 }]);
 assert.match(present.presence.pendingGreeting || '', /Wróciłeś|znowu/i);
+assert.match(present.presence.pendingGreeting || '', /Kiedy cię nie było/i);
+assert.equal(present.presence.absenceEpisodes.length, 1);
+assert.match(getAbsenceSummary(present) || '', /obchodziłem pokój/i);
+assert.match(getPresenceReply(present, 'Co robiłeś kiedy mnie nie było?') || '', /Kiedy cię nie było/i);
 assert.equal(present.relationship.routines.find(routine => routine.type === 'visit')?.lastObserved, returnStart);
 present = consumeReturnGreeting(present);
 assert.equal(present.presence.pendingGreeting, null);
@@ -190,6 +194,7 @@ assert.ok(getVisitRitual(present));
 const migratedPresence = migratePresenceState(null, returnStart);
 assert.equal(migratedPresence.sessionCount, 1);
 assert.equal(migratedPresence.pendingGreeting, null);
+assert.deepEqual(migratedPresence.absenceEpisodes, []);
 
 let maker = createHatchedCreature(createNewCreature('Maker', 616));
 maker = {
@@ -229,4 +234,4 @@ assert.equal(uiLanguage('pl'), 'pl');
 assert.equal(uiLanguage('en'), 'en');
 assert.equal(uiText('pl', 'Memories', 'Wspomnienia'), 'Wspomnienia');
 
-console.log('Life path, inner life, continuity, mirror, presence, creation, backup, and language checks passed.');
+console.log('Life path, inner life, continuity, mirror, presence, absence, creation, backup, and language checks passed.');

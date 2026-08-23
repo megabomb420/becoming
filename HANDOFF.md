@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.18
+> **Version:** 0.9.19
 > **Last Updated:** 2026-08-23
 
 ---
@@ -116,6 +116,7 @@ becoming/
 | Private backup | ✅ | Export and restore the complete creature as a validated local JSON file with no login or cloud upload |
 | Polish + English UI | ✅ | Device-aware default plus an explicit two-language switch keeps the room, settings, backup, chat shell, and AI language aligned |
 | Visible PWA updates | ✅ | A bilingual update card replaces silently stale service-worker sessions and preserves all local creature state |
+| Life while away | ✅ | Up to 12 absence episodes preserve sleep, exploration, quiet time, and room activity for greetings, memories, and later chat |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
@@ -338,6 +339,12 @@ Hatching, room navigation, touch labels, sleep, conversation, inventory, daily-m
 The PWA no longer relies on a silent auto-update that can leave an already controlled tab showing an old bundle after deployment. Service-worker registration now uses the prompt flow. When a new build finishes downloading, a small Polish or English card explains that the creature and memories are safe, then offers “Later” or an explicit update and reload.
 
 The update UI is available during loading, hatching, and the room, uses mobile-safe 44-pixel actions, and never clears IndexedDB. Registration is owned by the React integration rather than a second injected script, preventing duplicate service-worker registrations.
+
+### v0.9.19 — While You Were Away
+
+Offline simulation no longer throws away the story it generated. Real returns of at least ten minutes create a bounded absence episode containing duration and distinct activities such as sleep, exploring the room, looking at objects, moving something, or sitting quietly. Longer returns weave one activity into the Polish or English greeting without guilt, neediness, or punishment.
+
+The latest episodes appear in the Memory Book with duration and date. Asking “what did you do while I was away?” or its Polish equivalent has a deterministic local answer even if DeepSeek is offline. Two sanitised summaries can reach the private AI mind for natural callbacks, while the Worker explicitly treats them as untrusted data and forbids using absence or streaks to pressure the player. Old saves migrate to an empty episode history.
 
 ---
 

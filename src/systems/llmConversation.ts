@@ -1,6 +1,7 @@
 import { ChatMessage, GameState } from '../types';
 import { getLifePathTitle, getRankedLifePaths } from './lifePathSystem';
 import { getRankedInterests } from './innerLifeSystem';
+import { getAbsenceSummary } from './presenceSystem';
 
 const API_URL = (import.meta.env.VITE_BECOMING_API_URL || '').replace(/\/$/, '');
 const MAX_CONTEXT_MESSAGES = 14;
@@ -99,6 +100,14 @@ function requestBody(state: GameState) {
       description: creation.description.slice(0, 240),
       inspiration: creation.inspiration.slice(0, 48),
     })),
+    presence: {
+      returns: state.presence.returnCount,
+      currentStreak: state.presence.currentStreak,
+      recentAbsences: state.presence.absenceEpisodes.slice(-2).map(episode => ({
+        durationHours: Number((episode.durationMs / 3_600_000).toFixed(1)),
+        summary: (getAbsenceSummary(state, episode) || '').slice(0, 180),
+      })),
+    },
     facts: compactFacts(state),
     habits: compactHabits(state),
     messages: toModelHistory(state.conversation.messages),

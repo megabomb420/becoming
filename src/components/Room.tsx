@@ -28,7 +28,7 @@ import {
   getInterestStage,
   getRankedInterests,
 } from '../systems/innerLifeSystem';
-import { consumeReturnGreeting, getVisitRitual } from '../systems/presenceSystem';
+import { consumeReturnGreeting, getAbsenceSummary, getVisitRitual } from '../systems/presenceSystem';
 import {
   emitSensoryCue,
   loadSensoryPreferences,
@@ -942,6 +942,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     .slice(0, 4);
   const recentChapters = [...state.continuity.chapters].reverse().slice(0, 3);
   const recentCreations = [...state.creations].reverse().slice(0, 4);
+  const recentAbsences = [...state.presence.absenceEpisodes].reverse().slice(0, 3);
   const visitRitual = getVisitRitual(state);
   const discoveredPreferences = INVENTORY_ORDER
     .map(type => ({ type, preference: state.objectPreferences[type] }))
@@ -1345,6 +1346,25 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   <p className="text-warm-200/40 text-[10px] font-serif mt-1">
                     {state.presence.currentStreak > 1 ? `${state.presence.currentStreak} days finding each other again` : `${state.presence.returnCount} remembered return${state.presence.returnCount === 1 ? '' : 's'}`}
                   </p>
+                </div>
+              )}
+              {recentAbsences.length > 0 && (
+                <div className="border-l-2 border-warm-300/30 pl-4">
+                  <div className="text-warm-200/40 text-xs mb-2">{t('While you were away', 'Kiedy cię nie było')}</div>
+                  <div className="space-y-2.5">
+                    {recentAbsences.map(episode => {
+                      const totalMinutes = Math.max(1, Math.round(episode.durationMs / 60_000));
+                      const duration = totalMinutes >= 120
+                        ? `${Math.round(totalMinutes / 60)} ${t('hours', 'godz.')}`
+                        : `${totalMinutes} min`;
+                      return (
+                        <div key={episode.id} className="rounded-xl border border-warm-200/5 bg-room-mid/30 p-3">
+                          <p className="text-warm-100/65 text-[10px] font-serif leading-relaxed">{getAbsenceSummary(state, episode)}</p>
+                          <p className="text-warm-200/25 text-[9px] font-serif mt-1.5">{duration} · {new Date(episode.returnedAt).toLocaleDateString(ui === 'pl' ? 'pl-PL' : 'en-GB')}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
               <div className="border-l-2 border-warm-300/30 pl-4">

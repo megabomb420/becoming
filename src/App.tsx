@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { GameState } from './types';
+import { GameState, OfflineActivity } from './types';
 import { loadGameState, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
@@ -11,7 +11,7 @@ import { detectUiLanguage } from './systems/uiLanguage';
 import { uiLanguage } from './systems/uiLanguage';
 import PwaUpdateNotice from './components/PwaUpdateNotice';
 
-const APP_VERSION = '0.9.18';
+const APP_VERSION = '0.9.19';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -36,11 +36,13 @@ function App() {
           // Simulate offline time
           const awayMs = Date.now() - saved.lastSaved;
           let returningState = saved;
+          let offlineActivities: OfflineActivity[] = [];
           if (awayMs > 60000) {
             const { state: updated, activities } = simulateOfflineTime(saved, awayMs);
             returningState = updated;
+            offlineActivities = activities;
           }
-          setGameState(registerReturn(returningState, awayMs));
+          setGameState(registerReturn(returningState, awayMs, Date.now(), offlineActivities));
           setShowEgg(false);
         } else {
           // Not yet hatched — show the egg

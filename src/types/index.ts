@@ -434,6 +434,15 @@ export interface PresenceState {
   longestStreak: number;
   lastVisitDay: string;
   pendingGreeting: string | null;
+  absenceEpisodes: AbsenceEpisode[];
+}
+
+export interface AbsenceEpisode {
+  id: string;
+  leftAt: number;
+  returnedAt: number;
+  durationMs: number;
+  activityTypes: string[];
 }
 
 export type CreationStage = 'mark' | 'shape' | 'picture' | 'message';
