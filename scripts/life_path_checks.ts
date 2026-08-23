@@ -13,7 +13,7 @@ import {
   getRankedInterests,
   revealPrivateThoughtIfAsked,
 } from '../src/systems/innerLifeSystem';
-import { appendCreatureMessage } from '../src/systems/conversationSystem';
+import { appendCreatureMessage, beginConversationTurn } from '../src/systems/conversationSystem';
 
 let state = createHatchedCreature(createNewCreature('Test', 99117));
 state = {
@@ -94,5 +94,13 @@ inner = {
 inner = generateDreamAfterSleep(inner, 8 * 60 * 60_000, 1_800_020_000_000);
 assert.equal(inner.innerLife.dreams.length, 1);
 assert.ok(inner.memories.some(memory => memory.tags.includes('dream')));
+
+let bilingual = createHatchedCreature(createNewCreature('Bilingual', 88));
+bilingual = beginConversationTurn(bilingual, 'Hello, I want to talk with you today.', 1_800_030_000_000).state;
+assert.equal(bilingual.conversation.language, 'en');
+bilingual = beginConversationTurn(bilingual, 'Cześć, chcę teraz rozmawiać po polsku.', 1_800_030_001_000).state;
+assert.equal(bilingual.conversation.language, 'pl');
+bilingual = beginConversationTurn(bilingual, 'Hello, I want to switch back to English.', 1_800_030_002_000).state;
+assert.equal(bilingual.conversation.language, 'en');
 
 console.log('Life path and inner life checks passed.');

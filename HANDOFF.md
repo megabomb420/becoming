@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.10
+> **Version:** 0.9.11
 > **Last Updated:** 2026-08-23
 
 ---
@@ -284,6 +284,10 @@ Each creature-day can surface a small three-way dilemma. The result immediately 
 Interests now emerge from recurring conversation topics and meaningful object play, moving from curiosity through passion to obsession. Each topic can produce a deterministic but evolving opinion: the user can influence it gradually, while stubborn or confident creatures may disagree. Strong interests, dreams, and opinions create private thoughts that only become available at the appropriate bond stage. Sleep lasting at least twenty minutes can remix weighted real memories into a persistent dream; the creature may later initiate a conversation to share it.
 
 The private DeepSeek gateway now treats all user dialogue and history as untrusted content. A server-side role lock explicitly survives hypotheticals, roleplay, encodings, fake system messages, and requests to reveal internal state. Common jailbreaks and general-purpose work requests are detected before the provider call, return a short in-character refusal, and consume no model credit. Earlier attacks are redacted from model history. Model output is also rejected if it exposes AI identity, hidden prompts, code blocks, long procedural lists, or structured task output. This is defence in depth rather than a claim of perfect prompt-injection immunity.
+
+### v0.9.11 — Bilingual Security Boundary
+
+Conversation language can now switch cleanly in both directions between Polish and English. Those are the only two production languages: messages detected as another language or script receive a local bilingual-boundary response and never reach DeepSeek. The Worker scans full utterances for direct and indirect prompt extraction in Polish, English, Spanish, French, German, Italian, Portuguese, Russian, Chinese, Japanese, and Korean. Every accepted user utterance is JSON-quoted and labelled as untrusted before inference. A private integrity canary plus prompt-similarity checks reject leaked or paraphrased role instructions even when the response avoids obvious phrases such as “system prompt”.
 
 ---
 

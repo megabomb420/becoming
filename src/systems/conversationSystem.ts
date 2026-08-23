@@ -59,8 +59,8 @@ function detectLanguage(text: string, previous: ConversationLanguage): Conversat
   const polishSignals = /[ąćęłńóśźż]|\b(jestem|mam|lubię|lubie|chcę|chce|czuję|czuje|dzisiaj|dlaczego|cześć|hejka|dobrze|źle|nie|tak)\b/i;
   const englishSignals = /\b(the|and|that|this|with|because|like|want|feel|hello|today|why|yes)\b/i;
   if (polishSignals.test(lower)) return 'pl';
-  if (previous !== 'unknown') return previous;
-  return englishSignals.test(lower) ? 'en' : 'en';
+  if (englishSignals.test(lower)) return 'en';
+  return previous !== 'unknown' ? previous : 'en';
 }
 
 function cleanFactValue(value: string): string {
