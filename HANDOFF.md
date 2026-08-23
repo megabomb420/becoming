@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.12
+> **Version:** 0.9.13
 > **Last Updated:** 2026-08-23
 
 ---
@@ -109,6 +109,9 @@ becoming/
 | Conversation chapters | ✅ | Every eight user turns form a local relationship chapter; older low-value moments are compressed while important memories remain intact |
 | Open loops & check-ins | ✅ | Goals, difficult feelings, promises, and unfinished stories can return hours later and close when the user reports an outcome |
 | Mirror self-awareness | ✅ | Repeated mirror encounters form a permanent unaware → other → copying → recognized → reflective arc with milestone memories |
+| Return presence | ✅ | Reopening after time away creates a gentle, time-aware greeting without guilt or punishment |
+| Shared rituals | ✅ | Visit timing and consecutive-day rhythm are learned locally and can become a visible relationship ritual |
+| Optional sound & haptics | ✅ | Synthesised interaction tones and restrained vibration can be controlled independently on-device |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
@@ -117,17 +120,15 @@ becoming/
 | Feature | State | Gap |
 |---|---|---|
 | Notifications | 🚧 | Architecture prepared but no push notification logic. |
-| Haptics | 🚧 | Touch actions do not trigger device vibration yet. |
 
 ### ❌ Not Yet Implemented
 
 - Multi-creature comparison / sharing
 - Cloud sync
-- Sound effects / creature vocalizations
+- Voiced creature vocalizations
 - True time-based developmental milestones (currently uses interaction-driven progression)
 - Drawing/music creation by creature
 - Object discovery stages (e.g. paper → scribble → draw → write)
-- Mirror self-recognition sequence
 - Lying / deception system
 
 ---
@@ -298,6 +299,12 @@ Conversation now has two time scales. The latest dialogue remains available verb
 
 Goals, difficult feelings, promises, and unfinished stories become open loops with different return times. The creature can initiate a gentle check-in hours later, records how often it asked, stops before nagging, and closes the loop when the user reports completion or feeling better. The Memory Book shows both open threads and recent chapters. Mirror play now has a persistent five-stage self-awareness arc. Recognition and later reflection create high-importance memories, alter mirror behaviour, influence AI dialogue, and can generate bond-gated private thoughts.
 
+### v0.9.13 — Presence & Rituals
+
+The creature now notices a real return rather than treating every app launch as a blank session. The greeting changes with time away, uses the established Polish or English language, and never punishes an absence. Repeated visits around a similar hour form a local shared ritual; consecutive days are remembered as relationship rhythm rather than a reward streak. Legacy saves gain the new state through a non-destructive migration.
+
+Direct touch, comfort, waking, sleep, opening chat, and meaningful choices can now produce small synthesised tones and restrained haptic pulses. Sound starts off, haptics start on where supported, and both are independently adjustable in a local settings sheet. No audio files, account, device permission, or network call is required.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -306,7 +313,7 @@ Goals, difficult feelings, promises, and unfinished stories become open loops wi
 - **None currently.** Build passes cleanly (`npm run build` → 0 errors).
 
 ### Logic / UX
-- **No sound:** The creature is completely silent. Vocalizations should be added as an ambient layer.
+- **Sound is intentionally minimal:** Current cues are short interaction tones rather than voiced creature vocalizations.
 - **Needs decay may feel too slow or too fast:** Tuned for 1-minute intervals. Real-world testing on mobile is needed.
 - **Object drag on mobile:** Pointer events should work on most mobile browsers, but long-press vs drag detection could conflict with browser gestures on some devices.
 - **Offline simulation is simple:** Does not model complex chained activities.
@@ -321,12 +328,12 @@ Goals, difficult feelings, promises, and unfinished stories become open loops wi
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Add sound design** — subtle ambient vocalizations and interaction sounds that respect browser autoplay constraints.
-2. **Balance paths on real saves** — tune signal speed, hybrid frequency, chapter cadence, and daily moments after multi-day mobile play.
-3. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
+1. **Balance paths on real saves** — tune signal speed, hybrid frequency, chapter cadence, daily moments, and return greetings after multi-day mobile play.
+2. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
+3. **Object mastery** — let repeated paper, pencil, music, and mirror use unlock deeper authored behaviours.
 
 ### Priority: Medium
-4. **Mobile device polish pass** — test on actual iOS Safari and Android Chrome; add restrained optional haptics for direct touch interactions.
+4. **Mobile device polish pass** — test sound, vibration, safe areas, and drag behaviour on actual iOS Safari and Android Chrome.
 5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
 6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and needs decay.
 
@@ -372,6 +379,8 @@ location.reload();
 | How paths, hybrids, choices, recovery, and skins work | `src/systems/lifePathSystem.ts` |
 | How interests, opinions, dreams, and secrets work | `src/systems/innerLifeSystem.ts` |
 | How chapters, open loops, and later check-ins work | `src/systems/continuitySystem.ts` |
+| How returns and shared rituals work | `src/systems/presenceSystem.ts` |
+| How optional tones and haptics work | `src/systems/sensorySystem.ts` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |
 | Persistence | `src/systems/persistence.ts` |

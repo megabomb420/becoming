@@ -28,6 +28,14 @@ import {
   getInterestStage,
   getRankedInterests,
 } from '../systems/innerLifeSystem';
+import { consumeReturnGreeting, getVisitRitual } from '../systems/presenceSystem';
+import {
+  emitSensoryCue,
+  loadSensoryPreferences,
+  saveSensoryPreferences,
+  SensoryCue,
+  SensoryPreferences,
+} from '../systems/sensorySystem';
 
 interface RoomProps {
   state: GameState;
@@ -149,6 +157,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const [showBecoming, setShowBecoming] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [sensoryPreferences, setSensoryPreferences] = useState<SensoryPreferences>(() => loadSensoryPreferences());
   const [creatureEmotion, setCreatureEmotion] = useState(state.emotionalState);
   const [initiatedTopic, setInitiatedTopic] = useState<string | null>(null);
   const [creatureCue, setCreatureCue] = useState<CreatureCue | null>(null);
@@ -192,6 +202,26 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   useEffect(() => {
     if (!emotionTimerRef.current) setCreatureEmotion(state.emotionalState);
   }, [state.emotionalState]);
+
+  useEffect(() => {
+    const greeting = state.presence.pendingGreeting;
+    if (!greeting || initiatedTopic || showChat || state.sleepState === 'sleeping') return;
+    setInitiatedTopic(greeting);
+    onStateChange(prev => consumeReturnGreeting(prev));
+  }, [initiatedTopic, onStateChange, showChat, state.presence.pendingGreeting, state.sleepState]);
+
+  const emitCue = useCallback((cue: SensoryCue) => {
+    emitSensoryCue(cue, sensoryPreferences);
+  }, [sensoryPreferences]);
+
+  const updateSensoryPreference = useCallback((key: keyof SensoryPreferences, value: boolean) => {
+    setSensoryPreferences(previous => {
+      const next = { ...previous, [key]: value };
+      saveSensoryPreferences(next);
+      if (value) emitSensoryCue(key === 'sound' ? 'wake' : 'touch', next);
+      return next;
+    });
+  }, []);
 
   // One authored situation per creature-day gives the player something to
   // react to even when they do not know what to say in chat. The generator is
@@ -596,6 +626,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   }, [state.sleepState, showChat, initiatedTopic, onStateChange]);
 
   const handleTapCreature = useCallback(() => {
+    emitCue('touch');
     showCreatureCue({ icon: '?', label: 'notices your touch', tone: 'notice' }, 1600);
     onStateChange(prev => {
       const updated = recordBondEvent(touchCreature(prev, 'tap'), 'tap');
@@ -606,9 +637,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       }
       return updated;
     });
-  }, [onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
+  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
 
   const handleStrokeCreature = useCallback(() => {
+    emitCue('comfort');
     showCreatureCue({ icon: '♡', label: 'leans into your hand', tone: 'reaction' }, 2400);
     onStateChange(prev => {
       const updated = recordBondEvent(touchCreature(prev, 'stroke'), 'stroke');
@@ -619,18 +651,19 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       }
       return updated;
     });
-  }, [onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
+  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
 
   const handleHoldStart = useCallback(() => {}, []);
 
   const handleHoldEnd = useCallback(() => {
+    emitCue('comfort');
     showCreatureCue({ icon: '♡', label: 'settles close', tone: 'reaction' }, 2600);
     onStateChange(prev => {
       const updated = recordBondEvent(touchCreature(prev, 'hold'), 'hold');
       setTemporaryEmotion('happy', 3000);
       return updated;
     });
-  }, [onStateChange, setTemporaryEmotion, showCreatureCue]);
+  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue]);
 
   // ========== OBJECT INPUT ==========
   // A short press places/uses an object. A moved pointer repositions it. This
@@ -781,6 +814,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
 
   // ========== SLEEP ==========
   const handleSleepToggle = () => {
+    emitCue(state.sleepState === 'sleeping' ? 'wake' : 'sleep');
     if (state.sleepState === 'sleeping') {
       onStateChange(prev => wakeUp(prev));
     } else {
@@ -789,11 +823,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   };
 
   const handleOpenChatWithTopic = () => {
+    emitCue('open');
     setShowChat(true);
     setInitiatedTopic(null);
   };
 
+  const handleOpenChat = () => {
+    emitCue('open');
+    setShowChat(true);
+  };
+
   const handleMomentChoice = (choiceId: string, result: string) => {
+    emitCue('choice');
     onStateChange(prev => resolveDailyMoment(prev, choiceId));
     clearTimeout(momentResultTimerRef.current);
     setMomentResult(result);
@@ -819,6 +860,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 4);
   const recentChapters = [...state.continuity.chapters].reverse().slice(0, 3);
+  const visitRitual = getVisitRitual(state);
   const discoveredPreferences = INVENTORY_ORDER
     .map(type => ({ type, preference: state.objectPreferences[type] }))
     .filter(({ preference }) => preference.interactions >= 2 && (preference.affinity >= 12 || preference.affinity <= -8))
@@ -983,11 +1025,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
           </div>
         </button>
         <div className="flex gap-3">
-          <button onClick={() => setShowBecoming(true)} className="text-warm-200/45 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
+          <button onClick={() => { emitCue('open'); setShowBecoming(true); }} className="text-warm-200/45 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
             Becoming
           </button>
-          <button onClick={() => setShowMemoryBook(true)} className="text-warm-200/60 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
+          <button onClick={() => { emitCue('open'); setShowMemoryBook(true); }} className="text-warm-200/60 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
             Memories
+          </button>
+          <button aria-label="Settings" title="Settings" onClick={() => { emitCue('open'); setShowSettings(true); }} className="text-warm-200/35 hover:text-warm-100 text-sm leading-none transition-colors">
+            •••
           </button>
         </div>
       </div>
@@ -1042,7 +1087,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
         <button aria-label={state.sleepState === 'sleeping' ? 'Wake creature' : 'Put creature to sleep'} title={state.sleepState === 'sleeping' ? 'Wake creature' : 'Sleep'} onClick={handleSleepToggle} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
           {state.sleepState === 'sleeping' ? '☀️' : '🌙'}
         </button>
-        <button aria-label="Talk to creature" title="Talk" onClick={() => setShowChat(true)} className="w-[4.5rem] h-14 rounded-2xl bg-warm-100/90 text-room-dark backdrop-blur-sm border border-warm-50/30 flex flex-col items-center justify-center shadow-xl active:scale-95 transition-transform">
+        <button aria-label="Talk to creature" title="Talk" onClick={handleOpenChat} className="w-[4.5rem] h-14 rounded-2xl bg-warm-100/90 text-room-dark backdrop-blur-sm border border-warm-50/30 flex flex-col items-center justify-center shadow-xl active:scale-95 transition-transform">
           <span className="text-lg leading-none" aria-hidden="true">💬</span>
           <span className="text-[10px] font-serif mt-0.5">Talk</span>
         </button>
@@ -1199,6 +1244,15 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                   </div>
                 </div>
               )}
+              {(visitRitual || state.presence.sessionCount > 1) && (
+                <div className="border-l-2 border-warm-300/30 pl-4">
+                  <div className="text-warm-200/40 text-xs mb-1">Our rhythm</div>
+                  {visitRitual && <div className="text-warm-100/70 text-xs font-serif">{visitRitual}</div>}
+                  <p className="text-warm-200/40 text-[10px] font-serif mt-1">
+                    {state.presence.currentStreak > 1 ? `${state.presence.currentStreak} days finding each other again` : `${state.presence.returnCount} remembered return${state.presence.returnCount === 1 ? '' : 's'}`}
+                  </p>
+                </div>
+              )}
               <div className="border-l-2 border-warm-300/30 pl-4">
                 <div className="text-warm-200/40 text-xs mb-1">Becoming</div>
                 <div className="text-warm-100 text-sm font-serif capitalize">
@@ -1337,6 +1391,39 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
             )}
 
             <p className="mt-8 text-center text-warm-200/20 text-[9px] font-serif">No path is permanent. Repetition strengthens it; consequences and choices can bend it.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Small local controls keep sensory feedback optional. No account or
+          permission prompt is required; unsupported devices simply stay quiet. */}
+      {showSettings && (
+        <div className="absolute inset-0 bg-room-dark/95 backdrop-blur-md z-50 animate-fade-in safe-top safe-bottom safe-x overflow-auto">
+          <div className="max-w-md mx-auto p-6">
+            <div className="flex justify-between items-center mb-7">
+              <div>
+                <p className="text-warm-300/45 text-[9px] uppercase tracking-[0.22em]">Presence</p>
+                <h2 className="text-warm-100 text-xl font-serif mt-1">How the room feels</h2>
+              </div>
+              <button onClick={() => setShowSettings(false)} className="text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
+            </div>
+            <div className="space-y-3">
+              <label className="flex items-center justify-between gap-5 rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 cursor-pointer">
+                <span>
+                  <span className="block text-warm-100/85 text-sm font-serif">Quiet sounds</span>
+                  <span className="block text-warm-200/40 text-[10px] font-serif mt-1">Soft tones for touch, choices and waking.</span>
+                </span>
+                <input type="checkbox" checked={sensoryPreferences.sound} onChange={event => updateSensoryPreference('sound', event.target.checked)} className="accent-[#d8bd8f] w-5 h-5" />
+              </label>
+              <label className="flex items-center justify-between gap-5 rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 cursor-pointer">
+                <span>
+                  <span className="block text-warm-100/85 text-sm font-serif">Gentle haptics</span>
+                  <span className="block text-warm-200/40 text-[10px] font-serif mt-1">Tiny pulses on devices that support vibration.</span>
+                </span>
+                <input type="checkbox" checked={sensoryPreferences.haptics} onChange={event => updateSensoryPreference('haptics', event.target.checked)} className="accent-[#d8bd8f] w-5 h-5" />
+              </label>
+            </div>
+            <p className="text-center text-warm-200/25 text-[9px] font-serif mt-7">These choices stay only on this device.</p>
           </div>
         </div>
       )}

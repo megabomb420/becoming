@@ -425,6 +425,17 @@ export interface ContinuityState {
   lastCompressedAt: number;
 }
 
+export interface PresenceState {
+  firstOpenedAt: number;
+  lastOpenedAt: number;
+  sessionCount: number;
+  returnCount: number;
+  currentStreak: number;
+  longestStreak: number;
+  lastVisitDay: string;
+  pendingGreeting: string | null;
+}
+
 // === END CONVERSATION / GROWING MIND TYPES ===
 
 export interface GameState {
@@ -447,6 +458,7 @@ export interface GameState {
   // Persistent conversations and facts learned directly from the user
   conversation: ConversationState;
   continuity: ContinuityState;
+  presence: PresenceState;
   lastSaved: number;
   currentActivity: string | null;
   emotionalState: string;

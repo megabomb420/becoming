@@ -16,6 +16,7 @@ import {
 } from '../src/systems/innerLifeSystem';
 import { appendCreatureMessage, beginConversationTurn } from '../src/systems/conversationSystem';
 import { getDueOpenLoop, markOpenLoopAsked, migrateContinuityState } from '../src/systems/continuitySystem';
+import { consumeReturnGreeting, getVisitRitual, migratePresenceState, registerReturn } from '../src/systems/presenceSystem';
 
 let state = createHatchedCreature(createNewCreature('Test', 99117));
 state = {
@@ -161,4 +162,30 @@ const migratedContinuity = migrateContinuityState(null);
 assert.deepEqual(migratedContinuity.chapters, []);
 assert.deepEqual(migratedContinuity.openLoops, []);
 
-console.log('Life path, inner life, continuity, and mirror checks passed.');
+let present = createHatchedCreature(createNewCreature('Presence', 515));
+present = { ...present, conversation: { ...present.conversation, language: 'pl' } };
+const returnStart = 1_800_070_000_000;
+present = {
+  ...present,
+  presence: {
+    ...present.presence,
+    lastOpenedAt: returnStart - 3 * 60 * 60_000,
+    lastVisitDay: '2027-1-15',
+  },
+};
+present = registerReturn(present, 3 * 60 * 60_000, returnStart);
+assert.match(present.presence.pendingGreeting || '', /Wróciłeś|znowu/i);
+assert.equal(present.relationship.routines.find(routine => routine.type === 'visit')?.lastObserved, returnStart);
+present = consumeReturnGreeting(present);
+assert.equal(present.presence.pendingGreeting, null);
+for (let index = 1; index <= 5; index += 1) {
+  present = registerReturn(present, 24 * 60 * 60_000, returnStart + index * 24 * 60 * 60_000);
+  present = consumeReturnGreeting(present);
+}
+assert.ok(present.presence.currentStreak >= 5);
+assert.ok(getVisitRitual(present));
+const migratedPresence = migratePresenceState(null, returnStart);
+assert.equal(migratedPresence.sessionCount, 1);
+assert.equal(migratedPresence.pendingGreeting, null);
+
+console.log('Life path, inner life, continuity, mirror, and presence checks passed.');

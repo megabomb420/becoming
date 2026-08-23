@@ -3,6 +3,7 @@ import { createBondState, createObjectPreferences } from './relationshipSystem';
 import { createLifePathState } from './lifePathSystem';
 import { createInnerLifeState } from './innerLifeSystem';
 import { createContinuityState } from './continuitySystem';
+import { createPresenceState } from './presenceSystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -119,6 +120,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     socialLearning,
     conversation,
     continuity: createContinuityState(),
+    presence: createPresenceState(birthTime),
     lastSaved: birthTime,
     currentActivity: null,
     emotionalState: 'neutral',

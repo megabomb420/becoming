@@ -6,8 +6,9 @@ import { simulateOfflineTime } from './systems/offlineSimulation';
 import { updateNeeds } from './systems/needsSystem';
 import EggHatching from './components/EggHatching';
 import Room from './components/Room';
+import { registerReturn } from './systems/presenceSystem';
 
-const APP_VERSION = '0.9.12';
+const APP_VERSION = '0.9.13';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -31,12 +32,12 @@ function App() {
         if (saved.development.hatched) {
           // Simulate offline time
           const awayMs = Date.now() - saved.lastSaved;
+          let returningState = saved;
           if (awayMs > 60000) {
             const { state: updated, activities } = simulateOfflineTime(saved, awayMs);
-            setGameState(updated);
-          } else {
-            setGameState(saved);
+            returningState = updated;
           }
+          setGameState(registerReturn(returningState, awayMs));
           setShowEgg(false);
         } else {
           // Not yet hatched — show the egg
