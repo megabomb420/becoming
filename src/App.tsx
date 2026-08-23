@@ -7,8 +7,9 @@ import { updateNeeds } from './systems/needsSystem';
 import EggHatching from './components/EggHatching';
 import Room from './components/Room';
 import { registerReturn } from './systems/presenceSystem';
+import { detectUiLanguage } from './systems/uiLanguage';
 
-const APP_VERSION = '0.9.16';
+const APP_VERSION = '0.9.17';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -109,14 +110,18 @@ function App() {
 
   const handleNameChosen = useCallback((name: string) => {
     const creature = createNewCreature(name);
-    const hatched = createHatchedCreature(creature);
+    const hatched = createHatchedCreature({
+      ...creature,
+      conversation: { ...creature.conversation, language: detectUiLanguage() },
+    });
     gameStateRef.current = hatched;
     setGameState(hatched);
     saveGameState(hatched);
   }, []);
 
   const handleReset = useCallback(() => {
-    if (confirm('Start over with a new creature?')) {
+    const polish = (gameStateRef.current?.conversation.language ?? detectUiLanguage()) === 'pl';
+    if (confirm(polish ? 'Zacząć od nowa z innym stworkiem?' : 'Start over with a new creature?')) {
       saveGameState(createNewCreature()).then(() => {
         window.location.reload();
       });
@@ -126,7 +131,7 @@ function App() {
   if (loading) {
     return (
       <div className="h-screen w-screen bg-room-dark flex items-center justify-center">
-        <div className="text-warm-200/40 text-sm font-serif animate-pulse">Loading...</div>
+        <div className="text-warm-200/40 text-sm font-serif animate-pulse">{detectUiLanguage() === 'pl' ? 'Ładowanie...' : 'Loading...'}</div>
       </div>
     );
   }

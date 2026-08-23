@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { detectUiLanguage, uiText } from '../systems/uiLanguage';
 
 interface EggHatchingProps {
   onHatch: () => void;
@@ -10,6 +11,8 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
   const [tapCount, setTapCount] = useState(0);
   const [name, setName] = useState('');
   const submittedRef = useRef(false);
+  const ui = useMemo(() => detectUiLanguage(), []);
+  const t = (english: string, polish: string) => uiText(ui, english, polish);
 
   // Generate ambient particles once — NOT on every render.
   // Previously Math.random() in render caused 20 DOM nodes to be destroyed
@@ -86,7 +89,7 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
       {stage !== 'naming' && (
         <button
           type="button"
-          aria-label={stage === 'cracking' ? 'Finish hatching' : 'Tap egg to hatch'}
+          aria-label={stage === 'cracking' ? t('Finish hatching', 'Dokończ wykluwanie') : t('Tap egg to hatch', 'Dotknij jajka, aby je wykluć')}
           className="relative cursor-pointer select-none bg-transparent border-0 p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warm-200/60 rounded-full"
           onClick={handleTap}
         >
@@ -136,17 +139,17 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
           {/* Hint text */}
           {stage === 'egg' && tapCount < 2 && (
             <p className="absolute -bottom-12 left-1/2 -translate-x-1/2 text-warm-200/40 text-xs font-serif whitespace-nowrap animate-fade-in">
-              Tap to begin
+              {t('Tap to begin', 'Dotknij, aby zacząć')}
             </p>
           )}
           {stage === 'wobbling' && (
             <p className="absolute -bottom-12 left-1/2 -translate-x-1/2 text-warm-200/40 text-xs font-serif whitespace-nowrap">
-              Something moves inside
+              {t('Something moves inside', 'Coś porusza się w środku')}
             </p>
           )}
           {stage === 'cracking' && (
             <p className="absolute -bottom-12 left-1/2 -translate-x-1/2 text-warm-200/40 text-xs font-serif whitespace-nowrap">
-              Almost there...
+              {t('Almost there...', 'Już prawie...')}
             </p>
           )}
         </button>
@@ -154,13 +157,13 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
 
       {stage === 'naming' && (
         <div className="animate-fade-in text-center px-6">
-          <p className="text-warm-100/80 text-sm font-serif mb-2">A creature has emerged.</p>
-          <p className="text-warm-200/50 text-xs mb-6">What will you call it?</p>
+          <p className="text-warm-100/80 text-sm font-serif mb-2">{t('A creature has emerged.', 'Pojawił się stworek.')}</p>
+          <p className="text-warm-200/50 text-xs mb-6">{t('What will you call it?', 'Jak go nazwiesz?')}</p>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Name..."
+            placeholder={t('Name...', 'Imię...')}
             maxLength={12}
             className="bg-room-mid/50 border border-warm-200/20 rounded-xl px-4 py-3 text-warm-100 text-center text-lg font-serif w-48 focus:outline-none focus:border-warm-300/40"
             autoFocus
@@ -171,7 +174,7 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
             disabled={!name.trim()}
             className="block mx-auto mt-4 px-6 py-2 bg-warm-300/20 text-warm-100 rounded-xl text-sm font-serif disabled:opacity-30 active:scale-95 transition-transform"
           >
-            Begin
+            {t('Begin', 'Zacznij')}
           </button>
         </div>
       )}

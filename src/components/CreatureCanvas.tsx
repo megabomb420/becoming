@@ -606,7 +606,9 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     <canvas
       ref={canvasRef}
       role="button"
-      aria-label={`Interact with ${state.identity.name || 'the creature'}`}
+      aria-label={state.conversation.language === 'pl'
+        ? `Wejdź w interakcję z ${state.identity.name || 'stworkiem'}`
+        : `Interact with ${state.identity.name || 'the creature'}`}
       className="absolute inset-0 z-10 w-full h-full cursor-pointer"
       style={{ touchAction: 'none' }}
       onPointerDown={handlePointerDown}

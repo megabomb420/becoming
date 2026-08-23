@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.16
+> **Version:** 0.9.17
 > **Last Updated:** 2026-08-23
 
 ---
@@ -114,6 +114,7 @@ becoming/
 | Optional sound & haptics | ✅ | Synthesised interaction tones and restrained vibration can be controlled independently on-device |
 | Creature creations | ✅ | Paper + pencil mastery grows from a first mark into shapes, pictures, and a deliberate message kept in the room and Memory Book |
 | Private backup | ✅ | Export and restore the complete creature as a validated local JSON file with no login or cloud upload |
+| Polish + English UI | ✅ | Device-aware default plus an explicit two-language switch keeps the room, settings, backup, chat shell, and AI language aligned |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
@@ -325,6 +326,12 @@ A real browser pass at 390×844 and 320×568 exposed an overlap between the hidd
 
 Primary top controls, sheet closers, chat close, backup actions, and reset now provide at least 44-pixel targets. Top and bottom safe areas add breathing room instead of replacing it, narrow settings scroll fully, and the egg is a semantic keyboard-focusable button. The complete local hatch → room → settings → chat walkthrough produced no browser console errors or warnings.
 
+### v0.9.17 — Two Languages, One Creature
+
+Polish and English are now first-class interface languages rather than only a DeepSeek boundary. Fresh creatures use Polish on a Polish device and English elsewhere. Settings exposes exactly two choices, and changing one updates the persistent conversation language used by both the local mind and private AI gateway.
+
+Hatching, room navigation, touch labels, sleep, conversation, inventory, daily-moment framing, Memory Book sections, Becoming headings, sensory settings, backup privacy, reset, chat status, input, and send/close controls now follow the chosen language. Existing authored life-path names and historical memories remain as originally stored so language switching never rewrites a creature's past. A live switch from English to Polish at mobile width updated the shell and chat without reload or console errors.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -401,6 +408,7 @@ location.reload();
 | How chapters, open loops, and later check-ins work | `src/systems/continuitySystem.ts` |
 | How returns and shared rituals work | `src/systems/presenceSystem.ts` |
 | How optional tones and haptics work | `src/systems/sensorySystem.ts` |
+| How the two-language shell chooses copy | `src/systems/uiLanguage.ts` |
 | How paper-and-pencil creations evolve | `src/systems/creationSystem.ts` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |

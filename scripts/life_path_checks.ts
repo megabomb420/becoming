@@ -19,6 +19,7 @@ import { getDueOpenLoop, markOpenLoopAsked, migrateContinuityState } from '../sr
 import { consumeReturnGreeting, getVisitRitual, migratePresenceState, registerReturn } from '../src/systems/presenceSystem';
 import { evolveCreationFromObject, migrateCreations } from '../src/systems/creationSystem';
 import { parseImportedGameState, serializeGameState } from '../src/systems/persistence';
+import { uiLanguage, uiText } from '../src/systems/uiLanguage';
 
 let state = createHatchedCreature(createNewCreature('Test', 99117));
 state = {
@@ -224,5 +225,8 @@ assert.throws(() => parseImportedGameState('{not-json'), /valid Becoming backup/
 const incompleteBackup = JSON.parse(backup);
 delete incompleteBackup.state.relationship;
 assert.throws(() => parseImportedGameState(JSON.stringify(incompleteBackup)), /complete Becoming creature/);
+assert.equal(uiLanguage('pl'), 'pl');
+assert.equal(uiLanguage('en'), 'en');
+assert.equal(uiText('pl', 'Memories', 'Wspomnienia'), 'Wspomnienia');
 
-console.log('Life path, inner life, continuity, mirror, presence, creation, and backup checks passed.');
+console.log('Life path, inner life, continuity, mirror, presence, creation, backup, and language checks passed.');

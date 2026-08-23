@@ -31,6 +31,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
   const pathVisual = getLifePathVisual(state);
   const lifePathTitle = getLifePathTitle(state);
   const strongestInterest = getRankedInterests(state, 1)[0];
+  const polishDevelopment = {
+    egg: 'Czeka, by się pojawić.',
+    newborn: 'Słyszy twój głos, zanim rozumie wszystkie słowa.',
+    animal: 'Rozpoznaje ton i zbiera znajome dźwięki.',
+    communicating: 'Znaczenie tworzy się po jednym słowie.',
+    first_words: 'Potrafi nazwać fragmenty rosnącego świata.',
+    combining: 'Łączy słowa, wspomnienia i proste opinie.',
+    sentences: 'Rozpoznaje wzorce i pyta, co znaczą.',
+    mature: 'Mówi głosem ukształtowanym przez wspólną historię.',
+  }[state.development.stage];
+  const mindStatus = isPolish
+    ? `${lifePathTitle} · ${state.conversation.totalUserMessages} ${state.conversation.totalUserMessages === 1 ? 'wymiana' : state.conversation.totalUserMessages >= 2 && state.conversation.totalUserMessages <= 4 ? 'wymiany' : 'wymian'}`
+    : getMindStatus(state);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -120,14 +133,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
               <span className="text-[10px] uppercase tracking-widest" style={{ color: pathVisual.accent }}>{lifePathTitle}</span>
             </div>
             <p className="text-warm-200/45 text-[11px] font-serif">
-              {getMindStatus(state)} · {mindState === 'connecting' ? 'connecting mind…' : mindState === 'online' ? 'AI mind online' : mindState === 'instinct' ? 'local instinct' : isLlmAvailable() ? 'AI mind ready' : 'local instinct'}
+              {mindStatus} · {mindState === 'connecting' ? (isPolish ? 'łączenie z umysłem…' : 'connecting mind…') : mindState === 'online' ? (isPolish ? 'umysł AI online' : 'AI mind online') : mindState === 'instinct' ? (isPolish ? 'lokalny instynkt' : 'local instinct') : isLlmAvailable() ? (isPolish ? 'umysł AI gotowy' : 'AI mind ready') : (isPolish ? 'lokalny instynkt' : 'local instinct')}
             </p>
             <div className="h-0.5 mt-1.5 bg-room-mid rounded-full overflow-hidden max-w-48">
               <div className="h-full bg-warm-300/45 transition-all duration-700" style={{ width: `${Math.max(4, progress)}%` }} />
             </div>
           </div>
-          <button aria-label="Close conversation" onClick={onClose} className="min-h-11 text-warm-200/55 hover:text-warm-100 text-sm px-2 py-2 transition-colors">
-            Close
+          <button aria-label={isPolish ? 'Zamknij rozmowę' : 'Close conversation'} onClick={onClose} className="min-h-11 text-warm-200/55 hover:text-warm-100 text-sm px-2 py-2 transition-colors">
+            {isPolish ? 'Zamknij' : 'Close'}
           </button>
         </div>
       </header>
@@ -136,8 +149,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
         <div className="max-w-2xl mx-auto space-y-3">
           {messages.length === 0 && (
             <div className="text-center py-12 max-w-sm mx-auto">
-              <p className="text-warm-100/65 text-sm font-serif">{getDevelopmentDescription(state.development.stage)}</p>
-              <p className="text-warm-200/30 text-xs font-serif italic mt-2">Every message becomes part of how it grows.</p>
+              <p className="text-warm-100/65 text-sm font-serif">{isPolish ? polishDevelopment : getDevelopmentDescription(state.development.stage)}</p>
+              <p className="text-warm-200/30 text-xs font-serif italic mt-2">{isPolish ? 'Każda wiadomość staje się częścią jego rozwoju.' : 'Every message becomes part of how it grows.'}</p>
             </div>
           )}
 
@@ -157,7 +170,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
           ))}
 
           {isThinking && (
-            <div className="flex justify-start" aria-label={`${state.identity.name || 'The creature'} is thinking`}>
+            <div className="flex justify-start" aria-label={isPolish ? `${state.identity.name || 'Stworek'} myśli` : `${state.identity.name || 'The creature'} is thinking`}>
               <div className="bg-room-mid/85 px-4 py-3 rounded-2xl rounded-bl-md border border-warm-200/5">
                 <div className="flex gap-1">
                   {[0, 150, 300].map(delay => (
@@ -173,10 +186,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
       <footer className="px-4 pt-3 pb-3 border-t border-warm-200/10 bg-room-dark/90 backdrop-blur-md">
         <div className="max-w-2xl mx-auto">
           {knownFacts.length > 0 && (
-            <div className="flex gap-1.5 overflow-x-auto pb-2" aria-label="Things remembered about you">
+            <div className="flex gap-1.5 overflow-x-auto pb-2" aria-label={isPolish ? 'Rzeczy zapamiętane o tobie' : 'Things remembered about you'}>
               {knownFacts.map(fact => (
                 <span key={fact.id} className="shrink-0 rounded-full bg-room-mid/70 border border-warm-200/10 px-2.5 py-1 text-[10px] text-warm-200/50 font-serif">
-                  {fact.kind === 'name' ? 'you' : fact.kind}: {fact.value}
+                  {fact.kind === 'name' ? (isPolish ? 'ty' : 'you') : fact.kind}: {fact.value}
                 </span>
               ))}
             </div>
@@ -203,7 +216,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
               disabled={!input.trim() || isThinking}
               className="h-11 px-4 bg-warm-300/20 border border-warm-300/15 text-warm-100 rounded-xl text-sm font-serif disabled:opacity-30 active:scale-95 transition-all"
             >
-              Send
+              {isPolish ? 'Wyślij' : 'Send'}
             </button>
           </div>
           <p className="text-warm-200/20 text-[9px] mt-2 text-center font-serif">

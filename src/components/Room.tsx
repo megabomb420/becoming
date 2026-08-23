@@ -38,6 +38,7 @@ import {
 } from '../systems/sensorySystem';
 import { evolveCreationFromObject, getCreationMastery } from '../systems/creationSystem';
 import { parseImportedGameState, serializeGameState } from '../systems/persistence';
+import { uiLanguage, uiText } from '../systems/uiLanguage';
 
 interface RoomProps {
   state: GameState;
@@ -71,6 +72,41 @@ const objectLabels: Record<ObjectType, string> = {
   stone: 'stone',
   mirror: 'mirror',
 };
+
+const objectLabelsPl: Record<ObjectType, string> = {
+  food_bowl: 'miska',
+  apple: 'jabłko',
+  broccoli: 'brokuł',
+  ball: 'piłka',
+  blanket: 'koc',
+  paper: 'papier',
+  pencil: 'ołówek',
+  box: 'pudełko',
+  stone: 'kamień',
+  mirror: 'lustro',
+};
+
+function objectLabel(type: ObjectType, polish: boolean) {
+  return polish ? objectLabelsPl[type] : objectLabels[type];
+}
+
+function reactionLabel(id: string, type: ObjectType, fallback: string, polish: boolean) {
+  if (!polish) return fallback;
+  if (id.includes('save')) return `wącha ${objectLabel(type, true)} i odkłada na później`;
+  if (type === 'apple' || type === 'broccoli') return `siada i je: ${objectLabel(type, true)}`;
+  if (type === 'ball') return id.includes('tired') ? 'patrzy, jak piłka się toczy' : 'rzuca się za piłką i rozpoczyna zabawę';
+  if (type === 'blanket') return id.includes('not-now') ? 'dotyka koca, ale zostaje obok' : 'układa sobie małe gniazdo z koca';
+  if (type === 'paper' || type === 'pencil') {
+    if (id.includes('message')) return 'powoli pisze coś i zasłania łapką do samego końca';
+    if (id.includes('picture')) return 'rysuje z pamięci i co chwilę rozgląda się po pokoju';
+    if (id.includes('shape')) return 'łączy ślady w zamierzony kształt';
+    return 'stawia krzywy ślad i długo mu się przygląda';
+  }
+  if (type === 'box') return id.includes('hide') ? 'znika w pudełku, zostawiając ogon na zewnątrz' : 'ostrożnie zagląda do pudełka';
+  if (type === 'mirror') return id.includes('reflection') ? 'patrzy sobie w oczy i zostaje z tą myślą' : id.includes('recognized') || id.includes('recognition') ? 'dotyka własnej twarzy, potem odbicia' : 'przechyla głowę razem z odbiciem';
+  if (type === 'stone') return id.includes('treasure') ? 'wybiera staranne miejsce dla ulubionego kamienia' : 'obraca kamień i sprawdza, co jest pod spodem';
+  return 'sprawdza miskę';
+}
 
 const INVENTORY_ORDER: ObjectType[] = [
   'apple',
@@ -157,6 +193,9 @@ interface CreatureCue {
 }
 
 const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) => {
+  const ui = uiLanguage(state.conversation.language);
+  const polish = ui === 'pl';
+  const t = (english: string, polishText: string) => uiText(ui, english, polishText);
   const [speech, setSpeech] = useState<string | null>(null);
   const [showMemoryBook, setShowMemoryBook] = useState(false);
   const [showBecoming, setShowBecoming] = useState(false);
@@ -243,25 +282,25 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1_000);
-    setBackupStatus('Backup saved to this device.');
-  }, []);
+    setBackupStatus(polish ? 'Backup zapisano na tym urządzeniu.' : 'Backup saved to this device.');
+  }, [polish]);
 
   const importCreature = useCallback(async (file: File | undefined) => {
     if (!file) return;
     try {
-      if (file.size > 2_000_000) throw new Error('This backup is too large.');
+      if (file.size > 2_000_000) throw new Error(polish ? 'Ten backup jest za duży.' : 'This backup is too large.');
       const imported = parseImportedGameState(await file.text());
-      const name = imported.identity.name || 'this creature';
-      if (!window.confirm(`Replace the creature on this device with ${name}?`)) return;
+      const name = imported.identity.name || (polish ? 'ten stworek' : 'this creature');
+      if (!window.confirm(polish ? `Zastąpić obecnego stworka na tym urządzeniu stworkiem ${name}?` : `Replace the creature on this device with ${name}?`)) return;
       onStateChange(imported);
-      setBackupStatus(`${name} is here. The imported memories are now active.`);
+      setBackupStatus(polish ? `${name} już tu jest. Wczytane wspomnienia są aktywne.` : `${name} is here. The imported memories are now active.`);
       setShowSettings(false);
     } catch (error) {
-      setBackupStatus(error instanceof Error ? error.message : 'The backup could not be opened.');
+      setBackupStatus(error instanceof Error ? error.message : polish ? 'Nie udało się otworzyć backupu.' : 'The backup could not be opened.');
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
-  }, [onStateChange]);
+  }, [onStateChange, polish]);
 
   // One authored situation per creature-day gives the player something to
   // react to even when they do not know what to say in chat. The generator is
@@ -312,6 +351,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setIsMoving(false);
 
     const reaction = chooseObjectReaction(stateRef.current, type);
+    const localizedReaction = reactionLabel(reaction.id, type, reaction.label, polish);
     const reactionDuration = reaction.duration;
     const reactionEmotion = reaction.emotion;
     const speechTrigger = type === 'ball' ? 'play' : type === 'apple' || type === 'broccoli' ? 'food' : type;
@@ -323,7 +363,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         position: target,
         facing,
         creatureBehavior: reaction.behavior,
-        currentActivity: reaction.activity,
+        currentActivity: localizedReaction,
         needs: {
           hunger: Math.max(0, Math.min(100, prev.needs.hunger + (reaction.needDelta.hunger ?? 0))),
           energy: Math.max(0, Math.min(100, prev.needs.energy + (reaction.needDelta.energy ?? 0))),
@@ -380,7 +420,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     });
 
     behaviorRef.current = reaction.behavior;
-    showCreatureCue({ icon: reaction.icon, label: reaction.label, tone: 'reaction' }, reactionDuration);
+    showCreatureCue({ icon: reaction.icon, label: localizedReaction, tone: 'reaction' }, reactionDuration);
     setTemporaryEmotion(reactionEmotion, reactionDuration);
     const spoken = generateCreatureSpeech(stateRef.current, {
       trigger: speechTrigger,
@@ -400,7 +440,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         roomObjects: prev.roomObjects.map(obj => obj.beingUsedByCreature ? { ...obj, beingUsedByCreature: false } : obj),
       }));
     }, reactionDuration);
-  }, [onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
+  }, [onStateChange, polish, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
 
   const beginObjectInteraction = useCallback((object: RoomObject, initiatedByUser = true) => {
     const currentState = stateRef.current;
@@ -423,12 +463,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
     behaviorRef.current = 'observing';
     setTemporaryEmotion('curious', noticeDelay + 900);
-    showCreatureCue({ icon: '!', label: `notices the ${objectLabels[object.type]}`, tone: 'notice' });
+    showCreatureCue({ icon: '!', label: polish ? `zauważa: ${objectLabel(object.type, true)}` : `notices the ${objectLabel(object.type, false)}`, tone: 'notice' });
     onStateChange(prev => ({
       ...prev,
       facing: object.x > currentPos.x ? 'right' : object.x < currentPos.x ? 'left' : prev.facing,
       creatureBehavior: 'observing',
-      currentActivity: `noticing the ${objectLabels[object.type]}`,
+      currentActivity: polish ? `zauważa ${objectLabel(object.type, true)}` : `noticing the ${objectLabel(object.type, false)}`,
       roomObjects: prev.roomObjects.map(obj => ({
         ...obj,
         beingUsedByCreature: obj.id === object.id,
@@ -441,12 +481,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       behaviorRef.current = 'walking';
       setIsMoving(true);
       setCreaturePos(target);
-      showCreatureCue({ icon: '→', label: `goes to the ${objectLabels[object.type]}`, tone: 'movement' });
+      showCreatureCue({ icon: '→', label: polish ? `idzie do: ${objectLabel(object.type, true)}` : `goes to the ${objectLabel(object.type, false)}`, tone: 'movement' });
       onStateChange(prev => ({
         ...prev,
         facing: target.x > prev.position.x ? 'right' : target.x < prev.position.x ? 'left' : prev.facing,
         creatureBehavior: 'walking',
-        currentActivity: `approaching the ${objectLabels[object.type]}`,
+        currentActivity: polish ? `podchodzi do ${objectLabel(object.type, true)}` : `approaching the ${objectLabel(object.type, false)}`,
       }));
 
       movementTimerRef.current = setTimeout(() => {
@@ -455,7 +495,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         }
       }, travelTime);
     }, noticeDelay);
-  }, [clearActionTimers, finishObjectInteraction, onStateChange, setTemporaryEmotion, showCreatureCue]);
+  }, [clearActionTimers, finishObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue]);
 
   const walkToIdlePosition = useCallback((targetInput: { x: number; y: number }) => {
     if (activeObjectRef.current || stateRef.current.sleepState === 'sleeping') return;
@@ -941,8 +981,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <button
           type="button"
           key={obj.id}
-          aria-label={`Use ${objectLabels[obj.type]}`}
-          title={`Use ${objectLabels[obj.type]}`}
+          aria-label={polish ? `Użyj: ${objectLabel(obj.type, true)}` : `Use ${objectLabel(obj.type, false)}`}
+          title={objectLabel(obj.type, polish)}
           className={`absolute z-20 select-none transition-all p-2 -m-2 bg-transparent border-0 ${
             obj.beingUsedByCreature ? 'scale-110 drop-shadow-[0_0_10px_rgba(220,195,150,0.45)]' : 'hover:scale-110'
           }`}
@@ -1022,7 +1062,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       {state.currentActivity && !creatureCue && state.sleepState !== 'sleeping' && (
         <div className="absolute top-[10%] left-1/2 -translate-x-1/2 z-30 pointer-events-none" aria-live="polite">
           <p className="text-warm-200/45 text-[11px] font-serif italic tracking-wide whitespace-nowrap animate-fade-in">
-            {state.identity.name || 'The creature'} is {state.currentActivity}
+            {polish ? `${state.identity.name || 'Stworek'} ${state.currentActivity}` : `${state.identity.name || 'The creature'} is ${state.currentActivity}`}
           </p>
         </div>
       )}
@@ -1068,9 +1108,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </button>
         <div className="flex gap-1 items-start">
           <button onClick={() => { emitCue('open'); setShowMemoryBook(true); }} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
-            Memories
+            {t('Memories', 'Wspomnienia')}
           </button>
-          <button aria-label="Settings" title="Settings" onClick={() => { emitCue('open'); setShowSettings(true); }} className="min-h-11 -my-2 px-2 py-2 text-warm-200/35 hover:text-warm-100 text-sm leading-none transition-colors">
+          <button aria-label={t('Settings', 'Ustawienia')} title={t('Settings', 'Ustawienia')} onClick={() => { emitCue('open'); setShowSettings(true); }} className="min-h-11 -my-2 px-2 py-2 text-warm-200/35 hover:text-warm-100 text-sm leading-none transition-colors">
             •••
           </button>
         </div>
@@ -1082,7 +1122,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <div className="absolute left-4 right-4 bottom-24 z-40 animate-slide-up">
           <div className="max-w-md mx-auto rounded-2xl border border-warm-300/20 bg-room-dark/94 backdrop-blur-xl p-4 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/55">A moment · Day {state.lifePath.pendingMoment.day}</p>
+              <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/55">{t('A moment', 'Chwila')} · {t('Day', 'Dzień')} {state.lifePath.pendingMoment.day}</p>
               <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: pathVisual.accent }} />
             </div>
             <h2 className="text-warm-100 text-base font-serif mt-1">{state.lifePath.pendingMoment.title}</h2>
@@ -1105,7 +1145,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       {momentResult && !showChat && !showMemoryBook && !showBecoming && (
         <div className="absolute left-5 right-5 bottom-24 z-40 pointer-events-none animate-cue-pop">
           <div className="max-w-sm mx-auto rounded-2xl border border-warm-300/20 bg-room-mid/94 backdrop-blur-xl px-4 py-3 text-center shadow-2xl">
-            <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/45">This became a memory</p>
+            <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/45">{t('This became a memory', 'To stało się wspomnieniem')}</p>
             <p className="text-warm-100/85 text-xs font-serif leading-relaxed mt-1">{momentResult}</p>
           </div>
         </div>
@@ -1114,23 +1154,23 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       {/* Conversation is the primary way this creature grows. */}
       {state.conversation.totalUserMessages === 0 && !showInventory && state.sleepState !== 'sleeping' && (
         <button
-          onClick={() => setShowChat(true)}
+          onClick={handleOpenChat}
           className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 rounded-full bg-warm-100/90 text-room-dark px-4 py-2 text-xs font-serif shadow-xl animate-cue-pop"
         >
-          Talk to {state.identity.name || 'the creature'}
+          {polish ? `Porozmawiaj z ${state.identity.name || 'stworkiem'}` : `Talk to ${state.identity.name || 'the creature'}`}
         </button>
       )}
 
       {/* Bottom controls */}
       <div className="absolute bottom-0 left-0 right-0 safe-bottom px-4 py-4 flex justify-center items-end gap-3 z-30">
-        <button aria-label={state.sleepState === 'sleeping' ? 'Wake creature' : 'Put creature to sleep'} title={state.sleepState === 'sleeping' ? 'Wake creature' : 'Sleep'} onClick={handleSleepToggle} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
+        <button aria-label={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Put creature to sleep', 'Połóż stworka spać')} title={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Sleep', 'Sen')} onClick={handleSleepToggle} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
           {state.sleepState === 'sleeping' ? '☀️' : '🌙'}
         </button>
-        <button aria-label="Talk to creature" title="Talk" onClick={handleOpenChat} className="w-[4.5rem] h-14 rounded-2xl bg-warm-100/90 text-room-dark backdrop-blur-sm border border-warm-50/30 flex flex-col items-center justify-center shadow-xl active:scale-95 transition-transform">
+        <button aria-label={t('Talk to creature', 'Porozmawiaj ze stworkiem')} title={t('Talk', 'Rozmowa')} onClick={handleOpenChat} className="w-[4.5rem] h-14 rounded-2xl bg-warm-100/90 text-room-dark backdrop-blur-sm border border-warm-50/30 flex flex-col items-center justify-center shadow-xl active:scale-95 transition-transform">
           <span className="text-lg leading-none" aria-hidden="true">💬</span>
-          <span className="text-[10px] font-serif mt-0.5">Talk</span>
+          <span className="text-[10px] font-serif mt-0.5">{t('Talk', 'Rozmowa')}</span>
         </button>
-        <button aria-label="Open things" title="Things" aria-expanded={showInventory} onClick={() => setShowInventory(!showInventory)} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
+        <button aria-label={t('Open things', 'Otwórz rzeczy')} title={t('Things', 'Rzeczy')} aria-expanded={showInventory} onClick={() => setShowInventory(!showInventory)} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
           📦
         </button>
       </div>
@@ -1140,17 +1180,17 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <div className="absolute bottom-20 left-4 right-4 bg-room-mid/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl z-40 animate-slide-up">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <p className="text-warm-100/75 text-xs font-serif">Things</p>
-              <p className="text-warm-200/40 text-[10px] font-serif">Tap to place · drag to choose a spot</p>
+              <p className="text-warm-100/75 text-xs font-serif">{t('Things', 'Rzeczy')}</p>
+              <p className="text-warm-200/40 text-[10px] font-serif">{t('Tap to place · drag to choose a spot', 'Dotknij, aby położyć · przeciągnij, aby wybrać miejsce')}</p>
             </div>
             {state.roomObjects.length > 0 && (
               <button onClick={handleTidyRoom} className="text-warm-200/45 hover:text-warm-100 text-[10px] font-serif border border-warm-200/10 rounded-lg px-2.5 py-1.5">
-                Tidy room
+                {t('Tidy room', 'Posprzątaj')}
               </button>
             )}
           </div>
           {state.inventory.length === 0 ? (
-            <p className="text-warm-200/30 text-xs text-center font-serif italic py-2">Everything is in the room</p>
+            <p className="text-warm-200/30 text-xs text-center font-serif italic py-2">{t('Everything is in the room', 'Wszystko jest już w pokoju')}</p>
           ) : (
             <div className="flex gap-2 flex-wrap justify-center">
               {[...state.inventory]
@@ -1159,8 +1199,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                 <button
                   type="button"
                   key={type}
-                  aria-label={`Place ${objectLabels[type]}`}
-                  title={objectLabels[type]}
+                  aria-label={polish ? `Połóż: ${objectLabel(type, true)}` : `Place ${objectLabel(type, false)}`}
+                  title={objectLabel(type, polish)}
                   className="w-12 h-12 rounded-xl bg-room-dark/25 border border-warm-200/5 text-3xl cursor-grab active:scale-110 transition-transform select-none flex items-center justify-center"
                   style={{ touchAction: 'none', filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))' }}
                   onPointerDown={(e) => startPointerSession({ source: 'inventory', type }, e)}
@@ -1181,23 +1221,23 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <div className="absolute inset-0 bg-room-dark/95 backdrop-blur-md z-50 animate-fade-in safe-top safe-bottom safe-x overflow-auto">
           <div className="max-w-md mx-auto p-6">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-warm-100 text-xl font-serif">Memory Book</h2>
-              <button onClick={() => setShowMemoryBook(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
+              <h2 className="text-warm-100 text-xl font-serif">{t('Memory Book', 'Księga wspomnień')}</h2>
+              <button onClick={() => setShowMemoryBook(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">{t('Close', 'Zamknij')}</button>
             </div>
             <div className="space-y-4">
               <div className="border-l-2 border-warm-300/30 pl-4">
-                <div className="text-warm-200/40 text-xs mb-1">Day 1</div>
-                <div className="text-warm-100 text-sm font-serif">Arrived.</div>
+                <div className="text-warm-200/40 text-xs mb-1">{t('Day 1', 'Dzień 1')}</div>
+                <div className="text-warm-100 text-sm font-serif">{t('Arrived.', 'Pojawił się.')}</div>
               </div>
               <div className="border-l-2 border-warm-300/30 pl-4">
-                <div className="text-warm-200/40 text-xs mb-1">Growing mind</div>
+                <div className="text-warm-200/40 text-xs mb-1">{t('Growing mind', 'Rosnący umysł')}</div>
                 <div className="text-warm-100 text-sm font-serif">{developmentLabel}</div>
                 <p className="text-warm-200/55 text-xs font-serif italic mt-1.5">
                   {getDevelopmentDescription(state.development.stage)}
                 </p>
                 <p className="text-warm-200/35 text-[10px] font-serif mt-2">
-                  {state.conversation.totalUserMessages} conversation{state.conversation.totalUserMessages === 1 ? '' : 's'} remembered
-                  {ageDays > 0 ? ` · Day ${ageDays}` : ''}
+                  {polish ? `Zapamiętane rozmowy: ${state.conversation.totalUserMessages}` : `${state.conversation.totalUserMessages} conversation${state.conversation.totalUserMessages === 1 ? '' : 's'} remembered`}
+                  {ageDays > 0 ? ` · ${t('Day', 'Dzień')} ${ageDays}` : ''}
                 </p>
                 {state.conversation.facts.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
@@ -1213,13 +1253,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                 )}
                 {state.socialLearning.imitated.length > 0 && (
                   <p className="text-warm-200/45 text-[10px] font-serif mt-2">
-                    Learning from you: {state.socialLearning.imitated.slice(-3).map(habit => `${habit.action} ${habit.target}`).join(', ')}
+                    {t('Learning from you', 'Uczy się od ciebie')}: {state.socialLearning.imitated.slice(-3).map(habit => `${habit.action} ${habit.target}`).join(', ')}
                   </p>
                 )}
               </div>
               {(rankedInterests.length > 0 || latestDream || confidentOpinions.length > 0 || state.innerLife.selfAwareness.stage !== 'unaware') && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
-                  <div className="text-warm-200/40 text-xs mb-1">Inner life</div>
+                  <div className="text-warm-200/40 text-xs mb-1">{t('Inner life', 'Życie wewnętrzne')}</div>
                   {rankedInterests.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {rankedInterests.map(interest => (
@@ -1231,7 +1271,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   )}
                   {latestDream && (
                     <div className="mt-3 rounded-xl bg-room-dark/25 border border-warm-200/5 p-3">
-                      <p className="text-[9px] uppercase tracking-widest text-warm-300/40">Last dream · {latestDream.mood}</p>
+                      <p className="text-[9px] uppercase tracking-widest text-warm-300/40">{t('Last dream', 'Ostatni sen')} · {latestDream.mood}</p>
                       <p className="text-warm-100/70 text-xs font-serif italic mt-1">{latestDream.fragment}</p>
                     </div>
                   )}
@@ -1245,7 +1285,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                     </div>
                   )}
                   {state.innerLife.privateThoughts.some(thought => !thought.revealedAt) && (
-                    <p className="text-warm-300/35 text-[9px] font-serif mt-3">Some thoughts are still private. Trust may uncover them.</p>
+                    <p className="text-warm-300/35 text-[9px] font-serif mt-3">{t('Some thoughts are still private. Trust may uncover them.', 'Niektóre myśli nadal są prywatne. Zaufanie może je odsłonić.')}</p>
                   )}
                   {state.innerLife.selfAwareness.stage !== 'unaware' && (
                     <div className="mt-3 pt-3 border-t border-warm-200/5">
@@ -1259,7 +1299,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               )}
               {activeConversationLoops.length > 0 && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
-                  <div className="text-warm-200/40 text-xs mb-1">Things left open</div>
+                  <div className="text-warm-200/40 text-xs mb-1">{t('Things left open', 'Niedokończone tematy')}</div>
                   <div className="space-y-1.5 mt-2">
                     {activeConversationLoops.map(loop => (
                       <div key={loop.id} className="flex items-start gap-2 text-[10px] font-serif">
@@ -1272,7 +1312,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               )}
               {recentChapters.length > 0 && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
-                  <div className="text-warm-200/40 text-xs mb-2">Our chapters</div>
+                  <div className="text-warm-200/40 text-xs mb-2">{t('Our chapters', 'Nasze rozdziały')}</div>
                   <div className="space-y-3">
                     {recentChapters.map(chapter => (
                       <div key={chapter.id}>
@@ -1285,7 +1325,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               )}
               {recentCreations.length > 0 && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
-                  <div className="text-warm-200/40 text-xs mb-2">Things made</div>
+                  <div className="text-warm-200/40 text-xs mb-2">{t('Things made', 'Rzeczy stworzone')}</div>
                   <div className="grid grid-cols-2 gap-2">
                     {recentCreations.map(creation => (
                       <div key={creation.id} className="rounded-xl border border-warm-200/10 bg-room-mid/35 p-3 min-h-[112px] flex flex-col">
@@ -1300,7 +1340,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               )}
               {(visitRitual || state.presence.sessionCount > 1) && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
-                  <div className="text-warm-200/40 text-xs mb-1">Our rhythm</div>
+                  <div className="text-warm-200/40 text-xs mb-1">{t('Our rhythm', 'Nasz rytm')}</div>
                   {visitRitual && <div className="text-warm-100/70 text-xs font-serif">{visitRitual}</div>}
                   <p className="text-warm-200/40 text-[10px] font-serif mt-1">
                     {state.presence.currentStreak > 1 ? `${state.presence.currentStreak} days finding each other again` : `${state.presence.returnCount} remembered return${state.presence.returnCount === 1 ? '' : 's'}`}
@@ -1308,7 +1348,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                 </div>
               )}
               <div className="border-l-2 border-warm-300/30 pl-4">
-                <div className="text-warm-200/40 text-xs mb-1">Becoming</div>
+                <div className="text-warm-200/40 text-xs mb-1">{t('Becoming', 'Stawanie się')}</div>
                 <div className="text-warm-100 text-sm font-serif capitalize">
                   {emergingTraits.join(' · ')}
                 </div>
@@ -1337,7 +1377,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               )}
               {state.socialLearning.observations.filter(o => o.exposureCount >= 2).length > 0 && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
-                  <div className="text-warm-200/40 text-xs mb-1">Observed</div>
+                  <div className="text-warm-200/40 text-xs mb-1">{t('Observed', 'Zaobserwowane')}</div>
                   <div className="text-warm-100 text-sm font-serif">
                     {state.socialLearning.observations
                       .filter(o => o.exposureCount >= 2)
@@ -1371,14 +1411,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           <div className="max-w-md mx-auto p-6">
             <div className="flex justify-between items-start gap-4 mb-7">
               <div>
-                <p className="text-warm-300/45 text-[9px] uppercase tracking-[0.22em]">What I am becoming</p>
+                <p className="text-warm-300/45 text-[9px] uppercase tracking-[0.22em]">{t('What I am becoming', 'Kim się staję')}</p>
                 <h2 className="text-warm-100 text-2xl font-serif mt-1">{lifePathTitle}</h2>
                 <p className="text-[10px] uppercase tracking-widest mt-1" style={{ color: pathVisual.accent }}>{state.lifePath.phase}</p>
                 <p className="text-warm-200/30 text-[9px] font-serif mt-1">
                   Skin · {state.lifePath.phase === 'embodied' ? 'full form' : state.lifePath.secondary ? 'hybrid signs' : state.lifePath.phase === 'committed' ? 'settling in' : state.lifePath.phase === 'recovering' ? 'changing again' : 'first signs'}
                 </p>
               </div>
-              <button onClick={() => setShowBecoming(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
+              <button onClick={() => setShowBecoming(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">{t('Close', 'Zamknij')}</button>
             </div>
 
             <div className="rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 shadow-xl" style={{ boxShadow: `0 18px 70px ${pathVisual.aura}` }}>
@@ -1392,17 +1432,17 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             </div>
 
             <div className="mt-6">
-              <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Visible tendencies</h3>
+              <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">{t('Visible tendencies', 'Widoczne skłonności')}</h3>
               <div className="space-y-2 mt-3">
                 {lifePathClues.length > 0 ? lifePathClues.map(clue => (
                   <div key={clue} className="border-l border-warm-300/30 pl-3 text-warm-100/75 text-xs font-serif leading-relaxed">{clue}</div>
-                )) : <p className="text-warm-200/35 text-xs font-serif italic">Still too young to have hardened into a type.</p>}
+                )) : <p className="text-warm-200/35 text-xs font-serif italic">{t('Still too young to have hardened into a type.', 'Jeszcze za młody, by ukształtować się w konkretny typ.')}</p>}
               </div>
             </div>
 
             {(rankedInterests.length > 0 || state.innerLife.selfAwareness.stage !== 'unaware' || state.creations.length > 0) && (
               <div className="mt-6">
-                <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Inner weather</h3>
+                <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">{t('Inner weather', 'Wewnętrzna pogoda')}</h3>
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   {rankedInterests.map(interest => (
                     <div key={interest.type} className="rounded-xl border border-warm-200/10 bg-room-mid/35 px-3 py-2">
@@ -1422,7 +1462,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             )}
 
             <div className="mt-6">
-              <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Pull of possible lives</h3>
+              <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">{t('Pull of possible lives', 'Przyciąganie możliwych żyć')}</h3>
               <div className="space-y-2.5 mt-3">
                 {rankedLifePaths.map(path => (
                   <div key={path.id}>
@@ -1435,7 +1475,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
             {state.lifePath.history.length > 0 && (
               <div className="mt-7">
-                <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Turns in the road</h3>
+                <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">{t('Turns in the road', 'Zakręty na drodze')}</h3>
                 <div className="space-y-3 mt-3">
                   {[...state.lifePath.history].reverse().slice(0, 6).map(item => (
                     <div key={item.id} className="border-l-2 border-warm-300/20 pl-3">
@@ -1447,7 +1487,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               </div>
             )}
 
-            <p className="mt-8 text-center text-warm-200/20 text-[9px] font-serif">No path is permanent. Repetition strengthens it; consequences and choices can bend it.</p>
+            <p className="mt-8 text-center text-warm-200/20 text-[9px] font-serif">{t('No path is permanent. Repetition strengthens it; consequences and choices can bend it.', 'Żadna droga nie jest stała. Powtórzenia ją wzmacniają, a konsekwencje i wybory mogą ją zmienić.')}</p>
           </div>
         </div>
       )}
@@ -1459,46 +1499,62 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           <div className="max-w-md mx-auto p-6">
             <div className="flex justify-between items-center mb-7">
               <div>
-                <p className="text-warm-300/45 text-[9px] uppercase tracking-[0.22em]">Presence</p>
-                <h2 className="text-warm-100 text-xl font-serif mt-1">How the room feels</h2>
+                <p className="text-warm-300/45 text-[9px] uppercase tracking-[0.22em]">{t('Presence', 'Obecność')}</p>
+                <h2 className="text-warm-100 text-xl font-serif mt-1">{t('How the room feels', 'Jak czuje się ten pokój')}</h2>
               </div>
-              <button onClick={() => setShowSettings(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
+              <button onClick={() => setShowSettings(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">{t('Close', 'Zamknij')}</button>
             </div>
             <div className="space-y-3">
+              <div className="rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4">
+                <div className="text-warm-100/85 text-sm font-serif">{t('Language', 'Język')}</div>
+                <p className="text-warm-200/40 text-[10px] font-serif mt-1">{t('Becoming speaks only Polish or English.', 'Becoming mówi tylko po polsku lub angielsku.')}</p>
+                <div className="grid grid-cols-2 gap-2 mt-3" role="group" aria-label={t('Language', 'Język')}>
+                  {(['pl', 'en'] as const).map(language => (
+                    <button
+                      key={language}
+                      aria-pressed={ui === language}
+                      onClick={() => onStateChange(prev => ({ ...prev, conversation: { ...prev.conversation, language } }))}
+                      className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-serif transition-colors ${ui === language ? 'border-warm-300/35 bg-warm-300/15 text-warm-100' : 'border-warm-200/10 bg-room-dark/25 text-warm-200/45'}`}
+                    >
+                      {language === 'pl' ? 'Polski' : 'English'}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label className="flex items-center justify-between gap-5 rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 cursor-pointer">
                 <span>
-                  <span className="block text-warm-100/85 text-sm font-serif">Quiet sounds</span>
-                  <span className="block text-warm-200/40 text-[10px] font-serif mt-1">Soft tones for touch, choices and waking.</span>
+                  <span className="block text-warm-100/85 text-sm font-serif">{t('Quiet sounds', 'Ciche dźwięki')}</span>
+                  <span className="block text-warm-200/40 text-[10px] font-serif mt-1">{t('Soft tones for touch, choices and waking.', 'Delikatne tony przy dotyku, wyborach i budzeniu.')}</span>
                 </span>
                 <input type="checkbox" checked={sensoryPreferences.sound} onChange={event => updateSensoryPreference('sound', event.target.checked)} className="accent-[#d8bd8f] w-5 h-5" />
               </label>
               <label className="flex items-center justify-between gap-5 rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 cursor-pointer">
                 <span>
-                  <span className="block text-warm-100/85 text-sm font-serif">Gentle haptics</span>
-                  <span className="block text-warm-200/40 text-[10px] font-serif mt-1">Tiny pulses on devices that support vibration.</span>
+                  <span className="block text-warm-100/85 text-sm font-serif">{t('Gentle haptics', 'Delikatne wibracje')}</span>
+                  <span className="block text-warm-200/40 text-[10px] font-serif mt-1">{t('Tiny pulses on devices that support vibration.', 'Krótkie impulsy na urządzeniach obsługujących wibracje.')}</span>
                 </span>
                 <input type="checkbox" checked={sensoryPreferences.haptics} onChange={event => updateSensoryPreference('haptics', event.target.checked)} className="accent-[#d8bd8f] w-5 h-5" />
               </label>
               <div className="rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4">
-                <div className="text-warm-100/85 text-sm font-serif">Keep this creature</div>
-                <p className="text-warm-200/40 text-[10px] font-serif mt-1 leading-relaxed">A private file can carry the whole life, memories, chats and creations to another device. Nothing is uploaded.</p>
+                <div className="text-warm-100/85 text-sm font-serif">{t('Keep this creature', 'Zachowaj tego stworka')}</div>
+                <p className="text-warm-200/40 text-[10px] font-serif mt-1 leading-relaxed">{t('A private file can carry the whole life, memories, chats and creations to another device. Nothing is uploaded.', 'Prywatny plik przeniesie całe życie, wspomnienia, rozmowy i prace na inne urządzenie. Nic nie jest wysyłane.')}</p>
                 <div className="grid grid-cols-2 gap-2 mt-3">
-                  <button onClick={exportCreature} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">Save backup</button>
-                  <button onClick={() => importInputRef.current?.click()} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">Open backup</button>
+                  <button onClick={exportCreature} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">{t('Save backup', 'Zapisz backup')}</button>
+                  <button onClick={() => importInputRef.current?.click()} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">{t('Open backup', 'Otwórz backup')}</button>
                 </div>
                 <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={event => void importCreature(event.target.files?.[0])} />
-                <p className="text-warm-300/35 text-[9px] font-serif mt-3">The file contains personal conversations. Store it somewhere you trust.</p>
+                <p className="text-warm-300/35 text-[9px] font-serif mt-3">{t('The file contains personal conversations. Store it somewhere you trust.', 'Plik zawiera prywatne rozmowy. Przechowuj go w zaufanym miejscu.')}</p>
               </div>
               {onReset && (
                 <div className="rounded-2xl border border-red-200/10 bg-room-mid/25 p-4">
-                  <div className="text-warm-100/70 text-sm font-serif">Begin another life</div>
-                  <p className="text-warm-200/35 text-[10px] font-serif mt-1">Save a backup first if you may want to return to this creature.</p>
-                  <button onClick={onReset} className="mt-3 min-h-11 w-full rounded-xl border border-red-200/15 px-3 py-2 text-red-100/55 text-xs font-serif active:scale-[0.98] transition-transform">Start over</button>
+                  <div className="text-warm-100/70 text-sm font-serif">{t('Begin another life', 'Zacznij inne życie')}</div>
+                  <p className="text-warm-200/35 text-[10px] font-serif mt-1">{t('Save a backup first if you may want to return to this creature.', 'Najpierw zapisz backup, jeśli możesz chcieć wrócić do tego stworka.')}</p>
+                  <button onClick={onReset} className="mt-3 min-h-11 w-full rounded-xl border border-red-200/15 px-3 py-2 text-red-100/55 text-xs font-serif active:scale-[0.98] transition-transform">{t('Start over', 'Zacznij od nowa')}</button>
                 </div>
               )}
             </div>
             {backupStatus && <p className="text-center text-warm-100/55 text-[10px] font-serif mt-5">{backupStatus}</p>}
-            <p className="text-center text-warm-200/25 text-[9px] font-serif mt-7">Sensory choices stay only on this device.</p>
+            <p className="text-center text-warm-200/25 text-[9px] font-serif mt-7">{t('Sensory choices stay only on this device.', 'Ustawienia dźwięku i wibracji zostają tylko na tym urządzeniu.')}</p>
           </div>
         </div>
       )}
