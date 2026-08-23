@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.17
+> **Version:** 0.9.18
 > **Last Updated:** 2026-08-23
 
 ---
@@ -115,6 +115,7 @@ becoming/
 | Creature creations | ✅ | Paper + pencil mastery grows from a first mark into shapes, pictures, and a deliberate message kept in the room and Memory Book |
 | Private backup | ✅ | Export and restore the complete creature as a validated local JSON file with no login or cloud upload |
 | Polish + English UI | ✅ | Device-aware default plus an explicit two-language switch keeps the room, settings, backup, chat shell, and AI language aligned |
+| Visible PWA updates | ✅ | A bilingual update card replaces silently stale service-worker sessions and preserves all local creature state |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
@@ -331,6 +332,12 @@ Primary top controls, sheet closers, chat close, backup actions, and reset now p
 Polish and English are now first-class interface languages rather than only a DeepSeek boundary. Fresh creatures use Polish on a Polish device and English elsewhere. Settings exposes exactly two choices, and changing one updates the persistent conversation language used by both the local mind and private AI gateway.
 
 Hatching, room navigation, touch labels, sleep, conversation, inventory, daily-moment framing, Memory Book sections, Becoming headings, sensory settings, backup privacy, reset, chat status, input, and send/close controls now follow the chosen language. Existing authored life-path names and historical memories remain as originally stored so language switching never rewrites a creature's past. A live switch from English to Polish at mobile width updated the shell and chat without reload or console errors.
+
+### v0.9.18 — Fresh Without Forgetting
+
+The PWA no longer relies on a silent auto-update that can leave an already controlled tab showing an old bundle after deployment. Service-worker registration now uses the prompt flow. When a new build finishes downloading, a small Polish or English card explains that the creature and memories are safe, then offers “Later” or an explicit update and reload.
+
+The update UI is available during loading, hatching, and the room, uses mobile-safe 44-pixel actions, and never clears IndexedDB. Registration is owned by the React integration rather than a second injected script, preventing duplicate service-worker registrations.
 
 ---
 

@@ -8,8 +8,10 @@ import EggHatching from './components/EggHatching';
 import Room from './components/Room';
 import { registerReturn } from './systems/presenceSystem';
 import { detectUiLanguage } from './systems/uiLanguage';
+import { uiLanguage } from './systems/uiLanguage';
+import PwaUpdateNotice from './components/PwaUpdateNotice';
 
-const APP_VERSION = '0.9.17';
+const APP_VERSION = '0.9.18';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -130,17 +132,23 @@ function App() {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen bg-room-dark flex items-center justify-center">
-        <div className="text-warm-200/40 text-sm font-serif animate-pulse">{detectUiLanguage() === 'pl' ? 'Ładowanie...' : 'Loading...'}</div>
-      </div>
+      <>
+        <div className="h-screen w-screen bg-room-dark flex items-center justify-center">
+          <div className="text-warm-200/40 text-sm font-serif animate-pulse">{detectUiLanguage() === 'pl' ? 'Ładowanie...' : 'Loading...'}</div>
+        </div>
+        <PwaUpdateNotice language={detectUiLanguage()} />
+      </>
     );
   }
 
   if (showEgg) {
     return (
-      <div className="h-screen w-screen">
-        <EggHatching onHatch={handleHatch} onNameChosen={handleNameChosen} />
-      </div>
+      <>
+        <div className="h-screen w-screen">
+          <EggHatching onHatch={handleHatch} onNameChosen={handleNameChosen} />
+        </div>
+        <PwaUpdateNotice language={detectUiLanguage()} />
+      </>
     );
   }
 
@@ -153,9 +161,12 @@ function App() {
     : { ...gameState, development: { ...gameState.development, hatched: true, stage: 'newborn' as const, cognitiveLevel: Math.max(5, gameState.development.cognitiveLevel) } };
 
   return (
-    <div className="h-screen w-screen overflow-hidden relative">
-      <Room state={safeState} onStateChange={handleStateChange} onReset={handleReset} version={APP_VERSION} />
-    </div>
+    <>
+      <div className="h-screen w-screen overflow-hidden relative">
+        <Room state={safeState} onStateChange={handleStateChange} onReset={handleReset} version={APP_VERSION} />
+      </div>
+      <PwaUpdateNotice language={uiLanguage(safeState.conversation.language)} />
+    </>
   );
 }
 
