@@ -2,24 +2,26 @@
   "name": "Becoming",
   "short_name": "Becoming",
   "description": "Watch something become someone.",
-  "start_url": "/",
+  "id": "/becoming/",
+  "start_url": "/becoming/",
+  "scope": "/becoming/",
   "display": "standalone",
   "background_color": "#1a1814",
   "theme_color": "#1a1814",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/becoming/icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/becoming/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "/icon-maskable.png",
+      "src": "/becoming/icon-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

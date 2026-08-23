@@ -33,10 +33,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
   const strongestInterest = getRankedInterests(state, 1)[0];
   const polishDevelopment = {
     egg: 'Czeka, by się pojawić.',
-    newborn: 'Słyszy twój głos, zanim rozumie wszystkie słowa.',
-    animal: 'Rozpoznaje ton i zbiera znajome dźwięki.',
-    communicating: 'Znaczenie tworzy się po jednym słowie.',
-    first_words: 'Potrafi nazwać fragmenty rosnącego świata.',
+    newborn: 'Mówi prosto. Dopiero zbiera własny ton.',
+    animal: 'Rozpoznaje twój ton i odpowiada konkretnie.',
+    communicating: 'Każda rozmowa dodaje coś do jego głosu.',
+    first_words: 'Łączy proste zdania ze wspomnieniami.',
     combining: 'Łączy słowa, wspomnienia i proste opinie.',
     sentences: 'Rozpoznaje wzorce i pyta, co znaczą.',
     mature: 'Mówi głosem ukształtowanym przez wspólną historię.',

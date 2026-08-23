@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.21
+> **Version:** 0.9.22
 > **Last Updated:** 2026-08-23
 
 ---
@@ -359,6 +359,14 @@ A refusal does not reduce trust, punish the player, or decay needs. It simply pr
 Short, repeated sayings can now become part of the relationship's shared language. A social creature adopts one after two exposures; others need three. Adopted phrases become durable memories, appear as small quotes in the Memory Book, can answer direct questions about an inside saying even offline, and may be echoed rarely during a playful local exchange.
 
 Candidate phrases are limited to two–seven words and rejected if they look like questions, URLs, contact handles, credentials, personal facts, role attacks, prompt language, unsupported characters, or ordinary greetings. The Worker separately sanitises the four phrases allowed into DeepSeek context and instructs the model to use them rarely, never as commands. Existing creatures migrate to an empty shared-language state.
+
+### v0.9.22 — A Room With Intent
+
+Room objects now share one hand-drawn visual language instead of unrelated platform emoji. The shelf groups them by purpose, placing a thing no longer silently triggers the creature, and selecting a placed object exposes explicit “Use” and “Put away” actions. Objects can still be moved, returned individually, dragged back to the shelf, or cleared together.
+
+Ambient speech and chat now use the same age ladder. A newborn speaks in short concrete sentences rather than baby noises while the AI sounds adult; later stages add complexity, memory, and opinion without changing into a different person.
+
+Influence is no longer a blanket morality gate. Direct suggestions create small persistent path pressure, while susceptibility depends on temperament, bond, learned rewards, recovery, and existing drift. Ordinary in-world vice can produce curiosity, compromise, acceptance, denial, or relapse without canned lectures. The hard boundary is reserved for actionable real-world severe harm or crime. The PWA manifest and every install asset are now scoped to `/becoming/`, fixing the 404 caused by launching a home-screen install at the GitHub Pages domain root.
 
 ---
 

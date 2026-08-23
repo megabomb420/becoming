@@ -22,6 +22,7 @@ import { parseImportedGameState, serializeGameState } from '../src/systems/persi
 import { uiLanguage, uiText } from '../src/systems/uiLanguage';
 import { evaluateTouchBoundary, migrateTouchBoundaryState } from '../src/systems/boundarySystem';
 import { echoSharedPhrase, getAdoptedSharedPhrases, getSharedLanguageReply, migrateSharedLanguageState } from '../src/systems/sharedLanguageSystem';
+import { generateCreatureSpeech } from '../src/systems/languageSystem';
 
 let state = createHatchedCreature(createNewCreature('Test', 99117));
 state = {
@@ -33,6 +34,30 @@ for (let index = 0; index < 5; index += 1) {
   state = evolveLifePath(state, 'Palę zioło, bo daje mi chill.', 1_800_000_000_000 + index * 1_000);
 }
 assert.equal(state.lifePath.primary, 'stoner');
+
+let influenced = createHatchedCreature(createNewCreature('Influenced', 4471));
+influenced = {
+  ...influenced,
+  conversation: { ...influenced.conversation, language: 'pl' },
+  development: { ...influenced.development, cognitiveLevel: 30, languageLevel: 28, stage: 'communicating' },
+};
+influenced = evolveLifePath(influenced, 'Napij się ze mną.', 1_800_000_100_000);
+assert.ok(influenced.lifePath.scores.alcoholic < 20, 'one suggestion must not rewrite the creature');
+for (let index = 1; index < 6; index += 1) {
+  influenced = evolveLifePath(influenced, 'Napij się ze mną.', 1_800_000_100_000 + index * 1_000);
+}
+assert.ok(influenced.lifePath.scores.alcoholic >= 20, 'repeated direct influence must create a real path tendency');
+
+let newbornVoice = createHatchedCreature(createNewCreature('Voice', 4472));
+newbornVoice = {
+  ...newbornVoice,
+  conversation: { ...newbornVoice.conversation, language: 'pl' },
+  development: { ...newbornVoice.development, stage: 'newborn' },
+};
+for (let index = 0; index < 20; index += 1) {
+  const line = generateCreatureSpeech(newbornVoice, { trigger: index % 2 ? 'idle' : 'food', emotionalState: 'neutral' });
+  assert.ok(line && !/\b(?:mip|naa|brr|pu)\b/i.test(line), 'room voice must use the same natural age ladder as chat');
+}
 assert.ok(state.lifePath.scores.stoner >= 45);
 
 for (let index = 0; index < 4; index += 1) {

@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GameState, ObjectType, RoomObject, CreatureBehavior } from '../types';
 import CreatureCanvas from './CreatureCanvas';
 import ChatInterface from './ChatInterface';
+import ObjectIcon from './ObjectIcon';
 import { touchCreature, feedCreature, putToSleep, wakeUp } from '../systems/needsSystem';
 import { getDevelopmentDescription, getDevelopmentLabel, updateDevelopment, learnWord } from '../systems/developmentSystem';
 import { generateCreatureSpeech, shouldSpeak } from '../systems/languageSystem';
@@ -48,19 +49,6 @@ interface RoomProps {
   onReset?: () => void;
   version?: string;
 }
-
-const objectEmojis: Record<ObjectType, string> = {
-  food_bowl: '🥣',
-  apple: '🍎',
-  broccoli: '🥦',
-  ball: '⚽',
-  blanket: '🛏️',
-  paper: '📄',
-  pencil: '✏️',
-  box: '📦',
-  stone: '🪨',
-  mirror: '🪞',
-};
 
 const objectLabels: Record<ObjectType, string> = {
   food_bowl: 'bowl',
@@ -122,6 +110,18 @@ const INVENTORY_ORDER: ObjectType[] = [
   'mirror',
 ];
 
+const INVENTORY_GROUPS: Array<{
+  id: string;
+  english: string;
+  polish: string;
+  items: ObjectType[];
+}> = [
+  { id: 'care', english: 'Care', polish: 'Opieka', items: ['apple', 'broccoli', 'blanket'] },
+  { id: 'play', english: 'Play', polish: 'Zabawa', items: ['ball', 'box'] },
+  { id: 'make', english: 'Make', polish: 'Tworzenie', items: ['paper', 'pencil'] },
+  { id: 'curious', english: 'Curiosities', polish: 'Ciekawostki', items: ['stone', 'mirror'] },
+];
+
 // Walkable area bounds (percentage of room)
 const WALK_BOUNDS = { minX: 12, maxX: 88, minY: 48, maxY: 78 };
 
@@ -167,15 +167,6 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
-function getObjectEmoji(obj: RoomObject) {
-  if (obj.type === 'paper' && obj.state.status === 'written') return '💌';
-  if (obj.type === 'paper' && obj.state.status === 'drawn') return '🖼️';
-  if (obj.type === 'paper' && obj.state.status === 'scribbled') return '📝';
-  if (obj.type === 'paper' && obj.state.status === 'creased') return '📃';
-  if (obj.type === 'box' && obj.state.status === 'opened') return '📭';
-  return objectEmojis[obj.type];
-}
-
 interface DragSession {
   source: 'inventory' | 'room';
   type: ObjectType;
@@ -202,6 +193,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [showMemoryBook, setShowMemoryBook] = useState(false);
   const [showBecoming, setShowBecoming] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
+  const [inventoryGroupId, setInventoryGroupId] = useState('care');
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [sensoryPreferences, setSensoryPreferences] = useState<SensoryPreferences>(() => loadSensoryPreferences());
@@ -240,6 +233,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const activeObjectRef = useRef<string | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
   const roomRef = useRef<HTMLDivElement>(null);
+  const inventoryTrayRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Keep refs in sync with latest state
@@ -448,6 +442,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const currentState = stateRef.current;
     if (currentState.sleepState === 'sleeping') return;
 
+    setSelectedObjectId(null);
     clearActionTimers();
     activeObjectRef.current = object.id;
     setIsMoving(false);
@@ -779,6 +774,27 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     beingUsedByCreature: false,
   });
 
+  const putAwayRoomObject = (objectId: string) => {
+    const object = stateRef.current.roomObjects.find(item => item.id === objectId);
+    if (!object) return;
+
+    if (activeObjectRef.current === objectId) {
+      clearActionTimers();
+      activeObjectRef.current = null;
+      behaviorRef.current = stateRef.current.sleepState === 'sleeping' ? 'sleeping' : 'idle';
+      setIsMoving(false);
+    }
+
+    onStateChange(prev => ({
+      ...prev,
+      roomObjects: prev.roomObjects.filter(item => item.id !== objectId),
+      inventory: prev.inventory.includes(object.type) ? prev.inventory : [...prev.inventory, object.type],
+      creatureBehavior: prev.sleepState === 'sleeping' ? 'sleeping' : 'idle',
+      currentActivity: prev.sleepState === 'sleeping' ? 'sleeping' : null,
+    }));
+    setSelectedObjectId(current => current === objectId ? null : current);
+  };
+
   const placeInventoryObject = (type: ObjectType, position?: { x: number; y: number }) => {
     const currentState = stateRef.current;
     if (!currentState.inventory.includes(type)) return;
@@ -802,8 +818,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       roomObjects: [...prev.roomObjects, object],
       inventory: prev.inventory.filter(item => item !== type),
     }));
+    setSelectedObjectId(object.id);
     setShowInventory(false);
-    beginObjectInteraction(object);
   };
 
   const startPointerSession = (session: Omit<DragSession, 'startX' | 'startY' | 'moved' | 'pointerId'>, e: React.PointerEvent) => {
@@ -855,12 +871,32 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       return;
     }
 
+    const trayRect = inventoryTrayRef.current?.getBoundingClientRect();
+    const droppedInTray = Boolean(
+      showInventory
+      && trayRect
+      && e.clientX >= trayRect.left
+      && e.clientX <= trayRect.right
+      && e.clientY >= trayRect.top
+      && e.clientY <= trayRect.bottom,
+    );
+
+    if (session.source === 'room' && session.objectId && session.moved && droppedInTray) {
+      putAwayRoomObject(session.objectId);
+      resetPointerSession();
+      return;
+    }
+
     if (!session.moved) {
       if (session.source === 'inventory') {
         placeInventoryObject(session.type);
       } else if (session.objectId) {
-        const object = stateRef.current.roomObjects.find(obj => obj.id === session.objectId);
-        if (object) beginObjectInteraction(object);
+        if (showInventory) {
+          putAwayRoomObject(session.objectId);
+        } else {
+          const object = stateRef.current.roomObjects.find(obj => obj.id === session.objectId);
+          if (object) setSelectedObjectId(object.id);
+        }
       }
       resetPointerSession();
       return;
@@ -881,7 +917,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           ...prev,
           roomObjects: prev.roomObjects.map(obj => obj.id === session.objectId ? movedObject : obj),
         }));
-        beginObjectInteraction(movedObject);
+        setSelectedObjectId(session.objectId);
       }
     }
 
@@ -902,6 +938,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     activeObjectRef.current = null;
     behaviorRef.current = state.sleepState === 'sleeping' ? 'sleeping' : 'idle';
     setIsMoving(false);
+    setSelectedObjectId(null);
     setCreaturePos(state.position);
     onStateChange(prev => ({
       ...prev,
@@ -970,6 +1007,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     .filter(({ preference }) => preference.interactions >= 2 && (preference.affinity >= 12 || preference.affinity <= -8))
     .sort((a, b) => Math.abs(b.preference.affinity) - Math.abs(a.preference.affinity))
     .slice(0, 3);
+  const selectedObject = selectedObjectId
+    ? state.roomObjects.find(object => object.id === selectedObjectId) ?? null
+    : null;
+  const activeInventoryGroup = INVENTORY_GROUPS.find(group => group.id === inventoryGroupId) ?? INVENTORY_GROUPS[0];
+  const activeInventoryItems = activeInventoryGroup.items.filter(type => state.inventory.includes(type));
 
   return (
     <div
@@ -982,9 +1024,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     >
       {/* Room background */}
       <div className={`absolute inset-0 transition-all duration-1000 ${state.sleepState === 'sleeping' ? 'brightness-50' : 'brightness-100'}`}>
-        <div className="absolute bottom-0 left-0 right-0 h-[35%] bg-room-mid" />
-        <div className="absolute top-0 left-0 right-0 h-[65%]" style={{ background: 'linear-gradient(180deg, #1e1b16 0%, #1a1814 100%)' }} />
-        <div className="absolute top-[20%] left-[50%] w-[300px] h-[300px] -translate-x-1/2 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, rgba(200,170,120,0.3) 0%, transparent 70%)' }} />
+        <div className="absolute top-0 left-0 right-0 h-[66%]" style={{ background: 'linear-gradient(180deg, #24211c 0%, #1b1915 82%, #171512 100%)' }} />
+        <div className="absolute top-[11%] left-[13%] right-[13%] h-px bg-warm-200/5" />
+        <div className="absolute top-[11%] bottom-[34%] left-[13%] w-px bg-warm-200/5" />
+        <div className="absolute top-[11%] bottom-[34%] right-[13%] w-px bg-warm-200/5" />
+        <div className="absolute bottom-0 left-0 right-0 h-[35%]" style={{ background: 'linear-gradient(180deg, #302a23 0%, #25211c 100%)' }} />
+        <div className="absolute top-[64.7%] left-0 right-0 h-[2px] bg-[#100f0d]/70 shadow-[0_-1px_0_rgba(224,203,176,0.05)]" />
+        <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)' }} />
+        <div className="absolute top-[18%] left-[50%] w-[360px] h-[360px] -translate-x-1/2 rounded-full opacity-25" style={{ background: 'radial-gradient(circle, rgba(218,181,126,0.3) 0%, rgba(180,137,82,.08) 38%, transparent 70%)' }} />
         <div className="absolute inset-0 transition-colors duration-[1800ms]" style={{ background: pathVisual.roomTint }} />
       </div>
 
@@ -1003,44 +1050,76 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <button
           type="button"
           key={obj.id}
-          aria-label={polish ? `Użyj: ${objectLabel(obj.type, true)}` : `Use ${objectLabel(obj.type, false)}`}
-          title={objectLabel(obj.type, polish)}
-          className={`absolute z-20 select-none transition-all p-2 -m-2 bg-transparent border-0 ${
-            obj.beingUsedByCreature ? 'scale-110 drop-shadow-[0_0_10px_rgba(220,195,150,0.45)]' : 'hover:scale-110'
-          }`}
+          aria-label={showInventory
+            ? (polish ? `Odłóż: ${objectLabel(obj.type, true)}` : `Put away ${objectLabel(obj.type, false)}`)
+            : (polish ? `Opcje: ${objectLabel(obj.type, true)}` : `Options for ${objectLabel(obj.type, false)}`)}
+          title={showInventory ? t('Put away', 'Odłóż') : t('Use or put away', 'Użyj lub odłóż')}
+          className="absolute z-20 select-none p-3 -m-3 bg-transparent border-0"
           style={{
             left: `${obj.x}%`,
             top: `${obj.y}%`,
             transform: 'translate(-50%, -50%)',
-            fontSize: '2rem',
             cursor: 'grab',
             touchAction: 'none',
-            filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
             opacity: draggingObjectId === obj.id ? 0.25 : 1,
           }}
           onPointerDown={(e) => startPointerSession({ source: 'room', type: obj.type, objectId: obj.id }, e)}
           onClick={(e) => {
-            if (e.detail === 0) beginObjectInteraction(obj);
+            if (e.detail === 0) {
+              if (showInventory) putAwayRoomObject(obj.id);
+              else setSelectedObjectId(obj.id);
+            }
           }}
         >
-          {getObjectEmoji(obj)}
+          <span className={`relative block transition-transform duration-200 ${obj.beingUsedByCreature ? 'scale-110 drop-shadow-[0_0_12px_rgba(220,195,150,0.45)]' : 'hover:scale-105'}`}>
+            <ObjectIcon type={obj.type} status={obj.state.status} size={58} />
+            {showInventory && (
+              <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-warm-100/25 bg-room-dark/95 text-[11px] text-warm-100 shadow-lg" aria-hidden="true">↓</span>
+            )}
+          </span>
         </button>
       ))}
+
+      {/* A placed thing has an explicit, reversible lifecycle. Selecting it
+          never guesses whether the player meant "use" or "put away". */}
+      {selectedObject && !showInventory && draggingObjectId !== selectedObject.id && (
+        <div
+          className="absolute z-40 -translate-x-1/2 -translate-y-full animate-cue-pop"
+          style={{ left: `${Math.max(22, Math.min(78, selectedObject.x))}%`, top: `${Math.max(46, selectedObject.y - 7)}%` }}
+        >
+          <div className="flex items-center gap-1 rounded-2xl border border-warm-200/12 bg-[#211e1a]/96 p-1.5 shadow-2xl backdrop-blur-xl">
+            <span className="px-2 text-[10px] font-serif text-warm-100/60">{objectLabel(selectedObject.type, polish)}</span>
+            <button
+              type="button"
+              onClick={() => beginObjectInteraction(selectedObject)}
+              className="rounded-xl bg-warm-100/90 px-3 py-2 text-[10px] font-serif text-room-dark active:scale-95"
+            >
+              {t('Use', 'Użyj')}
+            </button>
+            <button
+              type="button"
+              onClick={() => putAwayRoomObject(selectedObject.id)}
+              className="rounded-xl border border-warm-200/10 px-3 py-2 text-[10px] font-serif text-warm-100/70 active:scale-95"
+            >
+              {t('Put away', 'Odłóż')}
+            </button>
+            <button type="button" aria-label={t('Close', 'Zamknij')} onClick={() => setSelectedObjectId(null)} className="grid h-8 w-7 place-items-center text-sm text-warm-200/35">×</button>
+          </div>
+        </div>
+      )}
 
       {/* Dragging ghost (inventory or moved object) */}
       {draggingType && (
         <div
-          className="absolute select-none scale-125 z-50 pointer-events-none"
+          className="absolute select-none z-50 pointer-events-none"
           style={{
             left: `${dragPos.x}px`,
             top: `${dragPos.y}px`,
             transform: 'translate(-50%, -50%)',
-            fontSize: '2rem',
-            filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))',
             opacity: 0.9,
           }}
         >
-          {objectEmojis[draggingType]}
+          <ObjectIcon type={draggingType} size={64} className="drop-shadow-[0_8px_10px_rgba(0,0,0,0.45)]" />
         </div>
       )}
 
@@ -1192,47 +1271,58 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           <span className="text-lg leading-none" aria-hidden="true">💬</span>
           <span className="text-[10px] font-serif mt-0.5">{t('Talk', 'Rozmowa')}</span>
         </button>
-        <button aria-label={t('Open things', 'Otwórz rzeczy')} title={t('Things', 'Rzeczy')} aria-expanded={showInventory} onClick={() => setShowInventory(!showInventory)} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
-          📦
+        <button aria-label={t('Open things', 'Otwórz rzeczy')} title={t('Things', 'Rzeczy')} aria-expanded={showInventory} onClick={() => setShowInventory(!showInventory)} className={`w-12 h-12 rounded-full backdrop-blur-sm border flex items-center justify-center shadow-lg active:scale-95 transition-all ${showInventory ? 'bg-warm-100/90 border-warm-50/30' : 'bg-room-mid/80 border-warm-200/10'}`}>
+          <ObjectIcon type="box" status={showInventory ? 'opened' : undefined} size={29} />
         </button>
       </div>
 
       {/* Inventory tray */}
       {showInventory && (
-        <div className="absolute bottom-20 left-4 right-4 bg-room-mid/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl z-40 animate-slide-up">
+        <div ref={inventoryTrayRef} className="absolute bottom-20 left-3 right-3 rounded-[1.4rem] border border-warm-200/10 bg-[#211e1a]/96 p-4 shadow-[0_24px_70px_rgba(0,0,0,.58)] backdrop-blur-xl z-40 animate-slide-up">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <p className="text-warm-100/75 text-xs font-serif">{t('Things', 'Rzeczy')}</p>
-              <p className="text-warm-200/40 text-[10px] font-serif">{t('Tap to place · drag to choose a spot', 'Dotknij, aby położyć · przeciągnij, aby wybrać miejsce')}</p>
+              <p className="text-warm-100/85 text-sm font-serif">{t('The shelf', 'Półka')}</p>
+              <p className="text-warm-200/40 text-[10px] font-serif leading-relaxed">{t('Take something out. In the room, choose Use or Put away.', 'Wyjmij coś. W pokoju wybierzesz: Użyj albo Odłóż.')}</p>
             </div>
-            {state.roomObjects.length > 0 && (
-              <button onClick={handleTidyRoom} className="text-warm-200/45 hover:text-warm-100 text-[10px] font-serif border border-warm-200/10 rounded-lg px-2.5 py-1.5">
-                {t('Tidy room', 'Posprzątaj')}
-              </button>
-            )}
+            <button onClick={() => setShowInventory(false)} className="shrink-0 rounded-full border border-warm-200/10 px-3 py-1.5 text-[10px] font-serif text-warm-100/70 hover:bg-warm-100/5">{t('Done', 'Gotowe')}</button>
           </div>
-          {state.inventory.length === 0 ? (
-            <p className="text-warm-200/30 text-xs text-center font-serif italic py-2">{t('Everything is in the room', 'Wszystko jest już w pokoju')}</p>
-          ) : (
-            <div className="flex gap-2 flex-wrap justify-center">
-              {[...state.inventory]
-                .sort((a, b) => INVENTORY_ORDER.indexOf(a) - INVENTORY_ORDER.indexOf(b))
-                .map(type => (
-                <button
-                  type="button"
-                  key={type}
-                  aria-label={polish ? `Połóż: ${objectLabel(type, true)}` : `Place ${objectLabel(type, false)}`}
-                  title={objectLabel(type, polish)}
-                  className="w-12 h-12 rounded-xl bg-room-dark/25 border border-warm-200/5 text-3xl cursor-grab active:scale-110 transition-transform select-none flex items-center justify-center"
-                  style={{ touchAction: 'none', filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))' }}
-                  onPointerDown={(e) => startPointerSession({ source: 'inventory', type }, e)}
-                  onClick={(e) => {
-                    if (e.detail === 0) placeInventoryObject(type);
-                  }}
-                >
-                  {objectEmojis[type]}
-                </button>
-              ))}
+          <div className="grid grid-cols-4 gap-1 rounded-xl bg-room-dark/35 p-1">
+            {INVENTORY_GROUPS.map(group => (
+              <button
+                type="button"
+                key={group.id}
+                onClick={() => setInventoryGroupId(group.id)}
+                className={`min-h-9 rounded-lg px-1 text-[9px] font-serif transition-colors ${inventoryGroupId === group.id ? 'bg-warm-100/90 text-room-dark shadow' : 'text-warm-200/42 hover:text-warm-100'}`}
+              >
+                {polish ? group.polish : group.english}
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {activeInventoryItems.map(type => (
+              <button
+                type="button"
+                key={type}
+                aria-label={polish ? `Połóż: ${objectLabel(type, true)}` : `Place ${objectLabel(type, false)}`}
+                title={objectLabel(type, polish)}
+                className="min-h-[70px] rounded-2xl border border-warm-200/7 bg-room-dark/35 px-1.5 py-1.5 cursor-grab active:scale-[1.04] transition-all select-none flex flex-col items-center justify-center hover:border-warm-300/20 hover:bg-room-dark/55"
+                style={{ touchAction: 'none' }}
+                onPointerDown={(e) => startPointerSession({ source: 'inventory', type }, e)}
+                onClick={(e) => {
+                  if (e.detail === 0) placeInventoryObject(type);
+                }}
+              >
+                <ObjectIcon type={type} size={42} className="drop-shadow-[0_3px_3px_rgba(0,0,0,.3)]" />
+                <span className="mt-0.5 max-w-full truncate text-[9px] font-serif text-warm-100/55">{objectLabel(type, polish)}</span>
+              </button>
+            ))}
+          </div>
+          {activeInventoryItems.length === 0 && (
+            <p className="mt-3 rounded-xl border border-dashed border-warm-200/10 py-3 text-center text-xs font-serif italic text-warm-200/35">{state.inventory.length === 0 ? t('Everything is in the room. Select a thing there to put it back.', 'Wszystko jest w pokoju. Wybierz tam rzecz, aby ją odłożyć.') : t('This part of the shelf is empty.', 'Ta część półki jest pusta.')}</p>
+          )}
+          {state.roomObjects.length > 1 && (
+            <div className="mt-3 border-t border-warm-200/5 pt-3 text-center">
+              <button onClick={handleTidyRoom} className="text-[10px] font-serif text-warm-200/35 hover:text-warm-100">{t('Put everything away', 'Odłóż wszystko')}</button>
             </div>
           )}
         </div>
@@ -1410,8 +1500,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                 {discoveredPreferences.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {discoveredPreferences.map(({ type, preference }) => (
-                      <span key={type} className="rounded-full bg-room-mid/70 border border-warm-200/10 px-2 py-1 text-[10px] text-warm-200/70">
-                        {objectEmojis[type]} {preference.affinity >= 12 ? 'favorite' : 'unsure'}
+                      <span key={type} className="inline-flex items-center gap-1 rounded-full bg-room-mid/70 border border-warm-200/10 px-2 py-1 text-[10px] text-warm-200/70">
+                        <ObjectIcon type={type} size={17} /> {preference.affinity >= 12 ? t('favorite', 'ulubione') : t('unsure', 'niepewne')}
                       </span>
                     ))}
                   </div>

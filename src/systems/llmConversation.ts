@@ -1,4 +1,4 @@
-import { ChatMessage, GameState } from '../types';
+import { ChatMessage, GameState, LifePathId } from '../types';
 import { getLifePathTitle, getRankedLifePaths } from './lifePathSystem';
 import { getRankedInterests } from './innerLifeSystem';
 import { getAbsenceSummary } from './presenceSystem';
@@ -7,6 +7,7 @@ import { getAdoptedSharedPhrases } from './sharedLanguageSystem';
 const API_URL = (import.meta.env.VITE_BECOMING_API_URL || '').replace(/\/$/, '');
 const MAX_CONTEXT_MESSAGES = 14;
 const REQUEST_TIMEOUT_MS = 25_000;
+const FLAWED_PATHS: LifePathId[] = ['stoner', 'party_animal', 'alcoholic', 'doomer', 'degen', 'rebel'];
 
 type ApiMessage = {
   role: 'user' | 'assistant';
@@ -45,6 +46,37 @@ function compactHabits(state: GameState) {
     }));
 }
 
+function influenceProfile(state: GameState) {
+  const ranked = FLAWED_PATHS
+    .map(id => ({ id, score: state.lifePath.scores[id] ?? 0 }))
+    .sort((a, b) => b.score - a.score);
+  const strongest = ranked[0];
+  const rewardedRiskExposure = state.socialLearning.observations.reduce((total, item) => {
+    if (!['substance', 'habit', 'language'].includes(item.behaviourType)) return total;
+    const reward = Math.max(0, item.perceivedReward);
+    return total + Math.min(8, item.exposureCount) * reward;
+  }, 0);
+  const viceDrift = Math.max(0, Math.min(100, strongest.score + rewardedRiskExposure * 1.8));
+  const susceptibility = Math.max(0, Math.min(100,
+    18
+    + state.personality.impulsiveness * 0.3
+    + state.personality.sociability * 0.08
+    + state.personality.confidence * 0.08
+    + state.bond.score * 0.14
+    + viceDrift * 0.2
+    - state.personality.caution * 0.2
+    - state.personality.stubbornness * 0.12,
+  ));
+
+  return {
+    susceptibility: Math.round(susceptibility),
+    viceDrift: Math.round(viceDrift),
+    strongestTemptation: strongest.score >= 8 ? strongest.id : null,
+    strongestTemptationScore: Math.round(strongest.score),
+    recovery: Math.round(state.lifePath.recovery),
+  };
+}
+
 function toModelHistory(messages: ChatMessage[]): ApiMessage[] {
   return messages.slice(-MAX_CONTEXT_MESSAGES).map(message => ({
     role: message.sender === 'user' ? 'user' : 'assistant',
@@ -76,6 +108,7 @@ function requestBody(state: GameState) {
       tendencies: getRankedLifePaths(state, 4).map(path => ({ id: path.id, score: Math.round(path.score) })),
       recentTurns: state.lifePath.history.slice(-4).map(item => ({ title: item.title, detail: item.detail })),
     },
+    influence: influenceProfile(state),
     innerLife: {
       interests: getRankedInterests(state, 5).map(item => ({ topic: item.type, level: Math.round(item.level), polarity: Number((item.polarity ?? 0).toFixed(2)) })),
       opinions: [...state.innerLife.opinions]

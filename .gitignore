@@ -4,4 +4,5 @@
 .dev.vars
 worker/.dev.vars
 .wrangler/
+.npm-cache/
 

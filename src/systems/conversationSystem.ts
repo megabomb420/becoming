@@ -215,10 +215,11 @@ function dominantVoice(state: GameState): 'curious' | 'warm' | 'careful' | 'inde
 
 function newbornReply(state: GameState, text: string): string {
   const lower = text.toLowerCase();
-  if (/[!?]$/.test(text)) return choose(['mip?', 'naa?', 'ka...?'], state, text.length);
-  if (/sad|bad|hurt|smut|źle|zle|boli/.test(lower)) return choose(['mrr...', 'naa...', 'mip...'], state, text.length);
-  if (/love|good|happy|koch|dobr|super|fajn/.test(lower)) return choose(['mip!', 'pu pu', 'kaa!'], state, text.length);
-  return choose(['mip', 'naa', 'ka', 'brr', 'pu'], state, text.length);
+  const polish = state.conversation.language === 'pl';
+  if (/[?]$/.test(text)) return choose(polish ? ['Nie wiem jeszcze.', 'Powiedz mi.', 'Chcę zrozumieć.'] : ['I do not know yet.', 'Tell me.', 'I want to understand.'], state, text.length);
+  if (/sad|bad|hurt|smut|źle|zle|boli/.test(lower)) return choose(polish ? ['Słyszę, że jest źle.', 'Zostań tu chwilę.', 'Nie lubię, kiedy cię boli.'] : ['I hear that it is bad.', 'Stay here a moment.', 'I do not like when you hurt.'], state, text.length);
+  if (/love|good|happy|koch|dobr|super|fajn/.test(lower)) return choose(polish ? ['To brzmi dobrze.', 'Lubię to.', 'Cieszę się z tobą.'] : ['That sounds good.', 'I like that.', 'I am happy with you.'], state, text.length);
+  return choose(polish ? ['Słyszę cię.', 'Jestem tutaj.', 'Powiedz jeszcze coś.'] : ['I hear you.', 'I am here.', 'Tell me one more thing.'], state, text.length);
 }
 
 function shortFactReply(stage: DevelopmentStage, fact: LearnedUserFact, language: ConversationLanguage, state: GameState): string {
@@ -328,10 +329,10 @@ function generateReply(state: GameState, text: string, fact: LearnedUserFact | n
     if (stage === 'animal' || stage === 'communicating') return `${parsedBehaviour.target}?`;
     if (language === 'pl') {
       const behaviour = describePolishBehaviour(parsedBehaviour.action ?? '', parsedBehaviour.target);
-      if ((parsedBehaviour.perceivedNegativeOutcome ?? 0) > 0.45) return `To chyba ma konsekwencje. Dlaczego nadal ${behaviour}?`;
+      if ((parsedBehaviour.perceivedNegativeOutcome ?? 0) > 0.45) return `Brzmi, jakby to miało swoją cenę. A jednak ${behaviour}.`;
       return `Często ${behaviour}? Chcę zrozumieć ten zwyczaj.`;
     }
-    if ((parsedBehaviour.perceivedNegativeOutcome ?? 0) > 0.45) return `That sounds like it has consequences. Why do you still ${parsedBehaviour.action} ${parsedBehaviour.target}?`;
+    if ((parsedBehaviour.perceivedNegativeOutcome ?? 0) > 0.45) return `It sounds like that has a price. You still ${parsedBehaviour.action} ${parsedBehaviour.target}, though.`;
     return `Do you often ${parsedBehaviour.action} ${parsedBehaviour.target}? I want to understand that habit.`;
   }
 
@@ -349,7 +350,7 @@ function generateReply(state: GameState, text: string, fact: LearnedUserFact | n
 
   if (stage === 'animal') {
     const word = cleanFactValue(text).split(/\s+/).filter(part => part.length > 3).slice(-1)[0];
-    return word ? `${word}... ${newbornReply(state, text)}` : newbornReply(state, text);
+    return word ? `${word}?` : newbornReply(state, text);
   }
   if (stage === 'communicating') {
     const word = cleanFactValue(text).split(/\s+/).filter(part => part.length > 3).slice(-1)[0];
@@ -471,7 +472,7 @@ export function appendCreatureMessage(state: GameState, text: string, now = Date
 export function getConversationOpening(state: GameState): string {
   const language = state.conversation.language === 'pl' ? 'pl' : 'en';
   const name = state.identity.name || (language === 'pl' ? 'stworzenie' : 'creature');
-  if (state.development.stage === 'newborn') return language === 'pl' ? `Hej. Jestem ${name}. Jestem mały, ale już mogę z tobą gadać.` : `Hi. I am ${name}. I am small, but I can already talk to you.`;
+  if (state.development.stage === 'newborn') return language === 'pl' ? `Hej. Jestem ${name}. Wszystko jest nowe, ale chcę z tobą gadać.` : `Hi. I am ${name}. Everything is new, but I want to talk to you.`;
   if (state.development.stage === 'animal') return language === 'pl' ? 'Jesteś znowu. Powiedz mi coś.' : 'You are here again. Tell me something.';
   if (state.development.stage === 'communicating') return language === 'pl' ? 'Jestem i słucham. Jaki dziś jesteś?' : 'I am here and listening. What are you like today?';
   if (language === 'pl') return `Jestem ${name}. Jeszcze się uczę. Powiedz mi coś prawdziwego o sobie.`;

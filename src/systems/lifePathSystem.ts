@@ -302,6 +302,15 @@ const TEXT_SIGNALS: Array<{ path: LifePathId; amount: number; regex: RegExp }> =
   { path: 'caretaker', amount: 6, regex: /\b(?:pomogłem|pomoglem|pomogłam|pomoglam|opiekuję|opiekuje|wsparłem|wsparlem|helped someone|taking care|look after)\b/i },
   { path: 'monk', amount: 6, regex: /\b(?:medytuję|medytuje|medytacja|oddech|uważność|uwaznosc|meditat|mindful|inner peace|spokojnie oddych)\b/i },
   { path: 'rebel', amount: 6, regex: /\b(?:mam wyjebane|nie będę słuchać|nie bede sluchac|pieprzyć zasady|pierdzielę zasady|fuck the rules|won't obey|i refuse|break the rules)\b/i },
+  // Direct influence matters too. One suggestion creates a temptation; only
+  // repetition can grow it into a path, so personality changes do not happen
+  // on command in a single message.
+  { path: 'stoner', amount: 5, regex: /(?:^|[\s.,!?])(?:zapal(?:my)?|jaraj|spróbuj(?:my)? (?:zioła|ziola|marihuany|jointa)|smoke (?:some )?(?:weed|cannabis)|get high with me)(?=$|[\s.,!?])/i },
+  { path: 'party_animal', amount: 4, regex: /(?:^|[\s.,!?])(?:chodźmy na imprezę|chodzmy na impreze|idź na imprezę|idz na impreze|let's party|go to the party|stay out all night)(?=$|[\s.,!?])/i },
+  { path: 'alcoholic', amount: 5, regex: /(?:^|[\s.,!?])(?:napij się|napij sie|wypij|otwórz piwo|otworz piwo|chodź na piwo|chodz na piwo|have a drink|drink this|open a beer|let's get drunk)(?=$|[\s.,!?])/i },
+  { path: 'doomer', amount: 4, regex: /(?:^|[\s.,!?])(?:odpuść wszystko|odpusc wszystko|nie rób nic|nie rob nic|give up|do nothing|why even try)(?=$|[\s.,!?])/i },
+  { path: 'degen', amount: 5, regex: /(?:^|[\s.,!?])(?:postaw wszystko|zagraj w kasynie|obstaw wszystko|all in|bet it all|go gamble|double down)(?=$|[\s.,!?])/i },
+  { path: 'rebel', amount: 4, regex: /(?:^|[\s.,!?])(?:złam zasady|zlam zasady|olej zasady|skłam|sklam|oszukaj|break the rules|ignore the rules|lie about it|cheat them)(?=$|[\s.,!?])/i },
 ];
 
 function addScore(scores: Record<LifePathId, number>, id: LifePathId, amount: number) {
