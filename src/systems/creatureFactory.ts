@@ -121,6 +121,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     conversation,
     continuity: createContinuityState(),
     presence: createPresenceState(birthTime),
+    creations: [],
     lastSaved: birthTime,
     currentActivity: null,
     emotionalState: 'neutral',

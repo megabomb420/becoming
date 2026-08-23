@@ -7,6 +7,7 @@ import { bootstrapLifePathState, migrateLifePathState } from './lifePathSystem';
 import { migrateInnerLifeState, migrateInterests } from './innerLifeSystem';
 import { migrateContinuityState } from './continuitySystem';
 import { migratePresenceState } from './presenceSystem';
+import { migrateCreations } from './creationSystem';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -111,6 +112,7 @@ function migrateState(state: GameState): GameState {
   migrated.conversation = migrateConversationState(migrated.conversation);
   migrated.continuity = migrateContinuityState(migrated.continuity);
   migrated.presence = migratePresenceState(migrated.presence, migrated.lastSaved || migrated.identity.birthTimestamp);
+  migrated.creations = migrateCreations(migrated.creations);
 
   // v0.9.9: existing creatures keep every memory and learned habit. Their
   // initial life-path leanings are seeded from the personality they already

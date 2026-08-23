@@ -93,6 +93,12 @@ function requestBody(state: GameState) {
       openThreads: state.continuity.openLoops.filter(loop => !loop.resolvedAt).slice(-3).map(loop => ({ kind: loop.kind, subject: loop.subject.slice(0, 100), askCount: loop.askCount })),
       unresolvedCount: state.continuity.openLoops.filter(loop => !loop.resolvedAt).length,
     },
+    creations: state.creations.slice(-3).map(creation => ({
+      stage: creation.stage,
+      title: creation.title.slice(0, 80),
+      description: creation.description.slice(0, 240),
+      inspiration: creation.inspiration.slice(0, 48),
+    })),
     facts: compactFacts(state),
     habits: compactHabits(state),
     messages: toModelHistory(state.conversation.messages),

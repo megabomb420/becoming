@@ -17,6 +17,7 @@ import {
 import { appendCreatureMessage, beginConversationTurn } from '../src/systems/conversationSystem';
 import { getDueOpenLoop, markOpenLoopAsked, migrateContinuityState } from '../src/systems/continuitySystem';
 import { consumeReturnGreeting, getVisitRitual, migratePresenceState, registerReturn } from '../src/systems/presenceSystem';
+import { evolveCreationFromObject, migrateCreations } from '../src/systems/creationSystem';
 
 let state = createHatchedCreature(createNewCreature('Test', 99117));
 state = {
@@ -188,4 +189,29 @@ const migratedPresence = migratePresenceState(null, returnStart);
 assert.equal(migratedPresence.sessionCount, 1);
 assert.equal(migratedPresence.pendingGreeting, null);
 
-console.log('Life path, inner life, continuity, mirror, and presence checks passed.');
+let maker = createHatchedCreature(createNewCreature('Maker', 616));
+maker = {
+  ...maker,
+  development: { ...maker.development, cognitiveLevel: 60, languageLevel: 60, stage: 'sentences' },
+  roomObjects: [
+    { id: 'paper-test', type: 'paper', x: 45, y: 64, state: {}, interactions: 0, placedByUser: true, beingUsedByCreature: false },
+    { id: 'pencil-test', type: 'pencil', x: 52, y: 64, state: {}, interactions: 0, placedByUser: true, beingUsedByCreature: false },
+  ],
+};
+const creationStart = 1_800_080_000_000;
+for (const [index, interactions] of [1, 4, 8, 12].entries()) {
+  maker = {
+    ...maker,
+    objectPreferences: {
+      ...maker.objectPreferences,
+      paper: { ...maker.objectPreferences.paper, interactions },
+    },
+  };
+  maker = evolveCreationFromObject(maker, 'paper', creationStart + index * 1_000);
+}
+assert.deepEqual(maker.creations.map(creation => creation.stage), ['mark', 'shape', 'picture', 'message']);
+assert.equal(maker.roomObjects.find(object => object.type === 'paper')?.state.status, 'written');
+assert.ok(maker.memories.filter(memory => memory.tags.includes('creation')).length === 4);
+assert.deepEqual(migrateCreations([{ stage: 'invalid' as never }]), []);
+
+console.log('Life path, inner life, continuity, mirror, presence, and creation checks passed.');

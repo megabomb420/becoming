@@ -295,9 +295,21 @@ export function chooseObjectReaction(state: GameState, type: ObjectType): Object
   if (type === 'paper' || type === 'pencil') {
     const partner: ObjectType = type === 'paper' ? 'pencil' : 'paper';
     const hasPartner = state.roomObjects.some(object => object.type === partner);
+    const mastery = state.objectPreferences.paper.interactions + state.objectPreferences.pencil.interactions;
     if (hasPartner && (seen > 0 || state.development.cognitiveLevel > 10)) {
-      return reactionFor('paper-first-mark', 'love', 'makes a crooked little mark — then stares at it', {
-        icon: '✦', behavior: 'reacting', duration: 4100, objectStatus: 'scribbled', secondaryObjectType: partner,
+      const makingMessage = mastery >= 11 && state.development.languageLevel >= 32;
+      const makingPicture = mastery >= 7 && state.development.cognitiveLevel >= 28;
+      const makingShape = mastery >= 3;
+      const label = makingMessage
+        ? 'writes something slowly, hiding it with one paw until the end'
+        : makingPicture
+          ? 'draws from memory, stopping often to look around the room'
+          : makingShape
+            ? 'connects the marks into a shape that seems intentional'
+            : 'makes a crooked little mark — then stares at it';
+      return reactionFor(`paper-${makingMessage ? 'message' : makingPicture ? 'picture' : makingShape ? 'shape' : 'first-mark'}`, 'love', label, {
+        icon: makingMessage ? '♡' : '✦', behavior: 'reacting', duration: makingMessage ? 4800 : 4100,
+        objectStatus: makingMessage ? 'written' : makingPicture || makingShape ? 'drawn' : 'scribbled', secondaryObjectType: partner,
         secondaryStatus: 'used', needDelta: { stimulation: 16, comfort: 3 }, developmentGain: 1.1, bondEvent: 'discover',
       });
     }

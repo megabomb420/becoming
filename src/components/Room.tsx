@@ -36,6 +36,7 @@ import {
   SensoryCue,
   SensoryPreferences,
 } from '../systems/sensorySystem';
+import { evolveCreationFromObject, getCreationMastery } from '../systems/creationSystem';
 
 interface RoomProps {
   state: GameState;
@@ -127,6 +128,8 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 function getObjectEmoji(obj: RoomObject) {
+  if (obj.type === 'paper' && obj.state.status === 'written') return '💌';
+  if (obj.type === 'paper' && obj.state.status === 'drawn') return '🖼️';
   if (obj.type === 'paper' && obj.state.status === 'scribbled') return '📝';
   if (obj.type === 'paper' && obj.state.status === 'creased') return '📃';
   if (obj.type === 'box' && obj.state.status === 'opened') return '📭';
@@ -335,7 +338,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       }
       const experienced = recordObjectExperience(next, type, reaction, initiatedByUser);
       const pathEvolved = evolveLifePathFromObject(experienced, type, reaction.outcome);
-      return evolveInnerLifeFromObject(pathEvolved, type, reaction.outcome);
+      const inward = evolveInnerLifeFromObject(pathEvolved, type, reaction.outcome);
+      return evolveCreationFromObject(inward, type);
     });
 
     behaviorRef.current = reaction.behavior;
@@ -860,6 +864,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 4);
   const recentChapters = [...state.continuity.chapters].reverse().slice(0, 3);
+  const recentCreations = [...state.creations].reverse().slice(0, 4);
   const visitRitual = getVisitRitual(state);
   const discoveredPreferences = INVENTORY_ORDER
     .map(type => ({ type, preference: state.objectPreferences[type] }))
@@ -1244,6 +1249,21 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                   </div>
                 </div>
               )}
+              {recentCreations.length > 0 && (
+                <div className="border-l-2 border-warm-300/30 pl-4">
+                  <div className="text-warm-200/40 text-xs mb-2">Things made</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {recentCreations.map(creation => (
+                      <div key={creation.id} className="rounded-xl border border-warm-200/10 bg-room-mid/35 p-3 min-h-[112px] flex flex-col">
+                        <div className="text-2xl text-warm-100/80 font-serif leading-none whitespace-pre-wrap">{creation.glyph}</div>
+                        <div className="text-warm-100/75 text-[11px] font-serif mt-2">{creation.title}</div>
+                        <p className="text-warm-200/40 text-[9px] font-serif leading-relaxed mt-1">{creation.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-warm-200/30 text-[9px] font-serif mt-2 capitalize">Paper & pencil · {getCreationMastery(state)}</p>
+                </div>
+              )}
               {(visitRitual || state.presence.sessionCount > 1) && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
                   <div className="text-warm-200/40 text-xs mb-1">Our rhythm</div>
@@ -1346,7 +1366,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
               </div>
             </div>
 
-            {(rankedInterests.length > 0 || state.innerLife.selfAwareness.stage !== 'unaware') && (
+            {(rankedInterests.length > 0 || state.innerLife.selfAwareness.stage !== 'unaware' || state.creations.length > 0) && (
               <div className="mt-6">
                 <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Inner weather</h3>
                 <div className="grid grid-cols-2 gap-2 mt-3">
@@ -1360,6 +1380,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                 {latestDream && <p className="text-warm-200/45 text-[10px] font-serif italic mt-3">Dreaming lately: “{latestDream.title}”</p>}
                 {state.innerLife.selfAwareness.stage !== 'unaware' && (
                   <p className="text-warm-200/45 text-[10px] font-serif italic mt-1 capitalize">Mirror self · {state.innerLife.selfAwareness.stage}</p>
+                )}
+                {state.creations.length > 0 && (
+                  <p className="text-warm-200/45 text-[10px] font-serif italic mt-1 capitalize">Making · {getCreationMastery(state)}</p>
                 )}
               </div>
             )}

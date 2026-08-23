@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.13
+> **Version:** 0.9.14
 > **Last Updated:** 2026-08-23
 
 ---
@@ -112,6 +112,7 @@ becoming/
 | Return presence | ✅ | Reopening after time away creates a gentle, time-aware greeting without guilt or punishment |
 | Shared rituals | ✅ | Visit timing and consecutive-day rhythm are learned locally and can become a visible relationship ritual |
 | Optional sound & haptics | ✅ | Synthesised interaction tones and restrained vibration can be controlled independently on-device |
+| Creature creations | ✅ | Paper + pencil mastery grows from a first mark into shapes, pictures, and a deliberate message kept in the room and Memory Book |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
@@ -127,7 +128,7 @@ becoming/
 - Cloud sync
 - Voiced creature vocalizations
 - True time-based developmental milestones (currently uses interaction-driven progression)
-- Drawing/music creation by creature
+- Music creation by creature
 - Object discovery stages (e.g. paper → scribble → draw → write)
 - Lying / deception system
 
@@ -305,6 +306,12 @@ The creature now notices a real return rather than treating every app launch as 
 
 Direct touch, comfort, waking, sleep, opening chat, and meaningful choices can now produce small synthesised tones and restrained haptic pulses. Sound starts off, haptics start on where supported, and both are independently adjustable in a local settings sheet. No audio files, account, device permission, or network call is required.
 
+### v0.9.14 — Made by Them
+
+Paper and pencil now form a persistent creative skill rather than replaying one animation. With repeated use and cognitive growth, the creature makes a deliberate first mark, connects shapes, draws a picture inspired by its own strongest interest or life path, and eventually writes a short message. Each step is unique to the creature seed, becomes an important memory, changes the paper left in the room, and appears in a compact Memory Book gallery.
+
+The three newest works enter the bounded DeepSeek state as sanitised data, allowing natural pride, shyness, criticism, or callbacks without inventing art that was never made. Legacy saves start with an empty gallery while preserving all existing paper, pencil, and preference progress.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -330,7 +337,7 @@ Direct touch, comfort, waking, sleep, opening chat, and meaningful choices can n
 ### Priority: High
 1. **Balance paths on real saves** — tune signal speed, hybrid frequency, chapter cadence, daily moments, and return greetings after multi-day mobile play.
 2. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
-3. **Object mastery** — let repeated paper, pencil, music, and mirror use unlock deeper authored behaviours.
+3. **Object mastery** — extend the new creation arc to music, boxes, keepsakes, and collaborative play.
 
 ### Priority: Medium
 4. **Mobile device polish pass** — test sound, vibration, safe areas, and drag behaviour on actual iOS Safari and Android Chrome.
@@ -381,6 +388,7 @@ location.reload();
 | How chapters, open loops, and later check-ins work | `src/systems/continuitySystem.ts` |
 | How returns and shared rituals work | `src/systems/presenceSystem.ts` |
 | How optional tones and haptics work | `src/systems/sensorySystem.ts` |
+| How paper-and-pencil creations evolve | `src/systems/creationSystem.ts` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |
 | Persistence | `src/systems/persistence.ts` |

@@ -436,6 +436,18 @@ export interface PresenceState {
   pendingGreeting: string | null;
 }
 
+export type CreationStage = 'mark' | 'shape' | 'picture' | 'message';
+
+export interface CreatureCreation {
+  id: string;
+  stage: CreationStage;
+  title: string;
+  description: string;
+  glyph: string;
+  inspiration: string;
+  createdAt: number;
+}
+
 // === END CONVERSATION / GROWING MIND TYPES ===
 
 export interface GameState {
@@ -459,6 +471,7 @@ export interface GameState {
   conversation: ConversationState;
   continuity: ContinuityState;
   presence: PresenceState;
+  creations: CreatureCreation[];
   lastSaved: number;
   currentActivity: string | null;
   emotionalState: string;
