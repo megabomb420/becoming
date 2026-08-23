@@ -9,6 +9,7 @@ import { migrateContinuityState } from './continuitySystem';
 import { migratePresenceState } from './presenceSystem';
 import { migrateCreations } from './creationSystem';
 import { migrateTouchBoundaryState } from './boundarySystem';
+import { migrateSharedLanguageState } from './sharedLanguageSystem';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -118,6 +119,7 @@ function migrateState(state: GameState): GameState {
   migrated.presence = migratePresenceState(migrated.presence, migrated.lastSaved || migrated.identity.birthTimestamp);
   migrated.creations = migrateCreations(migrated.creations);
   migrated.touchBoundaries = migrateTouchBoundaryState(migrated.touchBoundaries);
+  migrated.sharedLanguage = migrateSharedLanguageState(migrated.sharedLanguage);
 
   // v0.9.9: existing creatures keep every memory and learned habit. Their
   // initial life-path leanings are seeded from the personality they already

@@ -2,6 +2,7 @@ import { ChatMessage, GameState } from '../types';
 import { getLifePathTitle, getRankedLifePaths } from './lifePathSystem';
 import { getRankedInterests } from './innerLifeSystem';
 import { getAbsenceSummary } from './presenceSystem';
+import { getAdoptedSharedPhrases } from './sharedLanguageSystem';
 
 const API_URL = (import.meta.env.VITE_BECOMING_API_URL || '').replace(/\/$/, '');
 const MAX_CONTEXT_MESSAGES = 14;
@@ -108,6 +109,7 @@ function requestBody(state: GameState) {
         summary: (getAbsenceSummary(state, episode) || '').slice(0, 180),
       })),
     },
+    sharedLanguage: getAdoptedSharedPhrases(state).slice(0, 4).map(phrase => phrase.text.slice(0, 48)),
     facts: compactFacts(state),
     habits: compactHabits(state),
     messages: toModelHistory(state.conversation.messages),

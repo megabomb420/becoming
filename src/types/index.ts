@@ -453,6 +453,20 @@ export interface TouchBoundaryState {
   boundariesShown: number;
 }
 
+export interface SharedPhrase {
+  id: string;
+  text: string;
+  normalized: string;
+  exposures: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  adoptedAt: number | null;
+}
+
+export interface SharedLanguageState {
+  phrases: SharedPhrase[];
+}
+
 export type CreationStage = 'mark' | 'shape' | 'picture' | 'message';
 
 export interface CreatureCreation {
@@ -490,6 +504,7 @@ export interface GameState {
   presence: PresenceState;
   creations: CreatureCreation[];
   touchBoundaries: TouchBoundaryState;
+  sharedLanguage: SharedLanguageState;
   lastSaved: number;
   currentActivity: string | null;
   emotionalState: string;

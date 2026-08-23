@@ -20,6 +20,7 @@ import {
 } from './innerLifeSystem';
 import { evolveContinuity, getContinuityReply } from './continuitySystem';
 import { getPresenceReply } from './presenceSystem';
+import { echoSharedPhrase, getSharedLanguageReply, observeSharedLanguage } from './sharedLanguageSystem';
 
 const MAX_MESSAGES = 120;
 const MAX_FACTS = 32;
@@ -422,6 +423,7 @@ export function beginConversationTurn(state: GameState, text: string, now = Date
 
   const parsedBehaviour = parseUserStatement(text);
   updated = recordObservation(updated, text);
+  updated = observeSharedLanguage(updated, text, now);
   if (parsedBehaviour?.action != null && parsedBehaviour.target != null) {
     const observation = findExistingObservation(updated, parsedBehaviour.action, parsedBehaviour.target);
     if (observation?.exposureCount && observation.exposureCount >= 2) {
@@ -439,7 +441,9 @@ export function beginConversationTurn(state: GameState, text: string, now = Date
   updated = evolveContinuity(updated, text, now);
   const continuityReply = getContinuityReply(updated, text);
   const presenceReply = getPresenceReply(updated, text);
-  return { state: updated, reply: innerLifeReply ?? continuityReply ?? presenceReply ?? generateReply(updated, text, merged.fact) };
+  const sharedLanguageReply = getSharedLanguageReply(updated, text);
+  const reply = innerLifeReply ?? continuityReply ?? presenceReply ?? sharedLanguageReply ?? generateReply(updated, text, merged.fact);
+  return { state: updated, reply: echoSharedPhrase(updated, text, reply) };
 }
 
 export function appendCreatureMessage(state: GameState, text: string, now = Date.now()): GameState {

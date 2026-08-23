@@ -5,6 +5,7 @@ import { createInnerLifeState } from './innerLifeSystem';
 import { createContinuityState } from './continuitySystem';
 import { createPresenceState } from './presenceSystem';
 import { createTouchBoundaryState } from './boundarySystem';
+import { createSharedLanguageState } from './sharedLanguageSystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -124,6 +125,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     presence: createPresenceState(birthTime),
     creations: [],
     touchBoundaries: createTouchBoundaryState(),
+    sharedLanguage: createSharedLanguageState(),
     lastSaved: birthTime,
     currentActivity: null,
     emotionalState: 'neutral',

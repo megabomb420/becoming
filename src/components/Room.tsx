@@ -40,6 +40,7 @@ import { evolveCreationFromObject, getCreationMastery } from '../systems/creatio
 import { parseImportedGameState, serializeGameState } from '../systems/persistence';
 import { uiLanguage, uiText } from '../systems/uiLanguage';
 import { evaluateTouchBoundary } from '../systems/boundarySystem';
+import { getAdoptedSharedPhrases } from '../systems/sharedLanguageSystem';
 
 interface RoomProps {
   state: GameState;
@@ -962,6 +963,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const recentChapters = [...state.continuity.chapters].reverse().slice(0, 3);
   const recentCreations = [...state.creations].reverse().slice(0, 4);
   const recentAbsences = [...state.presence.absenceEpisodes].reverse().slice(0, 3);
+  const sharedPhrases = getAdoptedSharedPhrases(state).slice(0, 4);
   const visitRitual = getVisitRitual(state);
   const discoveredPreferences = INVENTORY_ORDER
     .map(type => ({ type, preference: state.objectPreferences[type] }))
@@ -1384,6 +1386,17 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                       );
                     })}
                   </div>
+                </div>
+              )}
+              {sharedPhrases.length > 0 && (
+                <div className="border-l-2 border-warm-300/30 pl-4">
+                  <div className="text-warm-200/40 text-xs mb-2">{t('Our language', 'Nasz język')}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sharedPhrases.map(phrase => (
+                      <span key={phrase.id} className="rounded-full border border-warm-300/10 bg-warm-300/5 px-2.5 py-1 text-[10px] text-warm-100/65 font-serif">“{phrase.text}”</span>
+                    ))}
+                  </div>
+                  <p className="text-warm-200/25 text-[9px] font-serif mt-2">{t('Repeated sayings can slowly become something shared.', 'Powtarzane powiedzonka mogą powoli stać się czymś wspólnym.')}</p>
                 </div>
               )}
               <div className="border-l-2 border-warm-300/30 pl-4">
