@@ -11,9 +11,11 @@ import {
   evolveInnerLifeFromObject,
   generateDreamAfterSleep,
   getRankedInterests,
+  migrateInnerLifeState,
   revealPrivateThoughtIfAsked,
 } from '../src/systems/innerLifeSystem';
 import { appendCreatureMessage, beginConversationTurn } from '../src/systems/conversationSystem';
+import { getDueOpenLoop, markOpenLoopAsked, migrateContinuityState } from '../src/systems/continuitySystem';
 
 let state = createHatchedCreature(createNewCreature('Test', 99117));
 state = {
@@ -103,4 +105,60 @@ assert.equal(bilingual.conversation.language, 'pl');
 bilingual = beginConversationTurn(bilingual, 'Hello, I want to switch back to English.', 1_800_030_002_000).state;
 assert.equal(bilingual.conversation.language, 'en');
 
-console.log('Life path and inner life checks passed.');
+let continuous = createHatchedCreature(createNewCreature('Continuity', 404));
+continuous = {
+  ...continuous,
+  development: { ...continuous.development, cognitiveLevel: 60, languageLevel: 55, stage: 'sentences' },
+  memories: [{
+    id: 'old-small-memory',
+    timestamp: continuous.identity.birthTimestamp - 1_000,
+    content: 'a small old moment',
+    importance: 3,
+    emotionalValence: 0,
+    tags: ['old'],
+    mentioned: false,
+    understood: true,
+    compressed: false,
+  }],
+};
+const continuityStart = 1_800_040_000_000;
+const continuityMessages = [
+  'I want to finish the book.',
+  'I really like games.',
+  'Work was busy today.',
+  'Music helped me focus.',
+  'I went for a walk in nature.',
+  'I talked with a friend.',
+  'The project is moving forward.',
+  'I feel calm about it now.',
+];
+continuityMessages.forEach((message, index) => {
+  continuous = beginConversationTurn(continuous, message, continuityStart + index * 1_000).state;
+});
+assert.equal(continuous.continuity.chapters.length, 1);
+assert.ok(continuous.continuity.chapters[0].summary.length > 20);
+assert.equal(continuous.memories.find(memory => memory.id === 'old-small-memory')?.compressed, true);
+const dueLoop = getDueOpenLoop(continuous, continuityStart + 13 * 60 * 60_000);
+assert.equal(dueLoop?.kind, 'goal');
+continuous = markOpenLoopAsked(continuous, dueLoop!.id, continuityStart + 13 * 60 * 60_000);
+assert.equal(continuous.continuity.openLoops.find(loop => loop.id === dueLoop!.id)?.askCount, 1);
+continuous = beginConversationTurn(continuous, 'I finished the book. It is done.', continuityStart + 14 * 60 * 60_000).state;
+assert.ok(continuous.continuity.openLoops.some(loop => loop.kind === 'goal' && loop.resolvedAt));
+
+let mirrorMind = createHatchedCreature(createNewCreature('Mirror', 909));
+mirrorMind = { ...mirrorMind, development: { ...mirrorMind.development, cognitiveLevel: 60, stage: 'sentences' } };
+for (let index = 0; index < 7; index += 1) {
+  mirrorMind = evolveInnerLifeFromObject(mirrorMind, 'mirror', 'curious', 1_800_050_000_000 + index * 1_000);
+}
+assert.equal(mirrorMind.innerLife.selfAwareness.stage, 'reflective');
+assert.ok(mirrorMind.innerLife.selfAwareness.recognizedAt);
+assert.ok(mirrorMind.memories.some(memory => memory.tags.includes('recognized')));
+assert.ok(mirrorMind.memories.some(memory => memory.tags.includes('reflective')));
+
+const migratedInner = migrateInnerLifeState({ dreams: [], opinions: [], privateThoughts: [] }, 1_800_060_000_000);
+assert.equal(migratedInner.selfAwareness.stage, 'unaware');
+const migratedContinuity = migrateContinuityState(null);
+assert.deepEqual(migratedContinuity.chapters, []);
+assert.deepEqual(migratedContinuity.openLoops, []);
+
+console.log('Life path, inner life, continuity, and mirror checks passed.');

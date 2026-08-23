@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.11
+> **Version:** 0.9.12
 > **Last Updated:** 2026-08-23
 
 ---
@@ -106,6 +106,9 @@ becoming/
 | Own opinions | ✅ | Seeded views evolve slowly and can disagree with the user instead of mirroring every message |
 | Dreams | ✅ | Meaningful sleep remixes real memories and preoccupations into persistent, shareable dream fragments |
 | Private thoughts | ✅ | Personal thoughts form from interests and dreams but require the appropriate bond stage before disclosure |
+| Conversation chapters | ✅ | Every eight user turns form a local relationship chapter; older low-value moments are compressed while important memories remain intact |
+| Open loops & check-ins | ✅ | Goals, difficult feelings, promises, and unfinished stories can return hours later and close when the user reports an outcome |
+| Mirror self-awareness | ✅ | Repeated mirror encounters form a permanent unaware → other → copying → recognized → reflective arc with milestone memories |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
@@ -289,6 +292,12 @@ The private DeepSeek gateway now treats all user dialogue and history as untrust
 
 Conversation language can now switch cleanly in both directions between Polish and English. Those are the only two production languages: messages detected as another language or script receive a local bilingual-boundary response and never reach DeepSeek. The Worker scans full utterances for direct and indirect prompt extraction in Polish, English, Spanish, French, German, Italian, Portuguese, Russian, Chinese, Japanese, and Korean. Every accepted user utterance is JSON-quoted and labelled as untrusted before inference. A private integrity canary plus prompt-similarity checks reject leaked or paraphrased role instructions even when the response avoids obvious phrases such as “system prompt”.
 
+### v0.9.12 — Continuity & Self
+
+Conversation now has two time scales. The latest dialogue remains available verbatim, while every eight user turns produce a local chapter summarising recurring facts, interests, and the creature's current life path. Older low-importance events are marked compressed; important memories, milestones, dreams, and facts remain intact. Only three bounded chapter summaries reach DeepSeek, allowing callbacks without uploading the full history.
+
+Goals, difficult feelings, promises, and unfinished stories become open loops with different return times. The creature can initiate a gentle check-in hours later, records how often it asked, stops before nagging, and closes the loop when the user reports completion or feeling better. The Memory Book shows both open threads and recent chapters. Mirror play now has a persistent five-stage self-awareness arc. Recognition and later reflection create high-importance memories, alter mirror behaviour, influence AI dialogue, and can generate bond-gated private thoughts.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -306,16 +315,15 @@ Conversation language can now switch cleanly in both directions between Polish a
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the conversation automatically falls back to the smaller local mind.
 - **Public gateway protection is best-effort:** Role attacks and task abuse are filtered and rate-limited, but a determined hostile client can spoof browser headers. Durable Cloudflare rate limiting or Turnstile remains a future hardening option.
 - **Coverage is targeted, not comprehensive:** Life-path, hybrid, daily-choice, recovery, worker, and TypeScript smoke checks exist; older systems still need broader automated coverage.
-- **Memory compression not implemented:** `compressed: boolean` exists on `Memory` but is never used.
 
 ---
 
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Conversation summarisation** — compress older dialogue into durable memories before the local message window rolls over.
-2. **Add sound design** — subtle ambient vocalizations and interaction sounds that respect browser autoplay constraints.
-3. **Balance paths on real saves** — tune signal speed, hybrid frequency, and daily moments after multi-day mobile play.
+1. **Add sound design** — subtle ambient vocalizations and interaction sounds that respect browser autoplay constraints.
+2. **Balance paths on real saves** — tune signal speed, hybrid frequency, chapter cadence, and daily moments after multi-day mobile play.
+3. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
 
 ### Priority: Medium
 4. **Mobile device polish pass** — test on actual iOS Safari and Android Chrome; add restrained optional haptics for direct touch interactions.
@@ -324,9 +332,8 @@ Conversation language can now switch cleanly in both directions between Polish a
 
 ### Priority: Low / Future
 7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
-8. **Mirror sequence** — special object interaction with multi-stage emotional arc.
-9. **Cloud sync / export** — allow players to back up or share their creature's save state.
-10. **Notifications** — gentle, non-manipulative PWA notifications.
+8. **Cloud sync / export** — allow players to back up or share their creature's save state.
+9. **Notifications** — gentle, non-manipulative PWA notifications.
 
 ---
 
@@ -364,6 +371,7 @@ location.reload();
 | How social learning works | `src/systems/socialLearningSystem.ts` |
 | How paths, hybrids, choices, recovery, and skins work | `src/systems/lifePathSystem.ts` |
 | How interests, opinions, dreams, and secrets work | `src/systems/innerLifeSystem.ts` |
+| How chapters, open loops, and later check-ins work | `src/systems/continuitySystem.ts` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |
 | Persistence | `src/systems/persistence.ts` |

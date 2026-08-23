@@ -323,6 +323,19 @@ export function chooseObjectReaction(state: GameState, type: ObjectType): Object
   }
 
   if (type === 'mirror') {
+    const selfStage = state.innerLife.selfAwareness.stage;
+    if (selfStage === 'reflective') {
+      return reactionFor('mirror-reflection', 'love', 'meets its own eyes and stays there, thinking', {
+        icon: '◌', behavior: 'reacting', duration: 4600, objectStatus: 'reflected',
+        needDelta: { stimulation: 9, comfort: 5 }, developmentGain: 1.1, bondEvent: 'discover',
+      });
+    }
+    if (selfStage === 'recognized') {
+      return reactionFor('mirror-recognized-self', 'love', 'checks one cheek, then smiles when the glass agrees', {
+        icon: '✦', behavior: 'reacting', duration: 4300, objectStatus: 'recognized',
+        needDelta: { stimulation: 12, comfort: 3 }, developmentGain: 1.2, bondEvent: 'discover',
+      });
+    }
     if (seen === 0) {
       return reactionFor('mirror-first', personality.confidence < 45 ? 'neutral' : 'curious', personality.confidence < 45
         ? 'startles at the creature in the glass'

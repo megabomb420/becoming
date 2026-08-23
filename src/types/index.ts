@@ -263,12 +263,23 @@ export interface PrivateThought {
   minimumBond: BondStage;
 }
 
+export type SelfAwarenessStage = 'unaware' | 'other' | 'copying' | 'recognized' | 'reflective';
+
+export interface SelfAwarenessState {
+  stage: SelfAwarenessStage;
+  mirrorEncounters: number;
+  recognizedAt: number | null;
+  lastReflection: string | null;
+  lastMirrorAt: number;
+}
+
 export interface InnerLifeState {
   dreams: CreatureDream[];
   opinions: CreatureOpinion[];
   privateThoughts: PrivateThought[];
   currentPreoccupation: string | null;
   pendingDisclosure: string | null;
+  selfAwareness: SelfAwarenessState;
   lastDreamAt: number;
   lastInnerShift: number;
 }
@@ -385,6 +396,35 @@ export interface ConversationState {
   lastCreatureMessage: string | null;
 }
 
+export interface ConversationChapter {
+  id: string;
+  index: number;
+  title: string;
+  summary: string;
+  topics: string[];
+  factIds: string[];
+  startedAt: number;
+  endedAt: number;
+}
+
+export interface OpenConversationLoop {
+  id: string;
+  kind: 'goal' | 'feeling' | 'promise' | 'story';
+  subject: string;
+  createdAt: number;
+  dueAt: number;
+  lastAskedAt: number;
+  askCount: number;
+  resolvedAt: number | null;
+}
+
+export interface ContinuityState {
+  chapters: ConversationChapter[];
+  openLoops: OpenConversationLoop[];
+  lastChapterMessageCount: number;
+  lastCompressedAt: number;
+}
+
 // === END CONVERSATION / GROWING MIND TYPES ===
 
 export interface GameState {
@@ -406,6 +446,7 @@ export interface GameState {
   socialLearning: SocialLearningState;
   // Persistent conversations and facts learned directly from the user
   conversation: ConversationState;
+  continuity: ContinuityState;
   lastSaved: number;
   currentActivity: string | null;
   emotionalState: string;

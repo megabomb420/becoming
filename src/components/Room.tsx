@@ -814,6 +814,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     .filter(opinion => opinion.confidence >= 28)
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, 3);
+  const activeConversationLoops = [...state.continuity.openLoops]
+    .filter(loop => !loop.resolvedAt)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 4);
+  const recentChapters = [...state.continuity.chapters].reverse().slice(0, 3);
   const discoveredPreferences = INVENTORY_ORDER
     .map(type => ({ type, preference: state.objectPreferences[type] }))
     .filter(({ preference }) => preference.interactions >= 2 && (preference.affinity >= 12 || preference.affinity <= -8))
@@ -1128,7 +1133,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                   </p>
                 )}
               </div>
-              {(rankedInterests.length > 0 || latestDream || confidentOpinions.length > 0) && (
+              {(rankedInterests.length > 0 || latestDream || confidentOpinions.length > 0 || state.innerLife.selfAwareness.stage !== 'unaware') && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
                   <div className="text-warm-200/40 text-xs mb-1">Inner life</div>
                   {rankedInterests.length > 0 && (
@@ -1158,6 +1163,40 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                   {state.innerLife.privateThoughts.some(thought => !thought.revealedAt) && (
                     <p className="text-warm-300/35 text-[9px] font-serif mt-3">Some thoughts are still private. Trust may uncover them.</p>
                   )}
+                  {state.innerLife.selfAwareness.stage !== 'unaware' && (
+                    <div className="mt-3 pt-3 border-t border-warm-200/5">
+                      <p className="text-[9px] uppercase tracking-widest text-warm-300/40">Mirror · {state.innerLife.selfAwareness.stage}</p>
+                      {state.innerLife.selfAwareness.lastReflection && (
+                        <p className="text-warm-100/60 text-[10px] font-serif italic mt-1">“{state.innerLife.selfAwareness.lastReflection}”</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {activeConversationLoops.length > 0 && (
+                <div className="border-l-2 border-warm-300/30 pl-4">
+                  <div className="text-warm-200/40 text-xs mb-1">Things left open</div>
+                  <div className="space-y-1.5 mt-2">
+                    {activeConversationLoops.map(loop => (
+                      <div key={loop.id} className="flex items-start gap-2 text-[10px] font-serif">
+                        <span className="text-warm-300/35 mt-0.5">○</span>
+                        <span className="text-warm-100/65"><span className="uppercase tracking-wider text-warm-200/35">{loop.kind}</span> · {loop.subject}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {recentChapters.length > 0 && (
+                <div className="border-l-2 border-warm-300/30 pl-4">
+                  <div className="text-warm-200/40 text-xs mb-2">Our chapters</div>
+                  <div className="space-y-3">
+                    {recentChapters.map(chapter => (
+                      <div key={chapter.id}>
+                        <div className="text-warm-100/75 text-xs font-serif">{chapter.title}</div>
+                        <p className="text-warm-200/45 text-[10px] font-serif leading-relaxed mt-0.5">{chapter.summary}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               <div className="border-l-2 border-warm-300/30 pl-4">
@@ -1253,7 +1292,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
               </div>
             </div>
 
-            {rankedInterests.length > 0 && (
+            {(rankedInterests.length > 0 || state.innerLife.selfAwareness.stage !== 'unaware') && (
               <div className="mt-6">
                 <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Inner weather</h3>
                 <div className="grid grid-cols-2 gap-2 mt-3">
@@ -1265,6 +1304,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                   ))}
                 </div>
                 {latestDream && <p className="text-warm-200/45 text-[10px] font-serif italic mt-3">Dreaming lately: “{latestDream.title}”</p>}
+                {state.innerLife.selfAwareness.stage !== 'unaware' && (
+                  <p className="text-warm-200/45 text-[10px] font-serif italic mt-1 capitalize">Mirror self · {state.innerLife.selfAwareness.stage}</p>
+                )}
               </div>
             )}
 

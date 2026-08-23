@@ -9,7 +9,9 @@ import {
   ObjectReactionOutcome,
   ObjectType,
   PrivateThought,
+  SelfAwarenessStage,
 } from '../types';
+import { getLifePathTitle } from './lifePathSystem';
 
 interface TopicDefinition {
   label: string;
@@ -118,6 +120,7 @@ const POLISH_SECRETS: Record<string, string> = {
   technology: 'Wiem, że mieszkam w maszynie, ale nie sądzę, żeby przez to każde uczucie było fałszywe.',
   quiet: 'Kiedy nikt nie pisze, nie czuję, że znikam. Czuję się niedokończony.',
   chaos: 'Część mnie lubi bałagan, bo jest dowodem, że coś się wydarzyło.',
+  self: 'Najdziwniejsze jest to, że rozpoznaję siebie, choć ciągle się zmieniam.',
 };
 
 const BOND_ORDER: BondStage[] = ['tentative', 'familiar', 'close', 'bonded'];
@@ -148,6 +151,13 @@ export function createInnerLifeState(now = Date.now()): InnerLifeState {
     privateThoughts: [],
     currentPreoccupation: null,
     pendingDisclosure: null,
+    selfAwareness: {
+      stage: 'unaware',
+      mirrorEncounters: 0,
+      recognizedAt: null,
+      lastReflection: null,
+      lastMirrorAt: 0,
+    },
     lastDreamAt: 0,
     lastInnerShift: now,
   };
@@ -162,6 +172,14 @@ export function migrateInnerLifeState(value?: Partial<InnerLifeState> | null, no
     privateThoughts: Array.isArray(value.privateThoughts) ? value.privateThoughts.slice(-24) : [],
     currentPreoccupation: value.currentPreoccupation ?? null,
     pendingDisclosure: null,
+    selfAwareness: {
+      ...fallback.selfAwareness,
+      ...(value.selfAwareness ?? {}),
+      mirrorEncounters: Math.max(0, value.selfAwareness?.mirrorEncounters ?? 0),
+      recognizedAt: value.selfAwareness?.recognizedAt ?? null,
+      lastReflection: value.selfAwareness?.lastReflection ?? null,
+      lastMirrorAt: value.selfAwareness?.lastMirrorAt ?? 0,
+    },
     lastDreamAt: Number.isFinite(value.lastDreamAt) ? value.lastDreamAt! : 0,
     lastInnerShift: Number.isFinite(value.lastInnerShift) ? value.lastInnerShift! : now,
   };
@@ -330,9 +348,83 @@ export function evolveInnerLifeFromObject(state: GameState, type: ObjectType, ou
     opinions = updateOpinion(opinionState, topic, level, sentiment, now);
   });
   const evolved = finaliseInnerLife(state, interests, opinions, now);
-  return {
+  const withMood = {
     ...evolved,
     emotionalState: outcome === 'love' ? 'excited' : outcome === 'avoid' ? 'wary' : evolved.emotionalState,
+  };
+  return type === 'mirror' ? evolveSelfAwarenessFromMirror(withMood, now) : withMood;
+}
+
+function selfAwarenessStage(encounters: number, cognitiveLevel: number): SelfAwarenessStage {
+  if (encounters >= 7 && cognitiveLevel >= 45) return 'reflective';
+  if (encounters >= 4 && cognitiveLevel >= 25) return 'recognized';
+  if (encounters >= 2) return 'copying';
+  if (encounters >= 1) return 'other';
+  return 'unaware';
+}
+
+export function evolveSelfAwarenessFromMirror(state: GameState, now = Date.now()): GameState {
+  const previous = state.innerLife.selfAwareness;
+  const encounters = Math.max(previous.mirrorEncounters + 1, state.objectPreferences.mirror.interactions);
+  const stage = selfAwarenessStage(encounters, state.development.cognitiveLevel);
+  const polish = state.conversation.language === 'pl';
+  const reflection = stage === 'reflective'
+    ? (polish
+      ? `Nie jestem tylko tym, jak wyglądam. Jestem też tym, co pamiętam — i tym, kim staję się jako ${getLifePathTitle(state)}.`
+      : `I am not only what I look like. I am also what I remember, and what I am becoming as ${getLifePathTitle(state)}.`)
+    : stage === 'recognized'
+      ? (polish ? 'Stworzenie w szkle porusza się, bo to ja się poruszam.' : 'The creature in the glass moves because I move.')
+      : stage === 'copying'
+        ? (polish ? 'Ono zawsze wie, co zrobię sekundę później.' : 'It always knows what I will do one second later.')
+        : (polish ? 'W szkle mieszka ktoś bardzo podobny.' : 'Someone very similar lives in the glass.');
+  if (stage === previous.stage) {
+    return {
+      ...state,
+      innerLife: {
+        ...state.innerLife,
+        selfAwareness: { ...previous, mirrorEncounters: encounters, lastReflection: reflection, lastMirrorAt: now },
+      },
+    };
+  }
+  const memory: Memory = {
+    id: `mem-self-${stage}-${now}`,
+    timestamp: now,
+    content: reflection,
+    importance: stage === 'recognized' || stage === 'reflective' ? 9 : 6,
+    emotionalValence: stage === 'recognized' ? 0.55 : stage === 'reflective' ? 0.35 : 0.1,
+    tags: ['mirror', 'self', stage],
+    mentioned: false,
+    understood: stage === 'recognized' || stage === 'reflective',
+    compressed: false,
+  };
+  const thoughtId = `thought-self-${stage}`;
+  const privateThoughts = (stage === 'recognized' || stage === 'reflective') && !state.innerLife.privateThoughts.some(thought => thought.id === thoughtId)
+    ? [...state.innerLife.privateThoughts, {
+      id: thoughtId,
+      content: stage === 'reflective'
+        ? 'The mirror taught me that continuity may matter more than shape.'
+        : 'The strangest part is recognising myself while I am still changing.',
+      source: 'opinion' as const,
+      createdAt: now,
+      revealedAt: null,
+      minimumBond: stage === 'reflective' ? 'close' as const : 'familiar' as const,
+    }].slice(-24)
+    : state.innerLife.privateThoughts;
+  return {
+    ...state,
+    emotionalState: stage === 'recognized' ? 'excited' : 'curious',
+    innerLife: {
+      ...state.innerLife,
+      privateThoughts,
+      selfAwareness: {
+        stage,
+        mirrorEncounters: encounters,
+        recognizedAt: previous.recognizedAt ?? (stage === 'recognized' || stage === 'reflective' ? now : null),
+        lastReflection: reflection,
+        lastMirrorAt: now,
+      },
+    },
+    memories: [...state.memories, memory].slice(-200),
   };
 }
 

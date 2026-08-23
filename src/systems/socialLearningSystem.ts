@@ -1,4 +1,5 @@
 import { GameState, ObservedBehaviour, BehaviourType, ImitatedBehaviour, SocialLearningState, Memory } from '../types';
+import { getDueOpenLoop, getOpenLoopPrompt, markOpenLoopAsked } from './continuitySystem';
 
 // === PARSING ===
 
@@ -625,7 +626,8 @@ export function shouldInitiateConversation(state: GameState): boolean {
     state.innerLife.dreams.some(dream => !dream.shared)
     || state.innerLife.currentPreoccupation,
   );
-  if (askableObs.length === 0 && !hasPathThought && !hasInnerThought) return false;
+  const hasDueLoop = Boolean(getDueOpenLoop(state));
+  if (askableObs.length === 0 && !hasPathThought && !hasInnerThought && !hasDueLoop) return false;
 
   const curiosityFactor = personality.curiosity / 100;
   const attachmentFactor = state.relationship.attachment / 200;
@@ -639,6 +641,16 @@ export function shouldInitiateConversation(state: GameState): boolean {
 
 export function generateInitiatedTopic(state: GameState): InitiatedTopic | null {
   const { socialLearning, development } = state;
+
+  const dueLoop = getDueOpenLoop(state);
+  if (dueLoop) {
+    return {
+      observationId: dueLoop.id,
+      openingLine: getOpenLoopPrompt(state, dueLoop),
+      topic: dueLoop.subject,
+      urgency: dueLoop.kind === 'feeling' ? 0.9 : dueLoop.kind === 'goal' ? 0.7 : 0.55,
+    };
+  }
 
   const askableObs = socialLearning.observations.filter(
     obs => obs.exposureCount >= 2 && !obs.mentioned && !obs.imitated
@@ -736,14 +748,15 @@ export function generateInitiatedTopic(state: GameState): InitiatedTopic | null 
 }
 
 export function clearInitiatedTopic(state: GameState, topicId?: string): GameState {
+  const withLoop = topicId?.startsWith('loop-') ? markOpenLoopAsked(state, topicId) : state;
   return {
-    ...state,
+    ...withLoop,
     innerLife: topicId?.startsWith('dream-') ? {
-      ...state.innerLife,
-      dreams: state.innerLife.dreams.map(dream => dream.id === topicId ? { ...dream, shared: true } : dream),
-    } : state.innerLife,
+      ...withLoop.innerLife,
+      dreams: withLoop.innerLife.dreams.map(dream => dream.id === topicId ? { ...dream, shared: true } : dream),
+    } : withLoop.innerLife,
     socialLearning: {
-      ...state.socialLearning,
+      ...withLoop.socialLearning,
       lastBehaviourQuestion: Date.now(),
     },
   };

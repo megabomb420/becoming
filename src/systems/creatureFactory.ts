@@ -2,6 +2,7 @@ import { CreatureIdentity, CreatureAppearance, GameState, DevelopmentState, Need
 import { createBondState, createObjectPreferences } from './relationshipSystem';
 import { createLifePathState } from './lifePathSystem';
 import { createInnerLifeState } from './innerLifeSystem';
+import { createContinuityState } from './continuitySystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -117,6 +118,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     innerLife: createInnerLifeState(birthTime),
     socialLearning,
     conversation,
+    continuity: createContinuityState(),
     lastSaved: birthTime,
     currentActivity: null,
     emotionalState: 'neutral',

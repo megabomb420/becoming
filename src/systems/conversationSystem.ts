@@ -18,6 +18,7 @@ import {
   getInnerLifeReply,
   revealPrivateThoughtIfAsked,
 } from './innerLifeSystem';
+import { evolveContinuity, getContinuityReply } from './continuitySystem';
 
 const MAX_MESSAGES = 120;
 const MAX_FACTS = 32;
@@ -434,7 +435,9 @@ export function beginConversationTurn(state: GameState, text: string, now = Date
   updated = advanceDevelopmentFromConversation(updated, now);
   const merged = mergeFact(updated, extractUserFact(text), now);
   updated = recordBondEvent(merged.state, 'conversation');
-  return { state: updated, reply: innerLifeReply ?? generateReply(updated, text, merged.fact) };
+  updated = evolveContinuity(updated, text, now);
+  const continuityReply = getContinuityReply(updated, text);
+  return { state: updated, reply: innerLifeReply ?? continuityReply ?? generateReply(updated, text, merged.fact) };
 }
 
 export function appendCreatureMessage(state: GameState, text: string, now = Date.now()): GameState {

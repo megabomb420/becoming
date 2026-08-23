@@ -83,6 +83,15 @@ function requestBody(state: GameState) {
       recentDreams: state.innerLife.dreams.slice(-2).map(item => ({ title: item.title.slice(0, 60), fragment: item.fragment.slice(0, 220), mood: item.mood })),
       preoccupation: state.innerLife.currentPreoccupation,
       pendingDisclosure: state.innerLife.pendingDisclosure,
+      selfAwareness: {
+        stage: state.innerLife.selfAwareness.stage,
+        reflection: state.innerLife.selfAwareness.lastReflection?.slice(0, 220) ?? '',
+      },
+    },
+    continuity: {
+      chapters: state.continuity.chapters.slice(-3).map(chapter => ({ title: chapter.title.slice(0, 80), summary: chapter.summary.slice(0, 320), topics: chapter.topics.slice(0, 4) })),
+      openThreads: state.continuity.openLoops.filter(loop => !loop.resolvedAt).slice(-3).map(loop => ({ kind: loop.kind, subject: loop.subject.slice(0, 100), askCount: loop.askCount })),
+      unresolvedCount: state.continuity.openLoops.filter(loop => !loop.resolvedAt).length,
     },
     facts: compactFacts(state),
     habits: compactHabits(state),
