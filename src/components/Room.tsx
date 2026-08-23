@@ -39,6 +39,7 @@ import {
 import { evolveCreationFromObject, getCreationMastery } from '../systems/creationSystem';
 import { parseImportedGameState, serializeGameState } from '../systems/persistence';
 import { uiLanguage, uiText } from '../systems/uiLanguage';
+import { evaluateTouchBoundary } from '../systems/boundarySystem';
 
 interface RoomProps {
   state: GameState;
@@ -708,9 +709,15 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
   const handleTapCreature = useCallback(() => {
     emitCue('touch');
-    showCreatureCue({ icon: '?', label: 'notices your touch', tone: 'notice' }, 1600);
     onStateChange(prev => {
-      const updated = recordBondEvent(touchCreature(prev, 'tap'), 'tap');
+      const boundary = evaluateTouchBoundary(prev, 'tap');
+      if (!boundary.accepted) {
+        showCreatureCue({ icon: '·', label: boundary.label || t('needs a moment', 'potrzebuje chwili'), tone: 'notice' }, 2600);
+        setTemporaryEmotion('uncertain', 2800);
+        return boundary.state;
+      }
+      showCreatureCue({ icon: '?', label: t('notices your touch', 'zauważa twój dotyk'), tone: 'notice' }, 1600);
+      const updated = recordBondEvent(touchCreature(boundary.state, 'tap'), 'tap');
       setTemporaryEmotion('curious', 2000);
       if (shouldSpeak(updated)) {
         const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'curious' });
@@ -718,13 +725,19 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       }
       return updated;
     });
-  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
+  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
 
   const handleStrokeCreature = useCallback(() => {
     emitCue('comfort');
-    showCreatureCue({ icon: '♡', label: 'leans into your hand', tone: 'reaction' }, 2400);
     onStateChange(prev => {
-      const updated = recordBondEvent(touchCreature(prev, 'stroke'), 'stroke');
+      const boundary = evaluateTouchBoundary(prev, 'stroke');
+      if (!boundary.accepted) {
+        showCreatureCue({ icon: '·', label: boundary.label || t('needs a moment', 'potrzebuje chwili'), tone: 'notice' }, 2600);
+        setTemporaryEmotion('uncertain', 2800);
+        return boundary.state;
+      }
+      showCreatureCue({ icon: '♡', label: t('leans into your hand', 'przysuwa się do twojej dłoni'), tone: 'reaction' }, 2400);
+      const updated = recordBondEvent(touchCreature(boundary.state, 'stroke'), 'stroke');
       setTemporaryEmotion('happy', 3000);
       if (shouldSpeak(updated)) {
         const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'happy' });
@@ -732,19 +745,25 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       }
       return updated;
     });
-  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
+  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
 
   const handleHoldStart = useCallback(() => {}, []);
 
   const handleHoldEnd = useCallback(() => {
     emitCue('comfort');
-    showCreatureCue({ icon: '♡', label: 'settles close', tone: 'reaction' }, 2600);
     onStateChange(prev => {
-      const updated = recordBondEvent(touchCreature(prev, 'hold'), 'hold');
+      const boundary = evaluateTouchBoundary(prev, 'hold');
+      if (!boundary.accepted) {
+        showCreatureCue({ icon: '·', label: boundary.label || t('not yet', 'jeszcze nie'), tone: 'notice' }, 2800);
+        setTemporaryEmotion('uncertain', 3000);
+        return boundary.state;
+      }
+      showCreatureCue({ icon: '♡', label: t('settles close', 'układa się blisko'), tone: 'reaction' }, 2600);
+      const updated = recordBondEvent(touchCreature(boundary.state, 'hold'), 'hold');
       setTemporaryEmotion('happy', 3000);
       return updated;
     });
-  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue]);
+  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t]);
 
   // ========== OBJECT INPUT ==========
   // A short press places/uses an object. A moved pointer repositions it. This
@@ -1460,7 +1479,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               </div>
             </div>
 
-            {(rankedInterests.length > 0 || state.innerLife.selfAwareness.stage !== 'unaware' || state.creations.length > 0) && (
+            {(rankedInterests.length > 0 || state.innerLife.selfAwareness.stage !== 'unaware' || state.creations.length > 0 || state.touchBoundaries.boundariesShown > 0) && (
               <div className="mt-6">
                 <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">{t('Inner weather', 'Wewnętrzna pogoda')}</h3>
                 <div className="grid grid-cols-2 gap-2 mt-3">
@@ -1477,6 +1496,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                 )}
                 {state.creations.length > 0 && (
                   <p className="text-warm-200/45 text-[10px] font-serif italic mt-1 capitalize">Making · {getCreationMastery(state)}</p>
+                )}
+                {state.touchBoundaries.boundariesShown > 0 && (
+                  <p className="text-warm-200/45 text-[10px] font-serif italic mt-1">
+                    {t('Boundaries · asks for space when touch becomes too much', 'Granice · prosi o przestrzeń, gdy dotyku jest za dużo')}
+                  </p>
                 )}
               </div>
             )}

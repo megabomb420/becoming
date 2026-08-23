@@ -445,6 +445,14 @@ export interface AbsenceEpisode {
   activityTypes: string[];
 }
 
+export interface TouchBoundaryState {
+  windowStartedAt: number;
+  touchesInWindow: number;
+  overwhelmedUntil: number;
+  lastBoundaryAt: number;
+  boundariesShown: number;
+}
+
 export type CreationStage = 'mark' | 'shape' | 'picture' | 'message';
 
 export interface CreatureCreation {
@@ -481,6 +489,7 @@ export interface GameState {
   continuity: ContinuityState;
   presence: PresenceState;
   creations: CreatureCreation[];
+  touchBoundaries: TouchBoundaryState;
   lastSaved: number;
   currentActivity: string | null;
   emotionalState: string;

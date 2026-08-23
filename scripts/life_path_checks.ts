@@ -20,6 +20,7 @@ import { consumeReturnGreeting, getAbsenceSummary, getPresenceReply, getVisitRit
 import { evolveCreationFromObject, migrateCreations } from '../src/systems/creationSystem';
 import { parseImportedGameState, serializeGameState } from '../src/systems/persistence';
 import { uiLanguage, uiText } from '../src/systems/uiLanguage';
+import { evaluateTouchBoundary, migrateTouchBoundaryState } from '../src/systems/boundarySystem';
 
 let state = createHatchedCreature(createNewCreature('Test', 99117));
 state = {
@@ -234,4 +235,28 @@ assert.equal(uiLanguage('pl'), 'pl');
 assert.equal(uiLanguage('en'), 'en');
 assert.equal(uiText('pl', 'Memories', 'Wspomnienia'), 'Wspomnienia');
 
-console.log('Life path, inner life, continuity, mirror, presence, absence, creation, backup, and language checks passed.');
+let bounded = createHatchedCreature(createNewCreature('Bounded', 717));
+bounded = {
+  ...bounded,
+  personality: { ...bounded.personality, caution: 82, independence: 80, affection: 20 },
+};
+const boundaryStart = 1_800_090_000_000;
+let boundaryResult = evaluateTouchBoundary(bounded, 'hold', boundaryStart);
+assert.equal(boundaryResult.accepted, false);
+assert.match(boundaryResult.label || '', /not yet/i);
+bounded = boundaryResult.state;
+assert.equal(bounded.touchBoundaries.boundariesShown, 1);
+assert.equal(bounded.memories.filter(memory => memory.tags.includes('boundary')).length, 1);
+for (let index = 0; index < 3; index += 1) {
+  boundaryResult = evaluateTouchBoundary(bounded, 'tap', boundaryStart + 9_000 + index * 100);
+  assert.equal(boundaryResult.accepted, true);
+  bounded = boundaryResult.state;
+}
+boundaryResult = evaluateTouchBoundary(bounded, 'tap', boundaryStart + 9_400);
+assert.equal(boundaryResult.accepted, false);
+assert.equal(boundaryResult.state.memories.filter(memory => memory.tags.includes('boundary')).length, 1);
+boundaryResult = evaluateTouchBoundary(boundaryResult.state, 'tap', boundaryStart + 31_000);
+assert.equal(boundaryResult.accepted, true);
+assert.equal(migrateTouchBoundaryState(null).boundariesShown, 0);
+
+console.log('Life path, inner life, continuity, mirror, presence, absence, creation, backup, language, and boundary checks passed.');

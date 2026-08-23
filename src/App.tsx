@@ -11,7 +11,7 @@ import { detectUiLanguage } from './systems/uiLanguage';
 import { uiLanguage } from './systems/uiLanguage';
 import PwaUpdateNotice from './components/PwaUpdateNotice';
 
-const APP_VERSION = '0.9.19';
+const APP_VERSION = '0.9.20';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);

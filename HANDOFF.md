@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.19
+> **Version:** 0.9.20
 > **Last Updated:** 2026-08-23
 
 ---
@@ -117,6 +117,7 @@ becoming/
 | Polish + English UI | ✅ | Device-aware default plus an explicit two-language switch keeps the room, settings, backup, chat shell, and AI language aligned |
 | Visible PWA updates | ✅ | A bilingual update card replaces silently stale service-worker sessions and preserves all local creature state |
 | Life while away | ✅ | Up to 12 absence episodes preserve sleep, exploration, quiet time, and room activity for greetings, memories, and later chat |
+| Touch boundaries | ✅ | Caution, independence, bond, and rapid-touch pressure decide when the creature accepts holding or asks for space |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
@@ -345,6 +346,12 @@ The update UI is available during loading, hatching, and the room, uses mobile-s
 Offline simulation no longer throws away the story it generated. Real returns of at least ten minutes create a bounded absence episode containing duration and distinct activities such as sleep, exploring the room, looking at objects, moving something, or sitting quietly. Longer returns weave one activity into the Polish or English greeting without guilt, neediness, or punishment.
 
 The latest episodes appear in the Memory Book with duration and date. Asking “what did you do while I was away?” or its Polish equivalent has a deterministic local answer even if DeepSeek is offline. Two sanitised summaries can reach the private AI mind for natural callbacks, while the Worker explicitly treats them as untrusted data and forbids using absence or streaks to pressure the player. Old saves migrate to an empty episode history.
+
+### v0.9.20 — A Creature, Not a Button
+
+Touch now respects a persistent boundary state. A highly cautious creature in a tentative bond may pull away from being held before enough trust exists. Every creature can become briefly overwhelmed by repeated taps, strokes, or holds inside a twelve-second window; the limit rises with bond and affection and falls slightly with strong independence. After a short pause, contact works normally again.
+
+A refusal does not reduce trust, punish the player, or decay needs. It simply prevents touch-spam from farming bond and gives clear Polish or English body-language feedback. The first meaningful boundary becomes a memory, repeated boundaries are rate-limited, old saves migrate cleanly, and the Becoming view acknowledges when the creature has learned to ask for space.
 
 ---
 

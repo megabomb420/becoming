@@ -4,6 +4,7 @@ import { createLifePathState } from './lifePathSystem';
 import { createInnerLifeState } from './innerLifeSystem';
 import { createContinuityState } from './continuitySystem';
 import { createPresenceState } from './presenceSystem';
+import { createTouchBoundaryState } from './boundarySystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -122,6 +123,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     continuity: createContinuityState(),
     presence: createPresenceState(birthTime),
     creations: [],
+    touchBoundaries: createTouchBoundaryState(),
     lastSaved: birthTime,
     currentActivity: null,
     emotionalState: 'neutral',
