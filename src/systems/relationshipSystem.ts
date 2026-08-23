@@ -14,6 +14,9 @@ import {
 
 export const ALL_OBJECT_TYPES: ObjectType[] = [
   'food_bowl',
+  'water_bowl',
+  'litter_box',
+  'wash_basin',
   'apple',
   'broccoli',
   'ball',
@@ -54,6 +57,9 @@ function seededWobble(seed: number, index: number) {
 function startingAffinity(type: ObjectType, personality: PersonalityTraits, seed: number) {
   const baseByType: Record<ObjectType, number> = {
     food_bowl: (personality.caution + personality.calmness - 100) * 0.12,
+    water_bowl: (personality.calmness + personality.optimism - 100) * 0.08,
+    litter_box: (personality.independence + personality.calmness - 100) * 0.08,
+    wash_basin: (personality.calmness + personality.caution - personality.stubbornness - 40) * 0.1,
     apple: (personality.optimism + personality.affection - 100) * 0.16,
     broccoli: (personality.curiosity + personality.calmness - personality.stubbornness - 50) * 0.18,
     ball: (personality.impulsiveness + personality.curiosity + personality.confidence - 145) * 0.16,
@@ -230,6 +236,36 @@ export function chooseObjectReaction(state: GameState, type: ObjectType): Object
   const affinity = preference.affinity;
   const { needs, personality } = state;
 
+  if (type === 'water_bowl') {
+    const thirsty = needs.hydration < 72;
+    return reactionFor(thirsty ? 'water-drink' : 'water-small-sip', thirsty ? 'love' : 'neutral', thirsty
+      ? 'drinks slowly, then looks relieved'
+      : 'takes one small sip', {
+      icon: thirsty ? '◇' : '·', behavior: 'eating', duration: 3000, objectStatus: 'used',
+      developmentGain: 0.35, bondEvent: 'care',
+    });
+  }
+
+  if (type === 'litter_box') {
+    const needsToilet = needs.bladder < 72 || needs.bowel < 72;
+    return reactionFor(needsToilet ? 'litter-use' : 'litter-not-needed', needsToilet ? 'enjoy' : 'avoid', needsToilet
+      ? 'uses the private corner, then carefully covers it'
+      : 'checks the private corner, but does not need it yet', {
+      icon: needsToilet ? '·' : '…', behavior: 'reacting', duration: 3200,
+      objectStatus: needsToilet ? 'used' : 'checked', developmentGain: 0.3, bondEvent: 'care',
+    });
+  }
+
+  if (type === 'wash_basin') {
+    const needsWash = needs.hygiene < 76;
+    return reactionFor(needsWash ? 'wash-clean' : 'wash-not-now', needsWash ? 'enjoy' : 'neutral', needsWash
+      ? 'washes the smudges away, one paw at a time'
+      : 'dabs one paw in the water and decides that is enough', {
+      icon: needsWash ? '✦' : '·', behavior: 'reacting', duration: 3600,
+      objectStatus: needsWash ? 'used' : 'tested', developmentGain: 0.4, bondEvent: 'care',
+    });
+  }
+
   if (type === 'apple' || type === 'broccoli') {
     const isFull = needs.hunger > 84;
     const dislikesBroccoli = type === 'broccoli' && affinity < -8 && personality.stubbornness > 45;
@@ -262,6 +298,11 @@ export function chooseObjectReaction(state: GameState, type: ObjectType): Object
   }
 
   if (type === 'ball') {
+    if (needs.hydration < 25 || needs.hunger < 25 || needs.bladder < 25 || needs.bowel < 25) {
+      return reactionFor('ball-care-first', 'avoid', 'starts toward the ball, then stops — something else needs attention first', {
+        icon: '…', behavior: 'reacting', duration: 2800, objectStatus: 'watched', bondEvent: 'care',
+      });
+    }
     if (needs.energy < 28) {
       return reactionFor('ball-too-tired', 'neutral', 'watches the ball roll past', {
         icon: '~', behavior: 'observing', duration: 2700, objectStatus: 'watched', needDelta: { stimulation: 3 }, bondEvent: 'play',

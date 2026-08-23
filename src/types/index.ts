@@ -18,11 +18,16 @@ export interface CreatureAppearance {
 }
 
 export interface Needs {
-  hunger: number;        // 0-100, hidden
-  energy: number;        // 0-100, hidden
-  comfort: number;       // 0-100, hidden
-  stimulation: number;   // 0-100, hidden
-  social: number;        // 0-100, hidden
+  // Every need uses the same direction: 100 means settled, 0 means urgent.
+  hunger: number;
+  hydration: number;
+  energy: number;
+  bladder: number;
+  bowel: number;
+  hygiene: number;
+  comfort: number;
+  stimulation: number;
+  social: number;
 }
 
 export interface PersonalityTraits {
@@ -202,6 +207,9 @@ export interface RoomObject {
 
 export type ObjectType =
   | 'food_bowl'
+  | 'water_bowl'
+  | 'litter_box'
+  | 'wash_basin'
   | 'apple'
   | 'broccoli'
   | 'ball'
@@ -506,6 +514,9 @@ export interface GameState {
   touchBoundaries: TouchBoundaryState;
   sharedLanguage: SharedLanguageState;
   lastSaved: number;
+  // Kept separately from lastSaved so debounced persistence never loses or
+  // double-counts elapsed need time.
+  needsUpdatedAt: number;
   currentActivity: string | null;
   emotionalState: string;
   sleepState: 'awake' | 'drowsy' | 'sleeping';

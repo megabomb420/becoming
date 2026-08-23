@@ -4,13 +4,13 @@
 
 Becoming is a mobile-first, installable life-sim about a virtual creature that grows from a newly hatched being into a persistent individual with memory, personality, opinions, an emerging identity, and a relationship with the player.
 
-The project is a polished vertical slice built around one principle: the player should understand the creature through behaviour, language, and shared history rather than visible meters.
+The project is a polished vertical slice built around one principle: the player should understand the creature through behaviour, language, and shared history rather than a permanent meter dashboard.
 
 **Play:** https://megabomb420.github.io/becoming/
 
 ## Core principles
 
-- **No visible stats.** Needs, bond, personality, and life paths are expressed through behaviour and language.
+- **Readable without raw stats.** Needs first appear through body language and a compact room signal; an optional care sheet names urgency and the helpful action without percentages or permanent bars. Bond, personality, and life paths remain behavioural.
 - **Local-first.** The complete creature and conversation history live in IndexedDB on the device.
 - **One persistent individual.** Seeded temperament provides continuity while care and experience gradually change the creature.
 - **No death from neglect.** Time away affects the relationship without punishing the player or deleting progress.
@@ -35,7 +35,7 @@ npm ci
 npm run dev
 ```
 
-The development server runs at `http://localhost:7100/`.
+The development server runs at `http://localhost:7100/becoming/`.
 
 Create a local `.env` from `.env.example` when testing the remote conversation gateway. Never put provider credentials in a `VITE_*` variable or any browser bundle.
 
@@ -55,7 +55,7 @@ npm run check  # complete pre-deploy verification
 |---|---|
 | Application lifecycle and persistence | `src/App.tsx`, `src/systems/persistence.ts` |
 | Creature data model | `src/types/index.ts` |
-| Needs, development, and relationship | `needsSystem.ts`, `developmentSystem.ts`, `relationshipSystem.ts` |
+| Needs, real local time, development, and relationship | `needsSystem.ts`, `timeSystem.ts`, `developmentSystem.ts`, `relationshipSystem.ts` |
 | Conversation and local fallback | `conversationSystem.ts`, `languageSystem.ts`, `llmConversation.ts` |
 | Memory and continuity | `memoryBook.ts`, `continuitySystem.ts`, `presenceSystem.ts` |
 | Identity, interests, and life paths | `lifePathSystem.ts`, `innerLifeSystem.ts` |

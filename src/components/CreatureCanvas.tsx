@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { GameState } from '../types';
 import { getLifePathVisual } from '../systems/lifePathSystem';
+import { getDominantNeed, getNeedUrgency } from '../systems/needsSystem';
 
 interface CreatureCanvasProps {
   state: GameState;
@@ -79,10 +80,14 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     const saturation = 20 + (pathVisual.saturation - 20) * pathVisual.strength;
     const lightness = 52 + (pathVisual.lightness - 52) * pathVisual.strength;
     const hasPath = (id: typeof pathVisual.paths[number]) => pathVisual.paths.includes(id);
+    const dominantNeed = getDominantNeed(state, true);
+    const dominantUrgency = dominantNeed ? getNeedUrgency(state.needs[dominantNeed]) : 'settled';
+    const needStrength = dominantUrgency === 'urgent' ? 1 : dominantUrgency === 'attention' ? 0.65 : dominantUrgency === 'notice' ? 0.3 : 0;
 
     // Each state has its own body language. The movement is deliberately
     // small: it should make the creature readable without turning it into a
     // collection of disconnected canned animations.
+    let motionX = 0;
     let motionY = 0;
     let motionRotation = 0;
     let motionScaleX = 1;
@@ -121,6 +126,20 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       motionScaleX = 1 + settle * 0.025;
       motionScaleY = 1 - settle * 0.018;
     }
+
+    if (!isSleeping && dominantNeed === 'energy') {
+      motionY += 2.5 * needStrength;
+      motionScaleY -= 0.035 * needStrength;
+      motionScaleX += 0.025 * needStrength;
+    }
+    if (!isSleeping && (dominantNeed === 'hunger' || dominantNeed === 'hydration')) {
+      motionY += 1.5 * needStrength;
+      motionRotation += 0.018 * needStrength;
+    }
+    if (!isSleeping && (dominantNeed === 'bladder' || dominantNeed === 'bowel')) {
+      motionX += Math.sin(time * 0.008) * 2.8 * needStrength;
+      motionRotation += Math.sin(time * 0.01) * 0.025 * needStrength;
+    }
     
     // Blink logic
     const blink = blinkStateRef.current;
@@ -135,7 +154,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     }
 
     ctx.save();
-    ctx.translate(x, y + motionY);
+    ctx.translate(x + motionX, y + motionY);
     ctx.scale(state.facing === 'left' ? -1 : 1, 1);
     ctx.rotate(motionRotation);
     ctx.scale(breath * motionScaleX * pathVisual.width, breath * motionScaleY * pathVisual.height);
@@ -182,6 +201,14 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.ellipse(0, 5, 38 * roundness, 35, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    if (state.needs.hygiene < 48) {
+      ctx.fillStyle = `rgba(67, 57, 47, ${0.12 + (48 - state.needs.hygiene) / 150})`;
+      ctx.beginPath();
+      ctx.ellipse(-23, 11, 7, 4, -0.45, 0, Math.PI * 2);
+      ctx.ellipse(21, 22, 5, 3, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // Ears
     if (app.earShape !== 'none') {
       ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${Math.max(32, lightness - 4)}%)`;
@@ -208,7 +235,8 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     const attentive = behavior === 'observing' || behavior === 'investigating';
     const eyeW = 10 * eyeSize * (attentive ? 1.08 : 1);
     const pathEyeHeight = 1 - pathVisual.eyeDroop * pathVisual.strength;
-    const openEyeHeight = 10 * eyeSize * pathEyeHeight * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
+    const tiredEyeScale = state.sleepState === 'drowsy' || dominantNeed === 'energy' ? Math.max(0.48, 1 - needStrength * 0.46) : 1;
+    const openEyeHeight = 10 * eyeSize * pathEyeHeight * tiredEyeScale * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
     const eyeH = isSleeping || blink.isBlinking ? 1 : openEyeHeight;
     ctx.fillStyle = isSleeping ? '#4a4035' : '#2a2018';
     
@@ -286,6 +314,13 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.quadraticCurveTo(0, 6, 4, 4);
     }
     ctx.stroke();
+
+    if (!isSleeping && dominantNeed === 'hydration' && needStrength >= 0.65) {
+      ctx.fillStyle = 'rgba(164, 102, 104, 0.75)';
+      ctx.beginPath();
+      ctx.ellipse(1, 7, 2.2, 3.5, 0.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Path marks deliberately layer when two lives cross. A Gymbro/Gamer
     // keeps both the headband and headset; a Stoner/Monk can grow a beanie

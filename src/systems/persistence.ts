@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { GameState, MemoryBookEntry, ObjectType } from '../types';
+import { GameState, MemoryBookEntry, Needs, ObjectType } from '../types';
 import { migrateBondState, migrateObjectPreferences } from './relationshipSystem';
 import { migrateConversationState } from './conversationSystem';
 import { syncDevelopmentWithAge } from './developmentSystem';
@@ -28,7 +28,10 @@ interface BecomingDB extends DBSchema {
 
 const DB_NAME = 'becoming-db';
 const DB_VERSION = 1;
-const BASE_INVENTORY: ObjectType[] = ['apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror'];
+const BASE_INVENTORY: ObjectType[] = [
+  'water_bowl', 'litter_box', 'wash_basin',
+  'apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror',
+];
 const SAVE_FORMAT = 'becoming-save';
 const SAVE_FORMAT_VERSION = 1;
 const MAX_IMPORT_LENGTH = 2_000_000;
@@ -48,9 +51,31 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
   return dbPromise;
 }
 
-function migrateState(state: GameState): GameState {
+function validNeed(value: unknown, fallback: number) {
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value as number)) : fallback;
+}
+
+export function migrateGameState(state: GameState): GameState {
   // Migrate old state that may be missing new fields
   const migrated = { ...state };
+
+  // v0.10: all needs share one clear direction (100 settled, 0 urgent).
+  // Existing five-need creatures keep their exact values; physical needs that
+  // did not exist before start comfortably instead of punishing an upgrade.
+  const oldNeeds = (migrated.needs ?? {}) as Partial<Needs>;
+  migrated.needs = {
+    hunger: validNeed(oldNeeds.hunger, 78),
+    hydration: validNeed(oldNeeds.hydration, 82),
+    energy: validNeed(oldNeeds.energy, 78),
+    bladder: validNeed(oldNeeds.bladder, 88),
+    bowel: validNeed(oldNeeds.bowel, 90),
+    hygiene: validNeed(oldNeeds.hygiene, 82),
+    comfort: validNeed(oldNeeds.comfort, 78),
+    stimulation: validNeed(oldNeeds.stimulation, 74),
+    social: validNeed(oldNeeds.social, 74),
+  };
+  const savedAt = Number.isFinite(migrated.lastSaved) ? migrated.lastSaved : migrated.identity.birthTimestamp;
+  migrated.needsUpdatedAt = Number.isFinite(migrated.needsUpdatedAt) ? migrated.needsUpdatedAt : savedAt;
 
   // Ensure development.hatched exists
   if (typeof migrated.development?.hatched !== 'boolean') {
@@ -193,7 +218,7 @@ export function parseImportedGameState(source: string): GameState {
     throw new Error('This file does not contain a complete Becoming creature.');
   }
   try {
-    return migrateState(candidate as GameState);
+    return migrateGameState(candidate as GameState);
   } catch {
     throw new Error('This Becoming backup is damaged or incompatible.');
   }
@@ -203,7 +228,7 @@ export async function loadGameState(): Promise<GameState | null> {
   const db = await getDB();
   const result = await db.get('gameState', 'current');
   if (!result) return null;
-  return migrateState(result);
+  return migrateGameState(result);
 }
 
 export async function saveGameState(state: GameState): Promise<void> {

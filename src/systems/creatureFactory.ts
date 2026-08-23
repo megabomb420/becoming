@@ -43,6 +43,7 @@ function generatePersonality(rand: () => number): PersonalityTraits {
 }
 
 const ALL_INVENTORY_ITEMS: ObjectType[] = [
+  'water_bowl', 'litter_box', 'wash_basin',
   'apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror',
 ];
 
@@ -69,11 +70,15 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
   };
 
   const needs: Needs = {
-    hunger: 40 + rand() * 30,
-    energy: 60 + rand() * 30,
-    comfort: 50 + rand() * 30,
-    stimulation: 40 + rand() * 30,
-    social: 30 + rand() * 40,
+    hunger: 72 + rand() * 18,
+    hydration: 74 + rand() * 18,
+    energy: 72 + rand() * 20,
+    bladder: 82 + rand() * 16,
+    bowel: 82 + rand() * 16,
+    hygiene: 78 + rand() * 18,
+    comfort: 72 + rand() * 20,
+    stimulation: 68 + rand() * 22,
+    social: 68 + rand() * 22,
   };
 
   const personality = generatePersonality(rand);
@@ -127,6 +132,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     touchBoundaries: createTouchBoundaryState(),
     sharedLanguage: createSharedLanguageState(),
     lastSaved: birthTime,
+    needsUpdatedAt: birthTime,
     currentActivity: null,
     emotionalState: 'neutral',
     sleepState: 'awake',

@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.22
+> **Version:** 0.10.0
 > **Last Updated:** 2026-08-23
 
 ---
@@ -28,7 +28,7 @@ The project is built as a **polished vertical slice** — playable from birth th
 | Icons | Generated via PIL (Python) |
 | Deployment | GitHub Pages via GitHub Actions |
 
-- **Dev command:** `npm run dev` → `http://localhost:7100/`
+- **Dev command:** `npm run dev` → `http://localhost:7100/becoming/`
 - **Full verification:** `npm run check`
 - **Live URL:** `https://megabomb420.github.io/becoming/`
 
@@ -47,14 +47,17 @@ becoming/
 │   └── icon-{192,512,maskable}.png
 ├── scripts/
 │   ├── run_system_checks.mjs    # Isolated TypeScript check runner
+│   ├── system_checks.ts         # Aggregates deterministic system suites
 │   ├── life_path_checks.ts      # Deterministic system smoke checks
+│   ├── needs_time_checks.ts     # Needs, offline, local-time, timezone, DST checks
 │   └── gen_icons.py             # PWA icon generation
 ├── src/
 │   ├── types/index.ts          # Core type definitions
 │   ├── systems/
 │   │   ├── persistence.ts      # IndexedDB save/load + migration
 │   │   ├── creatureFactory.ts  # Birth/egg generation, seeded traits
-│   │   ├── needsSystem.ts      # Hidden hunger, energy, comfort, stimulation, social
+│   │   ├── needsSystem.ts      # Nine physical/emotional needs, urgency, care actions
+│   │   ├── timeSystem.ts       # Real 24-hour local phases and smooth room lighting
 │   │   ├── developmentSystem.ts # Stage progression, vocabulary acquisition
 │   │   ├── languageSystem.ts   # Stage-constrained speech generation
 │   │   ├── conversationSystem.ts # Persistent dialogue, user facts, growing mind
@@ -102,18 +105,19 @@ becoming/
 | PWA installability | ✅ | Manifest, service worker, offline shell, icons |
 | Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` flag prevents regression |
 | Creature rendering | ✅ | Canvas-based with breathing, blinking, expressive eyes/ears/tail, and distinct walking, observing, investigating, eating, playing, and settling body language |
-| Hidden needs system | ✅ | 5 internal needs decay over time; no visible stats |
+| Readable needs system | ✅ | 9 consistently directed needs (100 settled → 0 urgent), compact room signals, optional descriptive care sheet, body-language cues, and no raw percentages or permanent bars |
 | Hidden personality | ✅ | Seeded traits that now evolve through care, play, touch, exploration, and conversation |
 | Bond development | ✅ | Persistent tentative → familiar → close → bonded relationship arc with milestone memories, bond-aware idle behavior, and later-stage speech |
 | Development stages | ✅ | `egg → newborn → animal → communicating → first_words → combining → sentences → mature`; stage regression prevented once hatched |
 | Language development | ✅ | Natural speech is available from birth; age and development progressively increase complexity, memory, and opinion while room and chat use the same ladder |
-| Object system | ✅ | Grouped shelf with 9 placeable objects; tap or drag to place, select a room object for explicit `Use` / `Put away`, reposition it, or clear the room |
+| Object system | ✅ | Grouped shelf with 12 placeable objects, including water, litter, and washing care tools; tap or drag to place, select for explicit `Use` / `Put away`, reposition, or clear the room |
 | Object preferences | ✅ | Individual seeded tastes that evolve through experience; favorites, uncertainty, refusals, learned play, drawing, box hiding, and mirror recognition |
 | Feeding | ✅ | Explicitly using placed food calls the creature; consumed food returns to the shelf for repeated use |
 | Creature movement | ✅ | Goal-driven state machine: idle → notice → look → approach → react; bounded shared floor coordinates and refresh-rate-independent canvas movement |
 | Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
-| Sleep / wake cycle | ✅ | Room dims; "z z z" animation; energy restored on wake via `sleepStartTimestamp` |
-| Offline simulation | ✅ | Calculates what happened while app was closed; respects sleep state; models night spans |
+| Real local day / night | ✅ | The user's normal 24-hour local clock drives smooth dawn → day → dusk → night lighting, an explicit phase/time label, quieter behaviour, drowsiness, and natural night rest |
+| Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
+| Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
 | Persistent state | ✅ | IndexedDB survives refresh, restart, reopening; migration layer repairs old saves |
 | Memory Book | ✅ | Emergent biography from significant memories |
 | Mobile-first UX | ✅ | Tested at 390×844 and 320×568; safe-area offsets, 44 px primary targets, scrollable sheets, and non-overlapping controls |
@@ -393,6 +397,18 @@ Ambient speech and chat now use the same age ladder. A newborn speaks in short c
 
 Influence is no longer a blanket morality gate. Direct suggestions create small persistent path pressure, while susceptibility depends on temperament, bond, learned rewards, recovery, and existing drift. Ordinary in-world vice can produce curiosity, compromise, acceptance, denial, or relapse without canned lectures. The hard boundary is reserved for actionable real-world severe harm or crime. The PWA manifest and every install asset are now scoped to `/becoming/`, fixing the 404 caused by launching a home-screen install at the GitHub Pages domain root.
 
+### v0.10.0 — A Body in Real Time
+
+The old five-need model decayed at minute-scale rates, was updated by interval counts instead of elapsed timestamps, and was then processed by a second, incompatible offline formula. It had no water, toilet, bowel, or hygiene state, and the main-room rule hid every value and most of its consequences. Players could see a creature act oddly without knowing whether the cause was hunger, tiredness, boredom, or a timer bug.
+
+Every need now uses one direction: `100 = settled`, `0 = urgent`. Hunger, hydration, energy, bladder, bowel, hygiene, comfort, stimulation, and contact advance from `needsUpdatedAt`, independently of the debounced persistence timestamp. Food, water, litter, washing, touch, sleep, blankets, and play produce concrete trade-offs. A compact signal beside the local clock shows only needs worth noticing; the optional care sheet explains all nine with descriptive urgency and the relevant action, never percentages. The creature also yawns, slumps, fidgets, looks for the player, searches for care objects, shows dirt, and may postpone play or sleep when a physical need is urgent.
+
+Time is no longer an inferred night toggle. `timeSystem.ts` follows the user's ordinary local 24-hour clock with explicit dawn (05:00–08:00), day (08:00–18:00), dusk (18:00–21:00), and night (21:00–05:00) phases. Palette anchors interpolate continuously, the room always states the phase and local time, and evening/night behaviour becomes quieter without forcing an unexplained sleep. Offline rest is sampled in local 15-minute slices so midnight, date changes, timezone changes, and DST are handled coherently.
+
+Offline needs now reuse the same model with a strongly diminishing absence curve: the first eight hours count partially, the next sixteen much less, and longer gaps add only a logarithmic tail. Existing saves preserve their original five values, gain new physical needs in a settled state, restore the three care objects, and continue from the last saved need timestamp. Automated checks cover rates, actions, urgency boundaries, migration, long absence, phase thresholds, smooth lighting boundaries, date rollover, timezone differences, DST, and daytime return after a night away. Browser QA at iPhone dimensions covered calm and urgent care states, sleep blocking, care-object recovery, IndexedDB reload, shelf layout, and both day and night rooms.
+
+That browser pass also exposed a React purity warning in touch handling: tap, stroke, and hold callbacks were changing Room UI state from inside App's functional state updater. Boundary evaluation and feedback now happen before the committed game-state update, removing the cross-component render update while preserving touch consent and rapid-touch protection.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -402,14 +418,13 @@ Influence is no longer a blanket morality gate. Direct suggestions create small 
 
 ### Logic / UX
 - **Sound is intentionally minimal:** Current cues are short interaction tones rather than voiced creature vocalizations.
-- **Needs decay may feel too slow or too fast:** Tuned for 1-minute intervals. Real-world testing on mobile is needed.
 - **Object drag on mobile:** Pointer events should work on most mobile browsers, but long-press vs drag detection could conflict with browser gestures on some devices.
-- **Offline simulation is simple:** Does not model complex chained activities.
+- **Needs balance needs longitudinal play data:** The model is deterministic and protected against punishment, but exact day-to-day rates should be revisited after multi-day physical-device sessions.
 
 ### Architecture
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the conversation automatically falls back to the smaller local mind.
 - **Public gateway protection is best-effort:** Role attacks and task abuse are filtered and rate-limited, but a determined hostile client can spoof browser headers. Durable Cloudflare rate limiting or Turnstile remains a future hardening option.
-- **Coverage is targeted, not comprehensive:** The existing system and Worker checks now block a broken deployment, but older conversation, social-learning, age-floor, needs-decay, and interaction cases still need broader unit coverage.
+- **Coverage is targeted, not comprehensive:** Needs, care, migration, offline time, dates, timezones, DST, and day phases are covered; older conversation, social-learning, age-floor, and drag-gesture cases still need broader unit coverage.
 
 ---
 
@@ -423,7 +438,7 @@ Influence is no longer a blanket morality gate. Direct suggestions create small 
 ### Priority: Medium
 4. **Physical-device polish pass** — verify vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
 5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
-6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and needs decay.
+6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
 
 ### Priority: Low / Future
 7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
@@ -434,7 +449,8 @@ Influence is no longer a blanket morality gate. Direct suggestions create small 
 
 ## 8. Architecture Decisions
 
-- **No visible stats, ever.** All creature state is communicated through body language, expressions, movement, sounds, and eventually language. This is a non-negotiable design principle.
+- **No permanent raw-stat dashboard.** Body language remains the first signal. A compact room cue and optional descriptive care sheet may expose playable urgency and the helpful action, but never raw percentages, optimisation-heavy meters, personality scores, or life-path scores.
+- **The user's clock is the world clock.** Day and night follow the device's normal local 24-hour time; the game never accelerates the sun or invents an unexplained night toggle.
 - **Local-first.** All core systems run in the browser. AI is reserved only for higher-level cognition and the app works fully offline.
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
 - **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
@@ -462,6 +478,7 @@ location.reload();
 | The creature's data model | `src/types/index.ts` |
 | How the creature is born | `src/systems/creatureFactory.ts` |
 | How needs work | `src/systems/needsSystem.ts` |
+| How local day, night, lighting, and offline rest windows work | `src/systems/timeSystem.ts` |
 | How language emerges | `src/systems/languageSystem.ts` + `src/systems/developmentSystem.ts` |
 | How social learning works | `src/systems/socialLearningSystem.ts` |
 | How paths, hybrids, choices, recovery, and skins work | `src/systems/lifePathSystem.ts` |

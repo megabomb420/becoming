@@ -3,15 +3,16 @@ import { GameState, OfflineActivity } from './types';
 import { loadGameState, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
-import { updateNeeds } from './systems/needsSystem';
+import { advanceNeeds } from './systems/needsSystem';
 import EggHatching from './components/EggHatching';
 import Room from './components/Room';
 import { registerReturn } from './systems/presenceSystem';
 import { detectUiLanguage } from './systems/uiLanguage';
 import { uiLanguage } from './systems/uiLanguage';
 import PwaUpdateNotice from './components/PwaUpdateNotice';
+import { getTimeOfDay, shouldBeDrowsy } from './systems/timeSystem';
 
-const APP_VERSION = '0.9.22';
+const APP_VERSION = '0.10.0';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -34,15 +35,16 @@ function App() {
         // The hatched flag is a permanent lifecycle transition.
         if (saved.development.hatched) {
           // Simulate offline time
-          const awayMs = Date.now() - saved.lastSaved;
+          const now = Date.now();
+          const awayMs = now - saved.lastSaved;
           let returningState = saved;
           let offlineActivities: OfflineActivity[] = [];
           if (awayMs > 60000) {
-            const { state: updated, activities } = simulateOfflineTime(saved, awayMs);
+            const { state: updated, activities } = simulateOfflineTime(saved, awayMs, now);
             returningState = updated;
             offlineActivities = activities;
           }
-          setGameState(registerReturn(returningState, awayMs, Date.now(), offlineActivities));
+          setGameState(registerReturn(returningState, awayMs, now, offlineActivities));
           setShowEgg(false);
         } else {
           // Not yet hatched — show the egg
@@ -84,18 +86,33 @@ function App() {
     };
   }, []);
 
-  // Needs decay
+  // Advance from timestamps, not interval counts. Background throttling and
+  // device sleep therefore cannot pause or double-count the creature's body.
   useEffect(() => {
     if (!hasGameState || showEgg) return;
-    needsTimerRef.current = setInterval(() => {
+    const advance = () => {
       setGameState(prev => {
         if (!prev) return prev;
-        const updated = { ...prev, needs: updateNeeds(prev, 1) };
+        const now = Date.now();
+        const advanced = advanceNeeds(prev, now);
+        const time = getTimeOfDay(now);
+        const updated = prev.sleepState === 'sleeping'
+          ? advanced
+          : { ...advanced, sleepState: shouldBeDrowsy(time, advanced.needs.energy) ? 'drowsy' as const : 'awake' as const };
         queueSave(updated);
         return updated;
       });
-    }, 60000);
-    return () => clearInterval(needsTimerRef.current);
+    };
+    advance();
+    needsTimerRef.current = setInterval(advance, 30_000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') advance();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(needsTimerRef.current);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [hasGameState, showEgg, queueSave]);
 
   const handleStateChange = useCallback((newState: GameState | ((prev: GameState) => GameState)) => {
