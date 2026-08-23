@@ -14,8 +14,6 @@ import {
   NEED_ORDER,
   applyNeedDelta,
   cleanRoomMess,
-  drinkCreature,
-  feedCreature,
   getDominantNeed,
   getNeedAction,
   getNeedLabel,
@@ -24,17 +22,12 @@ import {
   getNaturalNeedCue,
   getSleepBlocker,
   getVisibleNeedSignals,
-  putToSleep,
   touchCreature,
-  useToilet,
-  wakeUp,
-  washCreature,
 } from '../systems/needsSystem';
 import {
   getDevelopmentDescription,
   getDevelopmentLabel,
   getPendingMeaningfulFirst,
-  learnWord,
   markMeaningfulFirstAnnounced,
   recordAutonomousMoment,
   recordMeaningfulFirst,
@@ -49,11 +42,9 @@ import {
   getEmergingTraitLabels,
   getVisiblePersonalitySignature,
   recordBondEvent,
-  recordObjectExperience,
 } from '../systems/relationshipSystem';
 import {
   ensureDailyMoment,
-  evolveLifePathFromObject,
   getLifePathClues,
   getLifePathDescription,
   getLifePathPhaseLabel,
@@ -63,7 +54,6 @@ import {
   resolveDailyMoment,
 } from '../systems/lifePathSystem';
 import {
-  evolveInnerLifeFromObject,
   getDreamMoodLabel,
   getInterestLabel,
   getInterestStage,
@@ -78,7 +68,7 @@ import {
   SensoryCue,
   SensoryPreferences,
 } from '../systems/sensorySystem';
-import { evolveCreationFromObject, getCreationMastery } from '../systems/creationSystem';
+import { getCreationMastery } from '../systems/creationSystem';
 import { parseImportedGameState, serializeGameState } from '../systems/persistence';
 import { formatLearnedBehaviour, formatStoredMemory, getFactKindLabel, getOpenLoopKindLabel, uiLanguage, uiText } from '../systems/uiLanguage';
 import { evaluateTouchBoundary } from '../systems/boundarySystem';
@@ -97,6 +87,20 @@ import {
   getWeatherIcon,
   recordEnvironmentReaction,
 } from '../systems/environmentSystem';
+import { appendCreatureMessage, beginConversationTurn } from '../systems/conversationSystem';
+import { requestCreatureReply } from '../systems/llmConversation';
+import {
+  applyWorldObjectReaction,
+  applyConversationMicroReaction,
+  createRoomObject,
+  groundedWorldReply,
+  offerObjectFromInventory,
+  parseWorldIntent,
+  performImmediateWorldAction,
+  resultFromObjectReaction,
+  WorldActionResult,
+  WorldIntent,
+} from '../systems/worldActionSystem';
 
 interface RoomProps {
   state: GameState;
@@ -234,6 +238,14 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
+function chooseAutoPlacePosition(state: GameState) {
+  return AUTO_PLACE_SLOTS.reduce((best, candidate) => {
+    const nearestAtBest = state.roomObjects.length === 0 ? 100 : Math.min(...state.roomObjects.map(obj => dist(best, obj)));
+    const nearestAtCandidate = state.roomObjects.length === 0 ? 100 : Math.min(...state.roomObjects.map(obj => dist(candidate, obj)));
+    return nearestAtCandidate > nearestAtBest ? candidate : best;
+  }, AUTO_PLACE_SLOTS[0]);
+}
+
 interface DragSession {
   source: 'inventory' | 'room';
   type: ObjectType;
@@ -275,7 +287,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const polish = ui === 'pl';
   const t = (english: string, polishText: string) => uiText(ui, english, polishText);
   const artBase = import.meta.env.BASE_URL;
-  const [speech, setSpeech] = useState<string | null>(null);
+  const [roomInput, setRoomInput] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [mindState, setMindState] = useState<'ready' | 'connecting' | 'online' | 'instinct'>('ready');
+  const [speechFresh, setSpeechFresh] = useState(true);
+  const [microBehavior, setMicroBehavior] = useState<CreatureBehavior | null>(null);
+  const [microFacing, setMicroFacing] = useState<'left' | 'right' | null>(null);
   const [showMemoryBook, setShowMemoryBook] = useState(false);
   const [showBecoming, setShowBecoming] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
@@ -317,7 +334,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const ambientTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const cueTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const emotionTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const speechTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const speechFadeRef = useRef<ReturnType<typeof setTimeout>>();
+  const microReactionTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const initiateTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const activityTimerRef = useRef<ReturnType<typeof setInterval>>();
   const momentResultTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -325,6 +343,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const returnTraceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const careEffectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const lastCareSignalRef = useRef(0);
+  const lastSpeechAtRef = useRef(0);
   const firstInFlightRef = useRef<string | null>(null);
   const activeObjectRef = useRef<string | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
@@ -358,7 +377,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const greeting = state.presence.pendingGreeting;
     if (!greeting || state.presence.pendingTrace || initiatedTopic || showChat || state.sleepState === 'sleeping') return;
     setInitiatedTopic(greeting);
-    onStateChange(prev => consumeReturnGreeting(prev));
+    onStateChange(prev => appendCreatureMessage(consumeReturnGreeting(prev), greeting));
   }, [initiatedTopic, onStateChange, showChat, state.presence.pendingGreeting, state.presence.pendingTrace, state.sleepState]);
 
   const emitCue = useCallback((cue: SensoryCue) => {
@@ -453,11 +472,31 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     onStateChange(prev => ensureDailyMoment(prev));
   }, [onStateChange, state.development.hatched, state.development.cognitiveLevel, state.development.chronologicalAge]);
 
-  const triggerSpeech = useCallback((text: string) => {
-    setSpeech(text);
-    clearTimeout(speechTimeoutRef.current);
-    speechTimeoutRef.current = setTimeout(() => setSpeech(null), 4000);
-  }, []);
+  const triggerSpeech = useCallback((text: string, remember = true) => {
+    if (!text.trim()) return;
+    lastSpeechAtRef.current = Date.now();
+    setSpeechFresh(true);
+    clearTimeout(speechFadeRef.current);
+    speechFadeRef.current = setTimeout(() => setSpeechFresh(false), 7000);
+    onStateChange(prev => remember
+      ? appendCreatureMessage(prev, text)
+      : {
+          ...prev,
+          conversation: {
+            ...prev.conversation,
+            lastCreatureMessage: text,
+            lastConversationAt: Date.now(),
+          },
+        });
+  }, [onStateChange]);
+
+  useEffect(() => {
+    if (!state.conversation.lastCreatureMessage) return;
+    setSpeechFresh(true);
+    clearTimeout(speechFadeRef.current);
+    speechFadeRef.current = setTimeout(() => setSpeechFresh(false), 7000);
+    return () => clearTimeout(speechFadeRef.current);
+  }, [state.conversation.lastCreatureMessage]);
 
   const setTemporaryEmotion = useCallback((emotion: string, duration = 2800) => {
     clearTimeout(emotionTimerRef.current);
@@ -498,6 +537,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     type: ObjectType,
     target: { x: number; y: number },
     initiatedByUser: boolean,
+    worldIntent?: WorldIntent,
+    onWorldResult?: (result: WorldActionResult) => void,
   ) => {
     setIsMoving(false);
 
@@ -507,68 +548,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const reactionEmotion = reaction.emotion;
     const speechTrigger = type === 'ball' ? 'play' : type === 'apple' || type === 'broccoli' ? 'food' : type;
 
-    onStateChange(prev => {
-      const facing = target.x > prev.position.x ? 'right' : target.x < prev.position.x ? 'left' : prev.facing;
-      let next: GameState = applyNeedDelta({
-        ...prev,
-        position: target,
-        facing,
-        creatureBehavior: reaction.behavior,
-        currentActivity: localizedReaction,
-      }, reaction.needDelta);
-
-      if ((type === 'apple' || type === 'broccoli') && reaction.consumes) {
-        next = feedCreature(next, type);
-        next = {
-          ...next,
-          roomObjects: next.roomObjects.filter(obj => obj.id !== objectId),
-          inventory: next.inventory.includes(type) ? next.inventory : [...next.inventory, type],
-        };
-      } else {
-        if (type === 'water_bowl') {
-          next = reaction.id.includes('drink')
-            ? drinkCreature(next)
-            : applyNeedDelta(next, { hydration: 4, bladder: -2 });
-        }
-        if (type === 'litter_box' && reaction.outcome !== 'avoid') next = useToilet(next).state;
-        if (type === 'wash_basin' && reaction.id.includes('clean')) next = washCreature(next).state;
-        next = {
-          ...next,
-          roomObjects: next.roomObjects.map(obj => {
-            if (obj.id === objectId) {
-              const movedX = reaction.moveObjectBy
-                ? clampObjectPosition({ x: obj.x + (obj.x >= target.x ? reaction.moveObjectBy : -reaction.moveObjectBy), y: obj.y }).x
-                : obj.x;
-              return {
-                ...obj,
-                x: movedX,
-                interactions: obj.interactions + 1,
-                beingUsedByCreature: true,
-                state: { ...obj.state, status: reaction.objectStatus },
-              };
-            }
-            if (reaction.secondaryObjectType && obj.type === reaction.secondaryObjectType) {
-              return {
-                ...obj,
-                interactions: obj.interactions + 1,
-                beingUsedByCreature: true,
-                state: { ...obj.state, status: reaction.secondaryStatus ?? 'used' },
-              };
-            }
-            return obj;
-          }),
-        };
-      }
-
-      next = updateDevelopment(next, reaction.developmentGain);
-      if (type === 'apple' || type === 'broccoli') {
-        next = learnWord(next, type, 'food');
-      }
-      const experienced = recordObjectExperience(next, type, reaction, initiatedByUser);
-      const pathEvolved = evolveLifePathFromObject(experienced, type, reaction.outcome);
-      const inward = evolveInnerLifeFromObject(pathEvolved, type, reaction.outcome);
-      return evolveCreationFromObject(inward, type);
-    });
+    onStateChange(prev => applyWorldObjectReaction(prev, objectId, reaction, target, localizedReaction, initiatedByUser));
 
     behaviorRef.current = reaction.behavior;
     showCreatureCue({ icon: reaction.icon, label: localizedReaction, tone: 'reaction' }, reactionDuration);
@@ -578,7 +558,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       emotionalState: reactionEmotion,
       recentEvent: type,
     });
-    if (spoken) triggerSpeech(spoken);
+    if (spoken && !worldIntent) triggerSpeech(spoken, false);
+    if (worldIntent && onWorldResult) {
+      const object = stateRef.current.roomObjects.find(item => item.id === objectId) ?? {
+        id: objectId, type, x: target.x, y: target.y, state: {}, interactions: 0, placedByUser: true, beingUsedByCreature: true,
+      };
+      const result = resultFromObjectReaction(worldIntent, object, reaction.outcome, Boolean(reaction.consumes));
+      window.setTimeout(() => onWorldResult(result), 520);
+    }
 
     reactionTimerRef.current = setTimeout(() => {
       activeObjectRef.current = null;
@@ -593,7 +580,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     }, reactionDuration);
   }, [onStateChange, polish, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
 
-  const beginObjectInteraction = useCallback((object: RoomObject, initiatedByUser = true, autonomousMomentId?: Parameters<typeof recordAutonomousMoment>[1]) => {
+  const beginObjectInteraction = useCallback((
+    object: RoomObject,
+    initiatedByUser = true,
+    autonomousMomentId?: Parameters<typeof recordAutonomousMoment>[1],
+    worldIntent?: WorldIntent,
+    onWorldResult?: (result: WorldActionResult) => void,
+  ) => {
     const currentState = stateRef.current;
     if (currentState.sleepState === 'sleeping') return;
 
@@ -652,7 +645,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
       movementTimerRef.current = setTimeout(() => {
         if (activeObjectRef.current === object.id) {
-          finishObjectInteraction(object.id, object.type, target, initiatedByUser);
+          finishObjectInteraction(object.id, object.type, target, initiatedByUser, worldIntent, onWorldResult);
         }
       }, travelTime);
     }, noticeDelay);
@@ -763,7 +756,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     }
 
     behaviorRef.current = moment.behavior;
-    if (moment.utterance) triggerSpeech(moment.utterance);
+    if (moment.utterance) triggerSpeech(moment.utterance, false);
     onStateChange(prev => ({ ...prev, creatureBehavior: moment.behavior, currentActivity: label }));
     ambientTimerRef.current = setTimeout(() => {
       if (activeObjectRef.current || behaviorRef.current !== moment.behavior) return;
@@ -777,8 +770,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   useEffect(() => {
     if (state.sleepState === 'sleeping') {
       clearActionTimers();
-      clearTimeout(speechTimeoutRef.current);
-      setSpeech(null);
+      clearTimeout(speechFadeRef.current);
       setInitiatedTopic(null);
       activeObjectRef.current = null;
       setIsMoving(false);
@@ -890,7 +882,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   useEffect(() => () => {
     clearActionTimers();
     clearTimeout(emotionTimerRef.current);
-    clearTimeout(speechTimeoutRef.current);
+    clearTimeout(speechFadeRef.current);
     clearTimeout(cueTimerRef.current);
     clearTimeout(momentResultTimerRef.current);
     clearTimeout(firstMomentTimerRef.current);
@@ -921,17 +913,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const interval = setInterval(() => {
       const currentState = stateRef.current;
       const currentEmotion = creatureEmotionRef.current;
-      if (!showChat && !activeObjectRef.current && behaviorRef.current === 'idle' && shouldSpeak(currentState)) {
+      if (!showChat && !activeObjectRef.current && Date.now() - lastSpeechAtRef.current > 12_000 && behaviorRef.current === 'idle' && shouldSpeak(currentState)) {
         const text = generateCreatureSpeech(currentState, { trigger: 'idle', emotionalState: currentEmotion });
-        if (text) {
-          setSpeech(text);
-          clearTimeout(speechTimeoutRef.current);
-          speechTimeoutRef.current = setTimeout(() => setSpeech(null), 4000);
-        }
+        if (text) triggerSpeech(text, false);
       }
     }, 8000 + Math.random() * 10000);
     return () => clearInterval(interval);
-  }, [showChat]);
+  }, [showChat, triggerSpeech]);
 
   // Creature-initiated conversation check
   useEffect(() => {
@@ -945,7 +933,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           const topic = generateInitiatedTopic(currentState);
           if (topic) {
             setInitiatedTopic(topic.openingLine);
-            onStateChange(prev => clearInitiatedTopic(prev, topic.observationId));
+            onStateChange(prev => appendCreatureMessage(clearInitiatedTopic(prev, topic.observationId), topic.openingLine));
             return;
           }
         }
@@ -970,7 +958,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setTemporaryEmotion('curious', 2000);
     if (shouldSpeak(updated)) {
       const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'curious' });
-      if (text) triggerSpeech(text);
+      if (text) triggerSpeech(text, false);
     }
     onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
@@ -989,7 +977,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setTemporaryEmotion('happy', 3000);
     if (shouldSpeak(updated)) {
       const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'happy' });
-      if (text) triggerSpeech(text);
+      if (text) triggerSpeech(text, false);
     }
     onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
@@ -1014,16 +1002,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   // ========== OBJECT INPUT ==========
   // A short press places/uses an object. A moved pointer repositions it. This
   // keeps the primary interaction reliable on phones without removing drag.
-  const makeRoomObject = (type: ObjectType, position: { x: number; y: number }): RoomObject => ({
-    id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    type,
-    ...clampObjectPosition(position),
-    state: {},
-    interactions: 0,
-    placedByUser: true,
-    beingUsedByCreature: false,
-  });
-
   const putAwayRoomObject = (objectId: string) => {
     const object = stateRef.current.roomObjects.find(item => item.id === objectId);
     if (!object) return;
@@ -1051,18 +1029,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
     let chosenPosition = position;
     if (!chosenPosition) {
-      chosenPosition = AUTO_PLACE_SLOTS.reduce((best, candidate) => {
-        const nearestAtBest = currentState.roomObjects.length === 0
-          ? 100
-          : Math.min(...currentState.roomObjects.map(obj => dist(best, obj)));
-        const nearestAtCandidate = currentState.roomObjects.length === 0
-          ? 100
-          : Math.min(...currentState.roomObjects.map(obj => dist(candidate, obj)));
-        return nearestAtCandidate > nearestAtBest ? candidate : best;
-      }, AUTO_PLACE_SLOTS[0]);
+      chosenPosition = chooseAutoPlacePosition(currentState);
     }
 
-    const object = makeRoomObject(type, chosenPosition);
+    const object = createRoomObject(type, clampObjectPosition(chosenPosition));
     onStateChange(prev => ({
       ...prev,
       roomObjects: [...prev.roomObjects, object],
@@ -1213,13 +1183,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   };
 
   const handleToilet = () => {
-    if (stateRef.current.sleepState === 'sleeping') {
+    const now = Date.now();
+    const execution = performImmediateWorldAction(stateRef.current, { kind: 'toilet', objectType: 'litter_box' }, now);
+    if (execution.result.status === 'blocked') {
       showCreatureCue({ icon: '·', label: t('is sleeping too deeply right now', 'teraz śpi zbyt mocno'), tone: 'ambient' }, 2400);
       return;
     }
-    const now = Date.now();
-    const preview = useToilet(stateRef.current, now);
-    if (!preview.performed) {
+    if (execution.result.status === 'already_satisfied') {
       setShowCare(false);
       showCreatureCue({ icon: '·', label: t('does not need the toilet right now', 'teraz nie potrzebuje toalety'), tone: 'ambient' }, 2600);
       return;
@@ -1229,31 +1199,25 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setShowCare(false);
     emitCue('toilet');
     showCareEffect('toilet', 3300);
-    const activity = preview.result === 'both'
+    const activity = execution.result.reason === 'both'
       ? t('takes a proper bathroom break', 'załatwia wszystko w spokojnym kącie')
-      : preview.result === 'poop'
+      : execution.result.reason === 'poop'
         ? t('uses the toilet and looks relieved', 'robi kupę w toalecie i wyraźnie odczuwa ulgę')
         : t('uses the toilet and relaxes', 'robi siku w toalecie i od razu się rozluźnia');
     behaviorRef.current = 'toileting';
     setTemporaryEmotion('happy', 3300);
     showCreatureCue({ icon: '○', label: activity, tone: 'reaction' }, 3200);
-    onStateChange(prev => {
-      const result = useToilet(prev, now);
-      if (!result.performed) return result.state;
-      const developed = updateDevelopment(result.state, 0.22);
-      const bonded = recordBondEvent(developed, 'care');
-      return { ...bonded, emotionalState: 'neutral', creatureBehavior: 'toileting', currentActivity: activity };
-    });
+    onStateChange({ ...execution.state, emotionalState: 'neutral', creatureBehavior: 'toileting', currentActivity: activity });
     finishCareAnimation('toileting', 3300);
   };
 
   const handleWash = () => {
-    if (stateRef.current.sleepState === 'sleeping') {
+    const execution = performImmediateWorldAction(stateRef.current, { kind: 'wash', objectType: 'wash_basin' });
+    if (execution.result.status === 'blocked') {
       showCreatureCue({ icon: '·', label: t('can be washed after waking', 'można go umyć po obudzeniu'), tone: 'ambient' }, 2400);
       return;
     }
-    const preview = washCreature(stateRef.current);
-    if (!preview.performed) {
+    if (execution.result.status === 'already_satisfied') {
       setShowCare(false);
       showCreatureCue({ icon: '·', label: t('is already clean', 'jest już czysty'), tone: 'ambient' }, 2400);
       return;
@@ -1267,19 +1231,16 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     behaviorRef.current = 'washing';
     setTemporaryEmotion('happy', 3500);
     showCreatureCue({ icon: '≈', label: activity, tone: 'reaction' }, 3400);
-    onStateChange(prev => {
-      const result = washCreature(prev);
-      if (!result.performed) return result.state;
-      const developed = updateDevelopment(result.state, 0.18);
-      const bonded = recordBondEvent(developed, 'care');
-      return { ...bonded, emotionalState: 'neutral', creatureBehavior: 'washing', currentActivity: activity };
-    });
+    onStateChange({ ...execution.state, emotionalState: 'neutral', creatureBehavior: 'washing', currentActivity: activity });
     finishCareAnimation('washing', 3500);
   };
 
   const handleCleanMess = (messId?: string) => {
-    const preview = cleanRoomMess(stateRef.current, messId);
-    if (!preview.performed) {
+    const direct = messId ? cleanRoomMess(stateRef.current, messId) : null;
+    const execution = direct
+      ? { state: direct.state, result: { intent: { kind: 'clean' as const }, status: direct.performed ? 'success' as const : 'already_satisfied' as const, reason: direct.result } }
+      : performImmediateWorldAction(stateRef.current, { kind: 'clean' });
+    if (execution.result.status === 'already_satisfied') {
       setShowCare(false);
       showCreatureCue({ icon: '·', label: t('the room is already clean', 'pokój jest już czysty'), tone: 'ambient' }, 2400);
       return;
@@ -1287,13 +1248,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     emitCue('clean');
     showCareEffect('clean', 2700);
     setShowCare(false);
-    showCreatureCue({ icon: '◇', label: preview.count === 1 ? t('the floor is clean again', 'podłoga znów jest czysta') : t('the room feels clear again', 'w pokoju znów jest czysto'), tone: 'reaction' }, 2600);
-    onStateChange(prev => {
-      const result = cleanRoomMess(prev, messId);
-      if (!result.performed) return result.state;
-      const cleaned = result.state.roomMess.length === 0 ? { ...result.state, emotionalState: 'neutral' } : result.state;
-      return recordBondEvent(cleaned, 'care');
-    });
+    showCreatureCue({ icon: '◇', label: messId ? t('the floor is clean again', 'podłoga znów jest czysta') : t('the room feels clear again', 'w pokoju znów jest czysto'), tone: 'reaction' }, 2600);
+    const cleaned = execution.state.roomMess.length === 0 ? { ...execution.state, emotionalState: 'neutral' } : execution.state;
+    onStateChange(messId ? recordBondEvent(cleaned, 'care') : cleaned);
   };
 
   const handleOpenFood = () => {
@@ -1307,22 +1264,21 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setShowCare(false);
     setShowInventory(false);
     emitCue(state.sleepState === 'sleeping' ? 'wake' : 'sleep');
-    if (state.sleepState === 'sleeping') {
-      onStateChange(prev => wakeUp(prev));
-    } else {
-      const blocker = getSleepBlocker(state);
+    const intent: WorldIntent = { kind: state.sleepState === 'sleeping' ? 'wake' : 'sleep' };
+    const execution = performImmediateWorldAction(stateRef.current, intent);
+    if (execution.result.status === 'blocked') {
+      const blocker = getSleepBlocker(stateRef.current);
       if (blocker) {
         showCreatureCue({ icon: NEED_COPY[blocker].icon, label: getNaturalNeedCue(state, polish, blocker), tone: 'notice' }, 3400);
         setTemporaryEmotion('uncertain', 3200);
         return;
       }
-      const disposition = getCircadianDisposition(getTimeOfDay(Date.now(), state.world), state.needs.energy, false);
-      if (disposition === 'active' && state.needs.energy > 72) {
-        showCreatureCue({ icon: '·', label: t('is not sleepy yet', 'jeszcze nie jest senny'), tone: 'notice' }, 2800);
-        return;
-      }
-      onStateChange(prev => putToSleep(prev));
     }
+    if (execution.result.status === 'refused') {
+      showCreatureCue({ icon: '·', label: t('is not sleepy yet', 'jeszcze nie jest senny'), tone: 'notice' }, 2800);
+      return;
+    }
+    onStateChange(execution.state);
   };
 
   const handleOpenChatWithTopic = () => {
@@ -1338,6 +1294,137 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setShowCare(false);
     setShowInventory(false);
     setShowChat(true);
+  };
+
+  const completeWorldAction = useCallback((result: WorldActionResult) => {
+    triggerSpeech(groundedWorldReply(result, ui));
+  }, [triggerSpeech, ui]);
+
+  const offerAndApproach = useCallback((intent: WorldIntent, type: ObjectType) => {
+    const offered = offerObjectFromInventory(stateRef.current, type, chooseAutoPlacePosition(stateRef.current));
+    if (offered.result.status === 'unavailable' || !offered.result.objectId) {
+      completeWorldAction(offered.result);
+      return;
+    }
+    stateRef.current = offered.state;
+    onStateChange(offered.state);
+    const object = offered.state.roomObjects.find(item => item.id === offered.result.objectId);
+    if (!object) {
+      completeWorldAction({ ...offered.result, status: 'unavailable' });
+      return;
+    }
+    showCreatureCue({ icon: '!', label: polish ? `zauważa: ${objectLabel(type, true)}` : `notices the ${objectLabel(type, false)}`, tone: 'notice' });
+    window.setTimeout(() => beginObjectInteraction(object, true, undefined, intent, completeWorldAction), 180);
+  }, [beginObjectInteraction, completeWorldAction, onStateChange, polish, showCreatureCue]);
+
+  const runWorldIntent = useCallback((intent: WorldIntent) => {
+    if (intent.kind === 'offer_object' && intent.objectType) {
+      offerAndApproach(intent, intent.objectType);
+      return;
+    }
+
+    if (intent.kind === 'use_object' || intent.kind === 'drink') {
+      const desiredType = intent.kind === 'drink' ? 'water_bowl' : intent.objectType;
+      const object = desiredType
+        ? stateRef.current.roomObjects.find(item => item.type === desiredType)
+        : stateRef.current.roomObjects.find(item => item.type === 'apple' || item.type === 'broccoli');
+      if (object) {
+        beginObjectInteraction(object, true, undefined, intent, completeWorldAction);
+        return;
+      }
+      const inventoryType = desiredType ?? stateRef.current.inventory.find(item => item === 'apple' || item === 'broccoli');
+      if (inventoryType) {
+        offerAndApproach(intent, inventoryType);
+        return;
+      }
+      completeWorldAction({ intent, status: 'unavailable', objectType: desiredType });
+      return;
+    }
+
+    if (intent.kind === 'come_here') {
+      if (stateRef.current.sleepState === 'sleeping') {
+        completeWorldAction({ intent, status: 'blocked', reason: 'sleeping' });
+        return;
+      }
+      const target = clampToWalkable({ x: 50, y: 74 });
+      walkToIdlePosition(target);
+      window.setTimeout(() => completeWorldAction({ intent, status: 'success' }), 1100);
+      return;
+    }
+
+    const execution = performImmediateWorldAction(stateRef.current, intent);
+    stateRef.current = execution.state;
+    onStateChange(execution.state);
+
+    if (execution.result.status === 'success') {
+      if (intent.kind === 'toilet') {
+        emitCue('toilet');
+        showCareEffect('toilet', 3300);
+        setMicroBehavior('toileting');
+      } else if (intent.kind === 'wash') {
+        emitCue('wash');
+        showCareEffect('wash', 3500);
+        setMicroBehavior('washing');
+      } else if (intent.kind === 'clean') {
+        emitCue('clean');
+        showCareEffect('clean', 2700);
+      } else if (intent.kind === 'sleep') {
+        emitCue('sleep');
+      } else if (intent.kind === 'wake') {
+        emitCue('wake');
+      }
+    } else if (execution.result.status === 'refused' || execution.result.status === 'blocked') {
+      setTemporaryEmotion('uncertain', 2600);
+    }
+    window.setTimeout(() => completeWorldAction(execution.result), execution.result.status === 'success' ? 520 : 120);
+  }, [beginObjectInteraction, completeWorldAction, emitCue, offerAndApproach, onStateChange, setTemporaryEmotion, showCareEffect, walkToIdlePosition]);
+
+  const sendConversationMessage = useCallback(async (rawText: string) => {
+    const text = rawText.trim();
+    if (!text || isThinking) return;
+
+    const intent = parseWorldIntent(text);
+    const turn = beginConversationTurn(stateRef.current, text, Date.now(), { worldAction: Boolean(intent) });
+    stateRef.current = turn.state;
+    onStateChange(turn.state);
+
+    const micro = applyConversationMicroReaction(turn.state, text);
+    setMicroBehavior(micro.behavior);
+    if (micro.object) setMicroFacing(micro.object.x >= creaturePosRef.current.x ? 'right' : 'left');
+    setTemporaryEmotion(micro.emotion, 2400);
+    clearTimeout(microReactionTimerRef.current);
+    microReactionTimerRef.current = setTimeout(() => {
+      setMicroBehavior(null);
+      setMicroFacing(null);
+    }, 2400);
+
+    if (intent) {
+      setShowChat(false);
+      runWorldIntent(intent);
+      return;
+    }
+
+    setIsThinking(true);
+    setMindState('connecting');
+    try {
+      const reply = await requestCreatureReply(turn.state);
+      triggerSpeech(reply);
+      setMindState('online');
+    } catch (error) {
+      console.warn('AI reply unavailable; using the creature\'s local instincts.', error);
+      triggerSpeech(turn.reply);
+      setMindState('instinct');
+    } finally {
+      setIsThinking(false);
+    }
+  }, [isThinking, onStateChange, runWorldIntent, setTemporaryEmotion, triggerSpeech]);
+
+  const handleRoomSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const message = roomInput.trim();
+    if (!message) return;
+    setRoomInput('');
+    void sendConversationMessage(message);
   };
 
   const handleMomentChoice = (choiceId: string, result: string) => {
@@ -1421,6 +1508,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const weatherSummary = weatherActive && state.world.current
     ? `${getWeatherConditionLabel(state.world.current.condition, ui)}, ${Math.round(state.world.current.temperatureC)}°`
     : null;
+  const roomSpeech = state.conversation.lastCreatureMessage;
 
   return (
     <div
@@ -1584,8 +1672,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         state={{
           ...state,
           emotionalState: creatureEmotion,
+          creatureBehavior: microBehavior ?? state.creatureBehavior,
           position: creaturePos,
-          facing: creaturePos.x > state.position.x ? 'right' : creaturePos.x < state.position.x ? 'left' : state.facing,
+          facing: microFacing ?? (creaturePos.x > state.position.x ? 'right' : creaturePos.x < state.position.x ? 'left' : state.facing),
         }}
         onTap={handleTapCreature}
         onStroke={handleStrokeCreature}
@@ -1652,20 +1741,23 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       )}
 
       {/* Speech bubble */}
-      {speech && (
-        <div
-          className="absolute -translate-x-1/2 -translate-y-full animate-fade-in z-40 pointer-events-none transition-all duration-300"
+      {roomSpeech && (
+        <button
+          type="button"
+          onClick={initiatedTopic ? handleOpenChatWithTopic : handleOpenChat}
+          aria-label={t('Open conversation history', 'Otwórz historię rozmowy')}
+          className={`room-speech absolute -translate-x-1/2 -translate-y-full animate-fade-in z-40 transition-all duration-700 ${speechFresh ? 'is-fresh' : 'is-settled'}`}
           style={{ left: `${Math.max(30, Math.min(70, creaturePos.x))}%`, top: `${Math.max(18, creaturePos.y - 19)}%` }}
         >
-          <div className="relative bg-warm-100/90 text-room-dark px-4 py-2 rounded-2xl text-sm font-serif shadow-lg backdrop-blur-sm max-w-[200px] text-center">
-            {speech}
+          <div className="relative bg-warm-100/90 text-room-dark px-4 py-2 rounded-2xl text-sm font-serif shadow-lg backdrop-blur-sm max-w-[min(240px,72vw)] text-center">
+            {roomSpeech}
             <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-warm-100/90 rotate-45" />
           </div>
-        </div>
+        </button>
       )}
 
       {returnTrace && !showChat && !showMemoryBook && !showBecoming && !showCare && (
-        <div className="absolute left-4 right-4 bottom-24 z-40 pointer-events-none animate-fade-in" aria-live="polite">
+        <div className="absolute left-4 right-4 bottom-36 z-40 pointer-events-none animate-fade-in" aria-live="polite">
           <div className="return-trace max-w-sm mx-auto rounded-2xl px-4 py-3 flex items-center gap-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#c7a66c]/20 text-[#c7a66c]/75">
               <GlyphIcon name="trace" size={20} />
@@ -1679,7 +1771,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       )}
 
       {firstMoment && !returnTrace && !showChat && !showMemoryBook && !showBecoming && !showCare && (
-        <div className="absolute left-5 right-5 bottom-24 z-40 pointer-events-none animate-cue-pop" aria-live="polite">
+        <div className="absolute left-5 right-5 bottom-36 z-40 pointer-events-none animate-cue-pop" aria-live="polite">
           <div className="max-w-sm mx-auto rounded-[1.2rem_.4rem_1.2rem_1.2rem] border border-[#c7a66c]/20 bg-[#1b1f18]/96 px-4 py-3 shadow-2xl">
             <p className="eyebrow text-[#c7a66c]/58">{t('A first, quietly kept', 'Pierwszy raz, cicho zachowany')}</p>
             <p className="display-title text-[#ece8da]/92 text-base mt-1.5">{polish ? firstMoment.titlePl : firstMoment.titleEn}</p>
@@ -1688,51 +1780,33 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       )}
 
-      {/* Creature-initiated chat prompt */}
-      {initiatedTopic && !showChat && !showCare && (
-        <div
-          className="absolute top-[38%] left-1/2 -translate-x-1/2 z-40 animate-fade-in cursor-pointer"
-          onClick={handleOpenChatWithTopic}
-        >
-          <div className="relative bg-room-mid/80 backdrop-blur-sm border border-warm-300/20 px-4 py-2 rounded-2xl shadow-lg">
-            <p className="text-warm-200 text-xs font-serif italic">{initiatedTopic}</p>
-            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-room-mid/80 border-r border-b border-warm-300/20 rotate-45" />
-          </div>
-          <div className="flex justify-center mt-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-warm-300/60 animate-pulse" />
+      {/* The safe area and header are one real layout block. Controls below it
+          can no longer slide underneath a mobile status bar or notch. */}
+      <header className="room-header relative z-30 safe-top px-4 pb-3">
+        <div className="flex justify-between items-start">
+          <button onClick={() => setShowBecoming(true)} className="text-left group tap-target -my-1 py-1 pr-3">
+            <div className="eyebrow text-[#8d987c]/70 group-hover:text-[#d8d2bf]/75 transition-colors">{developmentLabel}</div>
+            <div className="display-title text-[#ece8da]/86 text-lg mt-1 group-hover:text-[#ece8da] transition-colors">
+              {state.identity.name || t('New', 'Nowy')}
+            </div>
+            <div className="text-[8px] font-serif uppercase tracking-[0.15em] mt-0.5" style={{ color: pathVisual.accent }}>
+              {lifePathTitle}
+            </div>
+          </button>
+          <div className="flex gap-0.5 items-start">
+            <button aria-label={t('Memory Book', 'Księga wspomnień')} title={t('Memory Book', 'Księga wspomnień')} onClick={() => { emitCue('open'); setShowMemoryBook(true); }} className="tap-target grid place-items-center text-[#d8d2bf]/55 hover:text-[#ece8da] rounded-full transition-colors">
+              <GlyphIcon name="memory" size={20} />
+            </button>
+            <button aria-label={t('Settings', 'Ustawienia')} title={t('Settings', 'Ustawienia')} onClick={() => { emitCue('open'); setShowSettings(true); }} className="tap-target grid place-items-center text-[#d8d2bf]/42 hover:text-[#ece8da] rounded-full transition-colors">
+              <GlyphIcon name="settings" size={20} />
+            </button>
           </div>
         </div>
-      )}
-
-      {/* Top bar */}
-      <div className="quiet-topbar absolute top-0 left-0 right-0 safe-top px-4 py-3 flex justify-between items-start z-30">
-        <button onClick={() => setShowBecoming(true)} className="text-left group tap-target -my-1 py-1 pr-3">
-          <div className="eyebrow text-[#8d987c]/70 group-hover:text-[#d8d2bf]/75 transition-colors">{developmentLabel}</div>
-          <div className="display-title text-[#ece8da]/86 text-lg mt-1 group-hover:text-[#ece8da] transition-colors">
-            {state.identity.name || t('New', 'Nowy')}
-          </div>
-          <div className="text-[8px] font-serif uppercase tracking-[0.15em] mt-0.5" style={{ color: pathVisual.accent }}>
-            {lifePathTitle}
-          </div>
-        </button>
-        <div className="flex gap-0.5 items-start">
-          <button aria-label={t('Memory Book', 'Księga wspomnień')} title={t('Memory Book', 'Księga wspomnień')} onClick={() => { emitCue('open'); setShowMemoryBook(true); }} className="tap-target grid place-items-center text-[#d8d2bf]/55 hover:text-[#ece8da] rounded-full transition-colors">
-            <GlyphIcon name="memory" size={20} />
-          </button>
-          <button aria-label={t('Settings', 'Ustawienia')} title={t('Settings', 'Ustawienia')} onClick={() => { emitCue('open'); setShowSettings(true); }} className="tap-target grid place-items-center text-[#d8d2bf]/42 hover:text-[#ece8da] rounded-full transition-colors">
-            <GlyphIcon name="settings" size={20} />
-          </button>
-        </div>
-      </div>
-
-      {/* The clock explains the light. Need signals stay compact and verbal;
-          the fuller care view appears only when the player asks for it. */}
-      <div className="absolute top-0 left-0 right-0 safe-top px-3 z-30 pointer-events-none">
         <button
           type="button"
           onClick={() => setShowNeeds(true)}
           aria-label={`${t('Open care and needs', 'Otwórz opiekę i potrzeby')}${weatherSummary ? ` · ${weatherSummary}` : ''}`}
-          className="pointer-events-auto mx-auto mt-12 flex min-h-9 max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border border-warm-200/10 bg-room-dark/68 px-3 py-1.5 text-left shadow-lg backdrop-blur-md transition-colors hover:bg-room-dark/82"
+          className="mx-auto mt-1 flex min-h-9 w-full max-w-md items-center gap-2 rounded-full border border-warm-200/10 bg-room-dark/68 px-3 py-1.5 text-left shadow-lg backdrop-blur-md transition-colors hover:bg-room-dark/82"
         >
           <span className="shrink-0 whitespace-nowrap text-[9px] font-serif uppercase tracking-[0.13em] text-warm-200/50">
             {getPhaseLabel(timeOfDay.phase, ui)} · {formatLocalClock(timeOfDay)}
@@ -1759,12 +1833,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           )}
           <span className="ml-auto shrink-0 text-[10px] text-warm-200/30" aria-hidden="true">⌄</span>
         </button>
-      </div>
+      </header>
 
       {/* Daily moments are small dilemmas, not quests. Their choice changes
           the creature's path and becomes a remembered event. */}
       {state.lifePath.pendingMoment && !showChat && !showMemoryBook && !showBecoming && !showCare && state.sleepState !== 'sleeping' && (
-        <div className="absolute left-4 right-4 bottom-24 z-40 animate-slide-up">
+        <div className="absolute left-4 right-4 bottom-36 z-40 animate-slide-up">
           <div className="max-w-md mx-auto rounded-2xl border border-warm-300/20 bg-room-dark/94 backdrop-blur-xl p-4 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
               <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/55">{t('A moment', 'Chwila')} · {t('Day', 'Dzień')} {state.lifePath.pendingMoment.day}</p>
@@ -1788,7 +1862,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       )}
 
       {momentResult && !showChat && !showMemoryBook && !showBecoming && !showCare && (
-        <div className="absolute left-5 right-5 bottom-24 z-40 pointer-events-none animate-cue-pop">
+        <div className="absolute left-5 right-5 bottom-36 z-40 pointer-events-none animate-cue-pop">
           <div className="max-w-sm mx-auto rounded-2xl border border-warm-300/20 bg-room-mid/94 backdrop-blur-xl px-4 py-3 text-center shadow-2xl">
             <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/45">{t('This became a memory', 'To stało się wspomnieniem')}</p>
             <p className="text-warm-100/85 text-xs font-serif leading-relaxed mt-1">{momentResult}</p>
@@ -1796,19 +1870,26 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       )}
 
-      {/* Conversation is the primary way this creature grows. */}
-      {state.conversation.totalUserMessages === 0 && !showInventory && !showCare && !returnTrace && !firstMoment && !state.lifePath.pendingMoment && state.sleepState !== 'sleeping' && (
-        <button
-          onClick={handleOpenChat}
-          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 min-h-11 rounded-full border border-[#ece8da]/20 bg-[#ece8da] text-[#171913] px-5 py-2 text-xs font-serif shadow-xl animate-cue-pop whitespace-nowrap"
-        >
-          {polish ? `Porozmawiaj z ${state.identity.name || 'stworkiem'}` : `Talk to ${state.identity.name || 'the creature'}`}
-        </button>
-      )}
-
-      {/* Bottom controls */}
-      <div className="absolute bottom-0 left-0 right-0 safe-bottom px-4 py-3 flex justify-center z-30">
-        <nav className="room-dock flex items-center gap-1 rounded-[1.7rem] px-1.5 py-1" aria-label={t('Room actions', 'Działania w pokoju')}>
+      {/* Ordinary conversation happens in the room. History expands only when
+          the player asks for it. */}
+      <div className="room-conversation-zone absolute bottom-0 left-0 right-0 safe-bottom px-3 pb-2 z-30">
+        <form onSubmit={handleRoomSubmit} className="room-conversation-bar mx-auto flex w-full max-w-md items-center gap-1.5 rounded-[1.25rem] p-1.5">
+          <input
+            value={roomInput}
+            onChange={event => setRoomInput(event.target.value.slice(0, 500))}
+            placeholder={polish ? `Powiedz coś ${state.identity.name || 'stworkowi'}…` : `Say something to ${state.identity.name || 'the creature'}…`}
+            aria-label={t('Your message to the creature', 'Twoja wiadomość do stworka')}
+            disabled={isThinking}
+            className="min-h-11 min-w-0 flex-1 bg-transparent px-3 text-sm font-serif text-warm-100 placeholder:text-warm-200/38 focus:outline-none"
+          />
+          <button type="button" onClick={handleOpenChat} aria-label={t('Open conversation history', 'Otwórz historię rozmowy')} title={t('Conversation history', 'Historia rozmowy')} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-warm-200/55 hover:text-warm-100">
+            <GlyphIcon name="chat" size={19} />
+          </button>
+          <button type="submit" disabled={!roomInput.trim() || isThinking} aria-label={t('Send', 'Wyślij')} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-warm-100 text-room-dark transition-all active:scale-95 disabled:opacity-30">
+            <GlyphIcon name="send" size={19} />
+          </button>
+        </form>
+        <nav className="room-dock mx-auto mt-1.5 flex w-fit items-center gap-1 rounded-[1.7rem] px-1.5 py-1" aria-label={t('Room actions', 'Działania w pokoju')}>
           <button aria-label={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Put creature to sleep', 'Połóż stworka spać')} title={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Sleep', 'Sen')} onClick={handleSleepToggle} className="dock-action">
             <GlyphIcon name={state.sleepState === 'sleeping' ? 'sun' : 'moon'} size={21} />
           </button>
@@ -1822,10 +1903,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             <GlyphIcon name="care" size={21} />
             {careNeedsAttention && <span className="care-seed" aria-hidden="true"><i /></span>}
           </button>
-          <button data-primary="true" aria-label={t('Talk to creature', 'Porozmawiaj ze stworkiem')} title={t('Talk', 'Rozmowa')} onClick={handleOpenChat} className="dock-action flex-col gap-0.5">
-            <GlyphIcon name="chat" size={20} />
-            <span className="text-[9px] font-serif leading-none">{t('Talk', 'Rozmowa')}</span>
-          </button>
           <button aria-label={t('Open things', 'Otwórz rzeczy')} title={t('Things', 'Rzeczy')} aria-expanded={showInventory} onClick={() => { setShowCare(false); setShowInventory(current => !current); }} className={`dock-action ${showInventory ? 'bg-[#ece8da] !text-[#171913]' : ''}`}>
             <GlyphIcon name="shelf" size={22} />
           </button>
@@ -1833,7 +1910,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       </div>
 
       {showCare && (
-        <section className="care-sheet absolute bottom-20 left-3 right-3 z-40 mx-auto max-w-md animate-slide-up" aria-label={t('Daily care', 'Codzienna opieka')}>
+        <section className="care-sheet absolute bottom-36 left-3 right-3 z-40 mx-auto max-w-md animate-slide-up" aria-label={t('Daily care', 'Codzienna opieka')}>
           <div className="care-sheet-light" aria-hidden="true" />
           <img src={`${artBase}art/care-motif.png`} alt="" className="care-sheet-motif motif-art" aria-hidden="true" />
           <header className="care-sheet-header">
@@ -1873,7 +1950,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
       {/* Inventory tray */}
       {showInventory && (
-        <div ref={inventoryTrayRef} className="absolute bottom-20 left-3 right-3 rounded-[1.4rem] border border-white/[.09] bg-[#181b15]/[.98] p-4 shadow-[0_24px_70px_rgba(0,0,0,.58)] z-40 animate-slide-up">
+        <div ref={inventoryTrayRef} className="absolute bottom-36 left-3 right-3 rounded-[1.4rem] border border-white/[.09] bg-[#181b15]/[.98] p-4 shadow-[0_24px_70px_rgba(0,0,0,.58)] z-40 animate-slide-up">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
               <p className="text-warm-100/85 text-sm font-serif">{t('The shelf', 'Półka')}</p>
@@ -2373,7 +2450,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
       {/* Chat Interface */}
       {showChat && (
-        <ChatInterface state={state} onStateChange={onStateChange} onClose={() => setShowChat(false)} initialMessage={initiatedTopic || undefined} />
+        <ChatInterface
+          state={state}
+          onStateChange={onStateChange}
+          onClose={() => setShowChat(false)}
+          onSendMessage={sendConversationMessage}
+          isThinking={isThinking}
+          mindState={mindState}
+        />
       )}
     </div>
   );

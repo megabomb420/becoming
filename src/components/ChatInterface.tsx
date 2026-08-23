@@ -1,12 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GameState } from '../types';
-import {
-  appendCreatureMessage,
-  beginConversationTurn,
-  getConversationOpening,
-} from '../systems/conversationSystem';
+import { appendCreatureMessage, getConversationOpening } from '../systems/conversationSystem';
 import { getDevelopmentDescription } from '../systems/developmentSystem';
-import { requestCreatureReply } from '../systems/llmConversation';
 import { getLifePathTitle, getLifePathVisual } from '../systems/lifePathSystem';
 import { getRankedInterests } from '../systems/innerLifeSystem';
 import { getVisiblePersonalitySignature } from '../systems/relationshipSystem';
@@ -17,13 +12,22 @@ interface ChatInterfaceProps {
   state: GameState;
   onStateChange: (state: GameState | ((prev: GameState) => GameState)) => void;
   onClose: () => void;
+  onSendMessage: (text: string) => Promise<void>;
+  isThinking: boolean;
+  mindState: 'ready' | 'connecting' | 'online' | 'instinct';
   initialMessage?: string;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onClose, initialMessage }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({
+  state,
+  onStateChange,
+  onClose,
+  onSendMessage,
+  isThinking,
+  mindState,
+  initialMessage,
+}) => {
   const [input, setInput] = useState('');
-  const [isThinking, setIsThinking] = useState(false);
-  const [mindState, setMindState] = useState<'ready' | 'connecting' | 'online' | 'instinct'>('ready');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const initRef = useRef(false);
@@ -80,22 +84,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
   const handleSend = async () => {
     if (!input.trim() || isThinking) return;
     const userText = input.trim();
-    const turn = beginConversationTurn(state, userText);
     setInput('');
-    setIsThinking(true);
-    setMindState('connecting');
-    onStateChange(turn.state);
-    try {
-      const reply = await requestCreatureReply(turn.state);
-      onStateChange(prev => appendCreatureMessage(prev, reply));
-      if (mountedRef.current) setMindState('online');
-    } catch (error) {
-      console.warn('AI reply unavailable; using the creature\'s local instincts.', error);
-      onStateChange(prev => appendCreatureMessage(prev, turn.reply));
-      if (mountedRef.current) setMindState('instinct');
-    } finally {
-      if (mountedRef.current) setIsThinking(false);
-    }
+    await onSendMessage(userText);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {

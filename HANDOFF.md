@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.11.1
+> **Version:** 0.12.0
 > **Last Updated:** 2026-08-23
 
 ---
@@ -480,6 +480,12 @@ The room gained a restrained window layer with drifting cloud, rain, snow, fog, 
 Interests, life paths, and strong personality labels now require repeated creature-owned choices, behaviour, or stated preferences. User mentions have very little weight, curiosity is tracked separately, and explicit dislike or refusal is counter-evidence. Stable labels require several consistent signals spread over time (or an even larger body of evidence), while older saves without source-aware evidence are conservatively recalibrated instead of preserving fast, unsupported identities.
 
 Player-facing Polish and English now use localized path, interest, development, dream, memory, history, and technical-kind labels with safer language fallbacks. Regression tests cover a single player mention, repeated player-only conversations, creature refusal, gradual self-directed adoption, legacy migration, and stored-memory translation; TypeScript, system suites, Worker checks, the production build, and a rendered Polish UI pass are the release gates.
+
+### v0.12.0 — Conversation in the Room
+
+Ordinary conversation now happens inside Room through a compact input and one persistent creature speech bubble; the full ChatInterface is the expandable history. Ambient sounds, action replies, return greetings, and AI replies share `lastCreatureMessage`, while only meaningful exchanges enter the transcript. The mobile header now reserves real safe-area space and the simplified bottom hierarchy keeps the creature, behavior, voice, and input ahead of secondary controls.
+
+`worldActionSystem.ts` provides deterministic PL/EN world intents and shared state transitions for offered objects, food, water, sleep/wake, movement, play, inspection, toilet, washing, and cleaning. Known commands do not add an LLM request or directly rewrite personality/life path: the room reacts immediately, existing notice/approach/object-choice behavior decides the outcome, and only the real `success`, `refused`, `unavailable`, `blocked`, or `already_satisfied` result produces speech. Tests and browser QA cover apple offer/consumption/refusal, water, sleep blocking, come-here, grounded replies, persistent speech, transcript behavior, safe areas, and 390×844 / 320×568 layouts.
 
 ---
 

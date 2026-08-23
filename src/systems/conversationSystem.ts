@@ -419,7 +419,16 @@ export interface ConversationTurn {
   reply: string;
 }
 
-export function beginConversationTurn(state: GameState, text: string, now = Date.now()): ConversationTurn {
+export interface ConversationTurnOptions {
+  worldAction?: boolean;
+}
+
+export function beginConversationTurn(
+  state: GameState,
+  text: string,
+  now = Date.now(),
+  options: ConversationTurnOptions = {},
+): ConversationTurn {
   const userMessage: ChatMessage = {
     id: `msg-${now}-user`,
     sender: 'user',
@@ -438,28 +447,30 @@ export function beginConversationTurn(state: GameState, text: string, now = Date
     },
   };
 
-  const parsedBehaviour = parseUserStatement(text);
-  updated = recordObservation(updated, text);
-  updated = observeSharedLanguage(updated, text, now);
-  if (parsedBehaviour?.action != null && parsedBehaviour.target != null) {
-    const observation = findExistingObservation(updated, parsedBehaviour.action, parsedBehaviour.target);
-    if (observation?.exposureCount && observation.exposureCount >= 2) {
-      const imitationIds = new Set(updated.socialLearning.imitated.map(item => item.observedId));
-      updated = attemptImitation(updated, observation.id);
-      if (!imitationIds.has(observation.id) && updated.socialLearning.imitated.some(item => item.observedId === observation.id)) {
-        updated = evolveLifePathFromImitation(updated, observation.id, now);
+  if (!options.worldAction) {
+    const parsedBehaviour = parseUserStatement(text);
+    updated = recordObservation(updated, text);
+    updated = observeSharedLanguage(updated, text, now);
+    if (parsedBehaviour?.action != null && parsedBehaviour.target != null) {
+      const observation = findExistingObservation(updated, parsedBehaviour.action, parsedBehaviour.target);
+      if (observation?.exposureCount && observation.exposureCount >= 2) {
+        const imitationIds = new Set(updated.socialLearning.imitated.map(item => item.observedId));
+        updated = attemptImitation(updated, observation.id);
+        if (!imitationIds.has(observation.id) && updated.socialLearning.imitated.some(item => item.observedId === observation.id)) {
+          updated = evolveLifePathFromImitation(updated, observation.id, now);
+        }
       }
     }
+    updated = evolveLifePath(updated, text, now);
+    updated = evolveInnerLifeFromConversation(updated, text, now);
   }
-  updated = evolveLifePath(updated, text, now);
-  updated = evolveInnerLifeFromConversation(updated, text, now);
   const revelation = revealPrivateThoughtIfAsked(updated, text, now);
   updated = revelation.state;
   const innerLifeReply = revelation.reply ?? getInnerLifeReply(updated, text);
   updated = advanceDevelopmentFromConversation(updated, now);
   const merged = mergeFact(updated, extractUserFact(text), now);
-  updated = recordBondEvent(merged.state, 'conversation');
-  updated = evolveContinuity(updated, text, now);
+  updated = options.worldAction ? merged.state : recordBondEvent(merged.state, 'conversation');
+  if (!options.worldAction) updated = evolveContinuity(updated, text, now);
   const continuityReply = getContinuityReply(updated, text);
   const presenceReply = getPresenceReply(updated, text);
   const sharedLanguageReply = getSharedLanguageReply(updated, text);

@@ -74,8 +74,38 @@
     opacity: .42;
   }
 
-  .quiet-topbar {
+  .quiet-topbar,
+  .room-header {
     background: linear-gradient(180deg, rgba(12, 14, 11, .82), rgba(12, 14, 11, 0));
+  }
+
+  .room-header {
+    min-height: calc(7.25rem + env(safe-area-inset-top));
+  }
+
+  .room-conversation-zone {
+    background: linear-gradient(0deg, rgba(12, 14, 11, .92), rgba(12, 14, 11, .5) 72%, transparent);
+  }
+
+  .room-conversation-bar {
+    border: 1px solid rgba(236, 232, 218, .13);
+    background: rgba(24, 27, 21, .95);
+    box-shadow: 0 16px 48px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.035);
+    backdrop-filter: blur(16px);
+  }
+
+  .room-speech {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    transform-origin: 50% 100%;
+  }
+
+  .room-speech.is-settled {
+    opacity: .76;
+    filter: saturate(.8);
+    transform: translate(-50%, -100%) scale(.96);
   }
 
   .room-dock {

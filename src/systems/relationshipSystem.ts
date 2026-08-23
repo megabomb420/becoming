@@ -269,8 +269,21 @@ export function chooseObjectReaction(state: GameState, type: ObjectType): Object
 
   if (type === 'apple' || type === 'broccoli') {
     const isFull = needs.hunger > 84;
-    const dislikesBroccoli = type === 'broccoli' && affinity < -8 && personality.stubbornness > 45;
-    if (isFull || (dislikesBroccoli && needs.hunger > 42)) {
+    const dislikesFood = affinity < -10 && personality.stubbornness > 45;
+    const cautiousFirstTaste = seen === 0
+      && needs.hunger > 52
+      && personality.caution > 62
+      && state.bond.stage === 'tentative';
+    const occupiedByOwnChoice = Boolean(state.currentActivity)
+      && state.creatureBehavior !== 'idle'
+      && state.creatureBehavior !== 'observing'
+      && personality.independence > 62
+      && needs.hunger > 48;
+    const tooYoungAndUnsure = (state.development.stage === 'newborn' || state.development.stage === 'animal')
+      && seen === 0
+      && needs.hunger > 64
+      && personality.caution > personality.curiosity;
+    if (isFull || (dislikesFood && needs.hunger > 38) || cautiousFirstTaste || occupiedByOwnChoice || tooYoungAndUnsure) {
       return reactionFor(`${type}-save`, 'avoid', `sniffs the ${type}, then saves it for later`, {
         icon: '…',
         emotion: 'uncertain',
