@@ -60,19 +60,29 @@ export function migrateGameState(state: GameState): GameState {
   const migrated = { ...state };
 
   // v0.10: all needs share one clear direction (100 settled, 0 urgent).
-  // Existing five-need creatures keep their exact values; physical needs that
-  // did not exist before start comfortably instead of punishing an upgrade.
+  // The old minute-based model could leave every legacy value at zero after a
+  // short absence. A one-time floor moves those five values out of crisis;
+  // physical needs that did not exist before also start comfortably.
   const oldNeeds = (migrated.needs ?? {}) as Partial<Needs>;
+  const legacyNeeds = !Number.isFinite(oldNeeds.hydration)
+    || !Number.isFinite(oldNeeds.bladder)
+    || !Number.isFinite(oldNeeds.bowel)
+    || !Number.isFinite(oldNeeds.hygiene)
+    || !Number.isFinite(migrated.needsUpdatedAt);
+  const legacyValue = (value: unknown, fallback: number) => {
+    const migratedValue = validNeed(value, fallback);
+    return legacyNeeds ? Math.max(68, migratedValue) : migratedValue;
+  };
   migrated.needs = {
-    hunger: validNeed(oldNeeds.hunger, 78),
+    hunger: legacyValue(oldNeeds.hunger, 78),
     hydration: validNeed(oldNeeds.hydration, 82),
-    energy: validNeed(oldNeeds.energy, 78),
+    energy: legacyValue(oldNeeds.energy, 78),
     bladder: validNeed(oldNeeds.bladder, 88),
     bowel: validNeed(oldNeeds.bowel, 90),
     hygiene: validNeed(oldNeeds.hygiene, 82),
-    comfort: validNeed(oldNeeds.comfort, 78),
-    stimulation: validNeed(oldNeeds.stimulation, 74),
-    social: validNeed(oldNeeds.social, 74),
+    comfort: legacyValue(oldNeeds.comfort, 78),
+    stimulation: legacyValue(oldNeeds.stimulation, 74),
+    social: legacyValue(oldNeeds.social, 74),
   };
   const savedAt = Number.isFinite(migrated.lastSaved) ? migrated.lastSaved : migrated.identity.birthTimestamp;
   migrated.needsUpdatedAt = Number.isFinite(migrated.needsUpdatedAt) ? migrated.needsUpdatedAt : savedAt;

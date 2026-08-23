@@ -97,7 +97,9 @@ legacy.needs = { hunger: 33, energy: 44, comfort: 55, stimulation: 66, social: 7
 delete (legacy as Partial<GameState>).needsUpdatedAt;
 legacy.inventory = legacy.inventory.filter(type => !['water_bowl', 'litter_box', 'wash_basin'].includes(type));
 const migrated = migrateGameState(legacy as GameState);
-assert.equal(migrated.needs.hunger, 33);
+assert.equal(migrated.needs.hunger, 68, 'legacy zero-prone needs must leave the old model outside crisis');
+assert.equal(migrated.needs.energy, 68);
+assert.equal(migrated.needs.comfort, 68);
 assert.equal(migrated.needs.hydration, 82);
 assert.equal(migrated.needsUpdatedAt, migrated.lastSaved);
 assert.ok(migrated.inventory.includes('water_bowl'));
