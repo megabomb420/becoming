@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { detectUiLanguage, uiText } from '../systems/uiLanguage';
 
 interface EggHatchingProps {
@@ -14,171 +14,133 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
   const ui = useMemo(() => detectUiLanguage(), []);
   const t = (english: string, polish: string) => uiText(ui, english, polish);
 
-  // Generate ambient particles once — NOT on every render.
-  // Previously Math.random() in render caused 20 DOM nodes to be destroyed
-  // and recreated on every keystroke, hanging the UI.
-  const particles = useMemo(() =>
-    Array.from({ length: 20 }).map(() => ({
-      width: 2 + Math.random() * 4,
-      height: 2 + Math.random() * 4,
-      left: Math.random() * 100,
-      top: Math.random() * 100,
-      duration: 4 + Math.random() * 6,
-      delay: Math.random() * 4,
-    })),
-    []
-  );
+  const motes = useMemo(() => Array.from({ length: 12 }).map((_, index) => ({
+    id: index,
+    size: 1 + Math.random() * 2.5,
+    left: 10 + Math.random() * 80,
+    top: 8 + Math.random() * 76,
+    duration: 6 + Math.random() * 7,
+    delay: Math.random() * 4,
+  })), []);
 
   useEffect(() => {
-    // Auto-wobble after a few seconds
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       if (stage === 'egg') setStage('wobbling');
     }, 3000);
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [stage]);
 
   const handleTap = () => {
     if (stage === 'egg') {
-      setTapCount(prev => {
-        const next = prev + 1;
+      setTapCount(previous => {
+        const next = previous + 1;
         if (next >= 3) setStage('wobbling');
         return next;
       });
     } else if (stage === 'wobbling') {
-      setTapCount(prev => {
-        const next = prev + 1;
+      setTapCount(previous => {
+        const next = previous + 1;
         if (next >= 6) setStage('cracking');
         return next;
       });
     } else if (stage === 'cracking') {
       setStage('hatched');
-      setTimeout(() => setStage('naming'), 2000);
+      window.setTimeout(() => setStage('naming'), 1900);
     }
   };
 
   const handleSubmitName = () => {
-    if (submittedRef.current) return; // prevent double submission
+    if (submittedRef.current) return;
     const trimmed = name.trim();
-    if (trimmed) {
-      submittedRef.current = true;
-      onNameChosen(trimmed);
-      onHatch();
-    }
+    if (!trimmed) return;
+    submittedRef.current = true;
+    onNameChosen(trimmed);
+    onHatch();
   };
 
+  const hint = stage === 'egg'
+    ? t('Touch the shell', 'Dotknij skorupy')
+    : stage === 'wobbling'
+      ? t('Something is answering', 'Coś odpowiada')
+      : t('One more touch', 'Jeszcze jeden dotyk');
+
   return (
-    <div className="flex flex-col items-center justify-center h-full bg-room-dark relative overflow-hidden">
-      {/* Ambient particles — stable across re-renders */}
-      <div className="absolute inset-0 opacity-20 pointer-events-none" aria-hidden="true">
-        {particles.map((p, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full bg-warm-200"
-            style={{
-              width: `${p.width}px`,
-              height: `${p.height}px`,
-              left: `${p.left}%`,
-              top: `${p.top}%`,
-              animation: `float ${p.duration}s ease-in-out infinite`,
-              animationDelay: `${p.delay}s`,
-            }}
+    <main className="terrarium-shell flex h-full flex-col items-center justify-center overflow-hidden px-6">
+      <div className="absolute inset-0" aria-hidden="true" style={{ background: 'radial-gradient(ellipse at 50% 43%, rgba(157,150,116,.2), transparent 25%), radial-gradient(ellipse at 50% 100%, rgba(74,84,61,.2), transparent 46%)' }} />
+      <div className="absolute inset-0 ambient-grain" aria-hidden="true" />
+      <div className="absolute inset-0 opacity-35 pointer-events-none" aria-hidden="true">
+        {motes.map(mote => (
+          <span
+            key={mote.id}
+            className="absolute rounded-full bg-[#d8d2bf]"
+            style={{ width: mote.size, height: mote.size, left: `${mote.left}%`, top: `${mote.top}%`, animation: `float ${mote.duration}s ease-in-out infinite`, animationDelay: `${mote.delay}s` }}
           />
         ))}
       </div>
 
-      {stage !== 'naming' && (
-        <button
-          type="button"
-          aria-label={stage === 'cracking' ? t('Finish hatching', 'Dokończ wykluwanie') : t('Tap egg to hatch', 'Dotknij jajka, aby je wykluć')}
-          className="relative cursor-pointer select-none bg-transparent border-0 p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warm-200/60 rounded-full"
-          onClick={handleTap}
-        >
-          {/* Glow */}
-          <div 
-            className={`absolute inset-0 rounded-full transition-all duration-1000 ${
-              stage === 'wobbling' ? 'animate-pulse' : ''
-            }`}
-            style={{
-              background: 'radial-gradient(circle, rgba(200,180,150,0.2) 0%, transparent 70%)',
-              transform: 'scale(2)',
-            }}
-          />
-          
-          {/* Egg / Creature */}
-          <div 
-            className={`relative transition-all duration-700 ${
-              stage === 'wobbling' ? 'animate-breathe' : ''
-            } ${stage === 'cracking' ? 'scale-110' : ''}`}
+      {stage !== 'naming' ? (
+        <div className="relative z-10 flex flex-col items-center">
+          <p className="eyebrow text-[#8d987c]/70 mb-10">{t('Before a voice', 'Przed pierwszym głosem')}</p>
+          <button
+            type="button"
+            aria-label={stage === 'cracking' ? t('Finish hatching', 'Dokończ wykluwanie') : t('Touch the egg to hatch', 'Dotknij jajka, aby je wykluć')}
+            className="relative cursor-pointer select-none bg-transparent border-0 p-5 rounded-full"
+            onClick={handleTap}
           >
+            <span className={`absolute inset-[-48px] rounded-full transition-all duration-1000 ${stage === 'wobbling' ? 'animate-pulse' : ''}`} style={{ background: 'radial-gradient(circle, rgba(216,210,191,.2), rgba(199,166,108,.08) 38%, transparent 68%)' }} />
             {stage === 'hatched' ? (
-              <div className="text-6xl animate-fade-in">✨</div>
+              <span className="relative block w-28 h-36 animate-fade-in" aria-hidden="true">
+                <span className="absolute inset-0 rounded-full" style={{ background: 'radial-gradient(circle, rgba(236,232,218,.9), rgba(199,166,108,.25) 36%, transparent 70%)' }} />
+                <svg className="absolute inset-0 w-full h-full text-[#ece8da]/70" viewBox="0 0 112 144" fill="none">
+                  <path d="M56 103c-18-15-22-34-7-54 11 9 18 20 20 33 1 9-4 16-13 21Z" stroke="currentColor" strokeWidth="1.4" />
+                  <path d="M56 103c-1-16-1-31-7-54" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              </span>
             ) : (
-              <div className="relative">
-                <div 
-                  className="w-24 h-32 rounded-[50%] bg-room-light shadow-2xl"
-                  style={{
-                    background: 'radial-gradient(ellipse at 30% 30%, #e8ddd0, #a08b70)',
-                    boxShadow: '0 0 60px rgba(200,180,150,0.2), inset 0 -10px 30px rgba(0,0,0,0.2)',
-                  }}
-                />
+              <span className={`relative block transition-transform duration-700 ${stage === 'wobbling' ? 'animate-breathe' : ''} ${stage === 'cracking' ? 'scale-105' : ''}`} aria-hidden="true">
+                <span className="block w-24 h-32 rounded-[51%_49%_45%_55%] border border-white/10" style={{ background: 'radial-gradient(ellipse at 32% 26%, #e3dece, #a49b84 55%, #6e6859)', boxShadow: '0 24px 55px rgba(0,0,0,.42), inset -8px -14px 26px rgba(42,40,33,.24)' }} />
                 {stage === 'cracking' && (
-                  <svg className="absolute inset-0 w-24 h-32" viewBox="0 0 96 128">
-                    <path
-                      d="M45 40 L50 55 L42 65 L52 75"
-                      stroke="#3a3028"
-                      strokeWidth="1.5"
-                      fill="none"
-                      className="animate-fade-in"
-                    />
+                  <svg className="absolute inset-0 w-24 h-32 text-[#3a3b32]" viewBox="0 0 96 128" fill="none">
+                    <path d="M45 34 51 50l-9 12 11 13-8 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
-              </div>
+              </span>
             )}
-          </div>
-
-          {/* Hint text */}
-          {stage === 'egg' && tapCount < 2 && (
-            <p className="absolute -bottom-12 left-1/2 -translate-x-1/2 text-warm-200/40 text-xs font-serif whitespace-nowrap animate-fade-in">
-              {t('Tap to begin', 'Dotknij, aby zacząć')}
-            </p>
+          </button>
+          {stage !== 'hatched' && (
+            <div className="mt-7 text-center animate-fade-in">
+              <p className="display-title text-lg text-[#ece8da]/76">{hint}</p>
+              <p className="mt-2 text-[10px] text-[#d8d2bf]/58">{t('No two beginnings carry the same temperament.', 'Żadne dwa początki nie niosą tego samego temperamentu.')}</p>
+            </div>
           )}
-          {stage === 'wobbling' && (
-            <p className="absolute -bottom-12 left-1/2 -translate-x-1/2 text-warm-200/40 text-xs font-serif whitespace-nowrap">
-              {t('Something moves inside', 'Coś porusza się w środku')}
-            </p>
-          )}
-          {stage === 'cracking' && (
-            <p className="absolute -bottom-12 left-1/2 -translate-x-1/2 text-warm-200/40 text-xs font-serif whitespace-nowrap">
-              {t('Almost there...', 'Już prawie...')}
-            </p>
-          )}
-        </button>
-      )}
-
-      {stage === 'naming' && (
-        <div className="animate-fade-in text-center px-6">
-          <p className="text-warm-100/80 text-sm font-serif mb-2">{t('A creature has emerged.', 'Pojawił się stworek.')}</p>
-          <p className="text-warm-200/50 text-xs mb-6">{t('What will you call it?', 'Jak go nazwiesz?')}</p>
+        </div>
+      ) : (
+        <section className="relative z-10 w-full max-w-xs animate-fade-in text-center">
+          <p className="eyebrow text-[#8d987c]/70">{t('Something is here', 'Coś już tu jest')}</p>
+          <h1 className="display-title text-[2rem] text-[#ece8da] mt-4 text-balance">{t('Give it a name it can grow into.', 'Daj mu imię, do którego może dorosnąć.')}</h1>
+          <p className="text-[#d8d2bf]/45 text-xs font-serif leading-relaxed mt-3">{t('The rest of the person will appear slowly.', 'Reszta osoby pojawi się powoli.')}</p>
+          <label className="sr-only" htmlFor="creature-name">{t('Creature name', 'Imię stworka')}</label>
           <input
+            id="creature-name"
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('Name...', 'Imię...')}
+            onChange={event => setName(event.target.value)}
+            placeholder={t('Name', 'Imię')}
             maxLength={12}
-            className="bg-room-mid/50 border border-warm-200/20 rounded-xl px-4 py-3 text-warm-100 text-center text-lg font-serif w-48 focus:outline-none focus:border-warm-300/40"
+            className="mt-7 min-h-12 w-full bg-[#252a20]/62 border border-white/10 rounded-2xl px-4 py-3 text-[#ece8da] text-center text-lg font-serif placeholder:text-[#d8d2bf]/48 focus:outline-none focus:border-[#c7a66c]/45"
             autoFocus
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmitName()}
+            onKeyDown={event => event.key === 'Enter' && handleSubmitName()}
           />
           <button
             onClick={handleSubmitName}
             disabled={!name.trim()}
-            className="block mx-auto mt-4 px-6 py-2 bg-warm-300/20 text-warm-100 rounded-xl text-sm font-serif disabled:opacity-30 active:scale-95 transition-transform"
+            className="mt-3 min-h-12 w-full rounded-2xl bg-[#ece8da] text-[#171913] text-sm font-serif disabled:opacity-25 active:scale-[.98] transition-transform"
           >
-            {t('Begin', 'Zacznij')}
+            {t('Meet them', 'Poznajcie się')}
           </button>
-        </div>
+        </section>
       )}
-    </div>
+    </main>
   );
 };
 

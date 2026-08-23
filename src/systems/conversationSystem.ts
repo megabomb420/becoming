@@ -11,10 +11,11 @@ import {
 import { advanceDevelopmentFromConversation, getDevelopmentLabel, syncDevelopmentWithAge } from './developmentSystem';
 import { attemptImitation, findExistingObservation, parseUserStatement, recordObservation } from './socialLearningSystem';
 import { recordBondEvent } from './relationshipSystem';
-import { evolveLifePath, getLifePathTitle } from './lifePathSystem';
+import { evolveLifePath, evolveLifePathFromCreatureStatement, evolveLifePathFromImitation, getLifePathTitle } from './lifePathSystem';
 import {
   clearPendingDisclosure,
   evolveInnerLifeFromConversation,
+  evolveInnerLifeFromCreatureStatement,
   getInnerLifeReply,
   revealPrivateThoughtIfAsked,
 } from './innerLifeSystem';
@@ -310,10 +311,25 @@ function describePolishBehaviour(action: string, target: string): string {
   return phrases[action] ?? `${action} ${target}`;
 }
 
+function careReply(state: GameState, language: 'pl' | 'en'): string | null {
+  if (state.needs.bowel < 24 && state.needs.bladder < 30) return language === 'pl' ? 'Muszę do toalety. Tak naprawdę: siku i kupę.' : 'I need the toilet. Actually: both pee and poop.';
+  if (state.needs.bowel < 24) return language === 'pl' ? 'Muszę kupę. Trudno teraz siedzieć spokojnie.' : 'I need to poop. It is hard to sit still right now.';
+  if (state.needs.bladder < 30) return language === 'pl' ? 'Muszę siku. Ciągle patrzę w stronę spokojnego kąta.' : 'I need to pee. I keep looking toward the quiet corner.';
+  if (state.needs.hunger < 38) return language === 'pl' ? 'Jestem głodny. Myślę o tym, co leży na półce z jedzeniem.' : 'I am hungry. I keep thinking about the food shelf.';
+  if (state.needs.hygiene < 40) return language === 'pl' ? 'Przydałoby mi się mycie. Futro już nie układa się tak jak zwykle.' : 'I could use a wash. My fur is not settling the way it usually does.';
+  if (state.roomMess.length > 0) return language === 'pl' ? 'W pokoju został mały bałagan. Mogę go omijać, ale wolę czystą podłogę.' : 'There is a small mess in the room. I can step around it, but I prefer a clear floor.';
+  return null;
+}
+
 function generateReply(state: GameState, text: string, fact: LearnedUserFact | null): string {
   const stage = state.development.stage;
   const language = state.conversation.language === 'unknown' ? 'en' : state.conversation.language;
   const lower = text.toLowerCase();
+  const asksAboutCare = /(?:głod|glod|jedzeni|siku|toalet|kup[ęae]|brud|umyć|umyc|mycie|sprzątn|sprzatn|hungr|food|pee|toilet|poop|dirty|wash|clean the room)/i.test(lower);
+  const asksHow = /\b(?:how are you|how do you feel|jak się czujesz|jak sie czujesz|co u ciebie)\b/i.test(lower);
+  const currentCare = careReply(state, language);
+  if ((asksAboutCare || asksHow) && currentCare) return currentCare;
+  if (asksAboutCare && !currentCare) return language === 'pl' ? 'Teraz nic pilnego. Jest mi zwyczajnie dobrze.' : 'Nothing urgent right now. I feel ordinarily fine.';
   if (stage === 'newborn') return newbornReply(state, text);
 
   if (/\b(?:do you remember|remember me|pamiętasz|pamietasz)\b/i.test(lower)) {
@@ -336,7 +352,7 @@ function generateReply(state: GameState, text: string, fact: LearnedUserFact | n
     return `Do you often ${parsedBehaviour.action} ${parsedBehaviour.target}? I want to understand that habit.`;
   }
 
-  if (/\b(?:how are you|how do you feel|jak się czujesz|jak sie czujesz|co u ciebie)\b/i.test(lower)) {
+  if (asksHow) {
     if (stage === 'animal' || stage === 'communicating') return state.emotionalState === 'happy' ? 'good!' : `${state.emotionalState}?`;
     return language === 'pl'
       ? `Czuję się ${state.emotionalState === 'neutral' ? 'spokojnie' : state.emotionalState}. Chyba każda rozmowa trochę mnie zmienia.`
@@ -428,7 +444,11 @@ export function beginConversationTurn(state: GameState, text: string, now = Date
   if (parsedBehaviour?.action != null && parsedBehaviour.target != null) {
     const observation = findExistingObservation(updated, parsedBehaviour.action, parsedBehaviour.target);
     if (observation?.exposureCount && observation.exposureCount >= 2) {
+      const imitationIds = new Set(updated.socialLearning.imitated.map(item => item.observedId));
       updated = attemptImitation(updated, observation.id);
+      if (!imitationIds.has(observation.id) && updated.socialLearning.imitated.some(item => item.observedId === observation.id)) {
+        updated = evolveLifePathFromImitation(updated, observation.id, now);
+      }
     }
   }
   updated = evolveLifePath(updated, text, now);
@@ -457,7 +477,7 @@ export function appendCreatureMessage(state: GameState, text: string, now = Date
     text,
     timestamp: now,
   };
-  return clearPendingDisclosure({
+  let updated = clearPendingDisclosure({
     ...state,
     conversation: {
       ...state.conversation,
@@ -467,6 +487,9 @@ export function appendCreatureMessage(state: GameState, text: string, now = Date
       lastConversationAt: now,
     },
   });
+  updated = evolveLifePathFromCreatureStatement(updated, text, now);
+  updated = evolveInnerLifeFromCreatureStatement(updated, text, now);
+  return updated;
 }
 
 export function getConversationOpening(state: GameState): string {
@@ -480,8 +503,12 @@ export function getConversationOpening(state: GameState): string {
 }
 
 export function getMindStatus(state: GameState): string {
-  const label = getDevelopmentLabel(state.development.stage);
+  const language = state.conversation.language === 'pl' ? 'pl' : 'en';
+  const label = getDevelopmentLabel(state.development.stage, language);
   const exchanges = state.conversation.totalUserMessages;
-  const path = getLifePathTitle(state);
-  return `${label} · ${path} · ${exchanges} ${exchanges === 1 ? 'exchange' : 'exchanges'}`;
+  const path = getLifePathTitle(state, language);
+  const polishCount = exchanges === 1 ? 'rozmowa' : exchanges % 10 >= 2 && exchanges % 10 <= 4 && (exchanges % 100 < 12 || exchanges % 100 > 14) ? 'rozmowy' : 'rozmów';
+  return language === 'pl'
+    ? `${label} · ${path} · ${exchanges} ${polishCount}`
+    : `${label} · ${path} · ${exchanges} ${exchanges === 1 ? 'exchange' : 'exchanges'}`;
 }

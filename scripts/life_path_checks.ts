@@ -3,14 +3,19 @@ import { createHatchedCreature, createNewCreature } from '../src/systems/creatur
 import {
   ensureDailyMoment,
   evolveLifePath,
+  evolveLifePathFromCreatureStatement,
   getLifePathTitle,
+  migrateLifePathState,
   resolveDailyMoment,
 } from '../src/systems/lifePathSystem';
 import {
   evolveInnerLifeFromConversation,
+  evolveInnerLifeFromCreatureStatement,
   evolveInnerLifeFromObject,
   generateDreamAfterSleep,
+  getInterestStage,
   getRankedInterests,
+  getSelfAwarenessStageLabel,
   migrateInnerLifeState,
   revealPrivateThoughtIfAsked,
 } from '../src/systems/innerLifeSystem';
@@ -19,34 +24,89 @@ import { getDueOpenLoop, markOpenLoopAsked, migrateContinuityState } from '../sr
 import { consumeReturnGreeting, getAbsenceSummary, getPresenceReply, getVisitRitual, migratePresenceState, registerReturn } from '../src/systems/presenceSystem';
 import { evolveCreationFromObject, migrateCreations } from '../src/systems/creationSystem';
 import { parseImportedGameState, serializeGameState } from '../src/systems/persistence';
-import { uiLanguage, uiText } from '../src/systems/uiLanguage';
+import { formatLearnedBehaviour, formatStoredMemory, getFactKindLabel, getOpenLoopKindLabel, uiLanguage, uiText } from '../src/systems/uiLanguage';
 import { evaluateTouchBoundary, migrateTouchBoundaryState } from '../src/systems/boundarySystem';
 import { echoSharedPhrase, getAdoptedSharedPhrases, getSharedLanguageReply, migrateSharedLanguageState } from '../src/systems/sharedLanguageSystem';
 import { generateCreatureSpeech } from '../src/systems/languageSystem';
 
-let state = createHatchedCreature(createNewCreature('Test', 99117));
-state = {
-  ...state,
-  development: { ...state.development, cognitiveLevel: 55, languageLevel: 50, stage: 'sentences' },
+const evidenceStart = 1_800_000_000_000;
+let mentioned = createHatchedCreature(createNewCreature('Mentioned', 99117));
+mentioned = {
+  ...mentioned,
+  conversation: { ...mentioned.conversation, language: 'pl' },
+  development: { ...mentioned.development, cognitiveLevel: 55, languageLevel: 50, stage: 'sentences' },
 };
 
-for (let index = 0; index < 5; index += 1) {
-  state = evolveLifePath(state, 'Palę zioło, bo daje mi chill.', 1_800_000_000_000 + index * 1_000);
-}
-assert.equal(state.lifePath.primary, 'stoner');
+mentioned = evolveLifePath(mentioned, 'Idę zapalić blanta.', evidenceStart);
+assert.equal(mentioned.lifePath.primary, null, 'one player mention must not create a path');
+assert.equal(mentioned.lifePath.evidence.stoner.creatureChoices, 0);
+assert.equal(mentioned.lifePath.evidence.stoner.creaturePreferences, 0);
 
-let influenced = createHatchedCreature(createNewCreature('Influenced', 4471));
-influenced = {
-  ...influenced,
-  conversation: { ...influenced.conversation, language: 'pl' },
-  development: { ...influenced.development, cognitiveLevel: 30, languageLevel: 28, stage: 'communicating' },
-};
-influenced = evolveLifePath(influenced, 'Napij się ze mną.', 1_800_000_100_000);
-assert.ok(influenced.lifePath.scores.alcoholic < 20, 'one suggestion must not rewrite the creature');
-for (let index = 1; index < 6; index += 1) {
-  influenced = evolveLifePath(influenced, 'Napij się ze mną.', 1_800_000_100_000 + index * 1_000);
+for (let index = 1; index <= 12; index += 1) {
+  mentioned = evolveLifePath(mentioned, 'Idę zapalić blanta.', evidenceStart + index * 60_000);
 }
-assert.ok(influenced.lifePath.scores.alcoholic >= 20, 'repeated direct influence must create a real path tendency');
+assert.equal(mentioned.lifePath.primary, null, 'repeated player reports still are not the creature\'s identity');
+assert.equal(mentioned.lifePath.evidence.stoner.creatureChoices, 0);
+
+const scoreBeforeRefusal = mentioned.lifePath.scores.stoner;
+mentioned = evolveLifePathFromCreatureStatement(mentioned, 'Nie chcę palić marihuany. To nie dla mnie.', evidenceStart + 13 * 60_000);
+assert.equal(mentioned.lifePath.primary, null);
+assert.ok(mentioned.lifePath.scores.stoner < scoreBeforeRefusal, 'a refusal must reduce path evidence');
+assert.equal(mentioned.lifePath.evidence.stoner.creatureRejections, 1);
+
+const legacyPath = migrateLifePathState({
+  ...mentioned.lifePath,
+  evidence: undefined,
+  primary: 'stoner',
+  scores: { ...mentioned.lifePath.scores, stoner: 100 },
+  history: [{
+    id: 'legacy-fast-label',
+    timestamp: evidenceStart,
+    title: 'Stoner',
+    detail: 'Began to look like Stoner.',
+    primary: 'stoner',
+    secondary: null,
+    phase: 'committed',
+  }],
+}, mentioned.personality, evidenceStart + 14 * 60_000);
+assert.equal(legacyPath.primary, null, 'legacy labels without source-aware evidence must be recalibrated');
+assert.equal(legacyPath.history.length, 0);
+
+let userTopicOnly = createHatchedCreature(createNewCreature('Listener', 4471));
+userTopicOnly = {
+  ...userTopicOnly,
+  development: { ...userTopicOnly.development, cognitiveLevel: 45, languageLevel: 40, stage: 'sentences' },
+};
+for (let index = 0; index < 12; index += 1) {
+  userTopicOnly = evolveInnerLifeFromConversation(userTopicOnly, 'I love games and keep talking about games.', evidenceStart + index * 60_000);
+}
+assert.equal(getRankedInterests(userTopicOnly, 4).length, 0, 'conversation alone must not create the creature\'s interest');
+assert.equal(userTopicOnly.interests.find(item => item.type === 'games')?.evidence?.creaturePreferences, 0);
+
+userTopicOnly = evolveInnerLifeFromCreatureStatement(userTopicOnly, 'I do not like games. I would rather not play them.', evidenceStart + 13 * 60_000);
+assert.equal(getRankedInterests(userTopicOnly, 4).length, 0);
+assert.equal(userTopicOnly.interests.find(item => item.type === 'games')?.evidence?.creatureRejections, 1);
+
+let selfDirected = createHatchedCreature(createNewCreature('Self-directed', 7123));
+selfDirected = {
+  ...selfDirected,
+  development: { ...selfDirected.development, cognitiveLevel: 58, languageLevel: 50, stage: 'sentences' },
+  bond: { ...selfDirected.bond, stage: 'close', score: 70 },
+};
+for (let index = 0; index < 7; index += 1) {
+  const now = evidenceStart + index * 2 * 60 * 60_000;
+  selfDirected = evolveLifePathFromCreatureStatement(selfDirected, 'I choose to play games. This is my choice.', now);
+  selfDirected = evolveInnerLifeFromCreatureStatement(selfDirected, 'I choose to play games. This is my choice.', now);
+}
+assert.equal(selfDirected.lifePath.primary, 'gamer', 'repeated creature choices may eventually form a path');
+assert.equal(getRankedInterests(selfDirected, 1)[0]?.type, 'games', 'repeated creature choices may eventually form an interest');
+assert.ok(selfDirected.lifePath.evidence.gamer.creatureChoices >= 6);
+assert.equal(getLifePathTitle(selfDirected, 'pl'), 'Gracz');
+assert.equal(getRankedInterests(selfDirected, 1, 'pl')[0]?.label, 'gry');
+assert.equal(getInterestStage(getRankedInterests(selfDirected, 1)[0].level, 'pl'), 'zainteresowanie');
+assert.equal(formatStoredMemory('user was gone for 7 hours.', 'pl'), 'Nie było cię przez 7 godzin.');
+assert.equal(formatStoredMemory('the room had 3 quiet hours of its own', 'pl'), 'Pokój był cichy przez 3 godziny.');
+assert.equal(formatStoredMemory('It came closer by itself', 'pl'), 'Samo podeszło bliżej');
 
 let newbornVoice = createHatchedCreature(createNewCreature('Voice', 4472));
 newbornVoice = {
@@ -58,46 +118,17 @@ for (let index = 0; index < 20; index += 1) {
   const line = generateCreatureSpeech(newbornVoice, { trigger: index % 2 ? 'idle' : 'food', emotionalState: 'neutral' });
   assert.ok(line && !/\b(?:mip|naa|brr|pu)\b/i.test(line), 'room voice must use the same natural age ladder as chat');
 }
-assert.ok(state.lifePath.scores.stoner >= 45);
-
-for (let index = 0; index < 4; index += 1) {
-  state = evolveLifePath(state, 'Gram w gry całą noc, to mój kolejny quest.', 1_800_000_010_000 + index * 1_000);
-}
-assert.deepEqual(
-  [state.lifePath.primary, state.lifePath.secondary].sort(),
-  ['gamer', 'stoner'],
-);
-assert.equal(getLifePathTitle(state), 'Fog Gamer');
-
-state = ensureDailyMoment(state, 1_800_000_020_000);
+let state = ensureDailyMoment(selfDirected, 1_800_000_020_000);
 assert.ok(state.lifePath.pendingMoment);
+assert.ok(state.lifePath.pendingMoment?.titlePl);
+assert.ok(state.lifePath.pendingMoment?.choices.every(item => item.labelPl && item.resultPl));
 const choice = state.lifePath.pendingMoment!.choices[0];
 const memoriesBefore = state.memories.length;
 state = resolveDailyMoment(state, choice.id, 1_800_000_021_000);
 assert.equal(state.lifePath.pendingMoment, null);
 assert.equal(state.memories.length, memoriesBefore + 1);
 
-let risky = createHatchedCreature(createNewCreature('Risk', 441));
-risky = { ...risky, development: { ...risky.development, cognitiveLevel: 55, stage: 'sentences' } };
-for (let index = 0; index < 5; index += 1) {
-  risky = evolveLifePath(risky, 'Piłem alkohol i znowu byłem pijany.', 1_800_001_000_000 + index * 1_000);
-}
-const alcoholicPeak = risky.lifePath.scores.alcoholic;
-risky = evolveLifePath(risky, 'Jestem trzeźwy, nie piję i wybieram recovery.', 1_800_001_010_000);
-assert.ok(risky.lifePath.recovery >= 14);
-assert.ok(risky.lifePath.scores.alcoholic < alcoholicPeak);
-
-let inner = createHatchedCreature(createNewCreature('Inner', 7123));
-inner = {
-  ...inner,
-  development: { ...inner.development, cognitiveLevel: 58, languageLevel: 50, stage: 'sentences' },
-  bond: { ...inner.bond, stage: 'close', score: 70 },
-};
-for (let index = 0; index < 5; index += 1) {
-  inner = evolveInnerLifeFromConversation(inner, 'I really love games and gaming.', 1_800_002_000_000 + index * 1_000);
-}
-assert.equal(getRankedInterests(inner, 1)[0]?.type, 'games');
-assert.ok(getRankedInterests(inner, 1)[0].level >= 48);
+let inner = selfDirected;
 assert.ok(inner.innerLife.opinions.some(opinion => opinion.topic === 'games'));
 assert.ok(inner.innerLife.privateThoughts.length > 0);
 
@@ -259,7 +290,12 @@ delete incompleteBackup.state.relationship;
 assert.throws(() => parseImportedGameState(JSON.stringify(incompleteBackup)), /complete Becoming creature/);
 assert.equal(uiLanguage('pl'), 'pl');
 assert.equal(uiLanguage('en'), 'en');
+assert.equal(uiLanguage('unknown'), 'en');
 assert.equal(uiText('pl', 'Memories', 'Wspomnienia'), 'Wspomnienia');
+assert.equal(getSelfAwarenessStageLabel('recognized', 'pl'), 'rozpoznaje siebie');
+assert.equal(getFactKindLabel('goal', 'pl'), 'cel');
+assert.equal(getOpenLoopKindLabel('promise', 'pl'), 'obietnica');
+assert.equal(formatLearnedBehaviour('smoke', 'weed', 'pl'), 'pali marihuanę');
 
 let bounded = createHatchedCreature(createNewCreature('Bounded', 717));
 bounded = {

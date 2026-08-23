@@ -3,7 +3,7 @@ export interface SensoryPreferences {
   haptics: boolean;
 }
 
-export type SensoryCue = 'touch' | 'comfort' | 'notice' | 'choice' | 'open' | 'sleep' | 'wake';
+export type SensoryCue = 'touch' | 'comfort' | 'notice' | 'choice' | 'open' | 'sleep' | 'wake' | 'milestone' | 'toilet' | 'wash' | 'clean';
 
 const STORAGE_KEY = 'becoming-sensory-v1';
 const DEFAULTS: SensoryPreferences = { sound: false, haptics: true };
@@ -33,6 +33,10 @@ const tones: Record<SensoryCue, [number, number, number]> = {
   open: [300, 360, 0.045],
   sleep: [300, 190, 0.12],
   wake: [320, 560, 0.1],
+  milestone: [280, 520, 0.14],
+  toilet: [240, 330, 0.065],
+  wash: [360, 540, 0.11],
+  clean: [410, 610, 0.075],
 };
 
 const vibration: Record<SensoryCue, number | number[]> = {
@@ -43,6 +47,10 @@ const vibration: Record<SensoryCue, number | number[]> = {
   open: 6,
   sleep: 14,
   wake: [8, 22, 8],
+  milestone: [7, 34, 11],
+  toilet: [8, 20, 8],
+  wash: [7, 18, 7, 18, 9],
+  clean: [8, 16, 8],
 };
 
 export function emitSensoryCue(cue: SensoryCue, preferences: SensoryPreferences): void {

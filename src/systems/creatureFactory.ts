@@ -6,6 +6,7 @@ import { createContinuityState } from './continuitySystem';
 import { createPresenceState } from './presenceSystem';
 import { createTouchBoundaryState } from './boundarySystem';
 import { createSharedLanguageState } from './sharedLanguageSystem';
+import { createDevelopmentExperience } from './developmentSystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -66,6 +67,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     independence: 0,
     stage: 'egg',
     hatched: false,
+    experience: createDevelopmentExperience(seed),
   };
 
   const needs: Needs = {
@@ -74,6 +76,9 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     comfort: 50 + rand() * 30,
     stimulation: 40 + rand() * 30,
     social: 30 + rand() * 40,
+    hygiene: 72 + rand() * 24,
+    bladder: 68 + rand() * 26,
+    bowel: 72 + rand() * 24,
   };
 
   const personality = generatePersonality(rand);
@@ -115,6 +120,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     relationship,
     bond: createBondState(relationship),
     roomObjects: [],
+    roomMess: [],
     inventory: [...ALL_INVENTORY_ITEMS],
     objectPreferences: createObjectPreferences(personality, seed),
     interests: [],

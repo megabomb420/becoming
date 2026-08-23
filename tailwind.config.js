@@ -9,21 +9,21 @@ export default {
       },
       colors: {
         room: {
-          dark: '#1a1814',
-          mid: '#2a2520',
-          light: '#3a332c',
+          dark: '#11130f',
+          mid: '#1f231b',
+          light: '#303529',
         },
         creature: {
           glow: '#e8d5b7',
           dim: '#8a7e6b',
         },
         warm: {
-          50: '#faf6f1',
-          100: '#f0e6d6',
-          200: '#e0cbb0',
-          300: '#c9a87c',
-          400: '#b0865a',
-          500: '#966a40',
+          50: '#f4f1e8',
+          100: '#ece8da',
+          200: '#d8d2bf',
+          300: '#c7a66c',
+          400: '#a88658',
+          500: '#816745',
         }
       },
       animation: {

@@ -101,6 +101,12 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     } else if (behavior === 'observing') {
       motionY = -1.5;
       motionRotation = Math.sin(time * 0.0025) * 0.055;
+    } else if (behavior === 'hesitating') {
+      const hesitate = Math.sin(time * 0.004);
+      motionY = -Math.max(0, hesitate) * 2;
+      motionRotation = -0.055 + hesitate * 0.018;
+      motionScaleX = 0.98;
+      motionScaleY = 1.015;
     } else if (behavior === 'investigating') {
       motionY = Math.sin(time * 0.005) * 1.5 + 1;
       motionRotation = 0.065 + Math.sin(time * 0.003) * 0.018;
@@ -115,6 +121,36 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       motionRotation = Math.sin(time * 0.009) * 0.045;
       motionScaleX = 1 - bounce * 0.035;
       motionScaleY = 1 + bounce * 0.05;
+    } else if (behavior === 'settling') {
+      const settle = (Math.sin(time * 0.0035) + 1) / 2;
+      motionY = 2 + settle * 2;
+      motionScaleX = 1.045 + settle * 0.018;
+      motionScaleY = 0.955 - settle * 0.012;
+    } else if (behavior === 'imitating') {
+      const echo = Math.sin(time * 0.006);
+      motionY = -Math.max(0, echo) * 4;
+      motionRotation = echo * 0.065;
+    } else if (behavior === 'proud') {
+      const lift = (Math.sin(time * 0.004) + 1) / 2;
+      motionY = -2 - lift * 2;
+      motionScaleX = 0.985;
+      motionScaleY = 1.025;
+    } else if (behavior === 'uncomfortable') {
+      const shift = Math.sin(time * 0.006);
+      motionY = Math.abs(shift) * 1.5;
+      motionRotation = shift * 0.035;
+      motionScaleX = 0.985;
+      motionScaleY = 1.015;
+    } else if (behavior === 'toileting') {
+      const settle = (Math.sin(time * 0.003) + 1) / 2;
+      motionY = 5 + settle;
+      motionScaleX = 1.07;
+      motionScaleY = 0.91;
+    } else if (behavior === 'washing') {
+      const shake = Math.sin(time * 0.022);
+      motionRotation = shake * 0.045;
+      motionScaleX = 1 + Math.abs(shake) * 0.018;
+      motionScaleY = 1 - Math.abs(shake) * 0.012;
     } else if (behavior === 'reacting') {
       const settle = Math.sin(time * 0.006);
       motionY = -Math.max(0, settle) * 2;
@@ -182,11 +218,30 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.ellipse(0, 5, 38 * roundness, 35, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Cleanliness is body language, not a meter. A few muted floor-coloured
+    // flecks appear gradually and disappear completely after washing.
+    const dirtStrength = Math.max(0, Math.min(1, (55 - state.needs.hygiene) / 42));
+    if (dirtStrength > 0) {
+      ctx.save();
+      ctx.fillStyle = `rgba(67, 57, 43, ${0.18 + dirtStrength * 0.42})`;
+      [
+        [-23, 13, 5, 3, -0.35],
+        [19, 20, 4, 5, 0.25],
+        [-10, 28, 3.5, 2.5, 0.1],
+        [28, 4, 2.8, 2.2, 0],
+      ].slice(0, 1 + Math.ceil(dirtStrength * 3)).forEach(([sx, sy, rx, ry, rotation]) => {
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, rx, ry, rotation, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
     // Ears
     if (app.earShape !== 'none') {
       ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${Math.max(32, lightness - 4)}%)`;
       const earW = app.earShape === 'pointy' ? 12 : 16;
-      const perk = behavior === 'observing' || behavior === 'investigating' ? 4 : 0;
+      const perk = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'proud' ? 4 : 0;
       const earH = (app.earShape === 'pointy' ? 22 : 18) + perk;
       // Left ear
       ctx.beginPath();
@@ -205,7 +260,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.fill();
 
     // Eyes
-    const attentive = behavior === 'observing' || behavior === 'investigating';
+    const attentive = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'imitating' || behavior === 'proud' || behavior === 'uncomfortable';
     const eyeW = 10 * eyeSize * (attentive ? 1.08 : 1);
     const pathEyeHeight = 1 - pathVisual.eyeDroop * pathVisual.strength;
     const openEyeHeight = 10 * eyeSize * pathEyeHeight * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);

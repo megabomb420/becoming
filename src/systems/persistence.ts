@@ -2,7 +2,7 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { GameState, MemoryBookEntry, ObjectType } from '../types';
 import { migrateBondState, migrateObjectPreferences } from './relationshipSystem';
 import { migrateConversationState } from './conversationSystem';
-import { syncDevelopmentWithAge } from './developmentSystem';
+import { migrateDevelopmentExperience, syncDevelopmentWithAge } from './developmentSystem';
 import { bootstrapLifePathState, migrateLifePathState } from './lifePathSystem';
 import { migrateInnerLifeState, migrateInterests } from './innerLifeSystem';
 import { migrateContinuityState } from './continuitySystem';
@@ -10,6 +10,7 @@ import { migratePresenceState } from './presenceSystem';
 import { migrateCreations } from './creationSystem';
 import { migrateTouchBoundaryState } from './boundarySystem';
 import { migrateSharedLanguageState } from './sharedLanguageSystem';
+import { migrateNeeds, migrateRoomMess } from './needsSystem';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -52,6 +53,11 @@ function migrateState(state: GameState): GameState {
   // Migrate old state that may be missing new fields
   const migrated = { ...state };
 
+  // v0.9.25: physiology extends the original hidden need model. Legacy
+  // creatures receive neutral, deterministic starting values and a clean room.
+  migrated.needs = migrateNeeds(migrated.needs);
+  migrated.roomMess = migrateRoomMess(migrated.roomMess);
+
   // Ensure development.hatched exists
   if (typeof migrated.development?.hatched !== 'boolean') {
     migrated.development = {
@@ -59,6 +65,10 @@ function migrateState(state: GameState): GameState {
       hatched: migrated.development?.stage !== 'egg',
     };
   }
+  migrated.development = {
+    ...migrated.development,
+    experience: migrateDevelopmentExperience(migrated.development?.experience, migrated.identity.seed),
+  };
 
   // Movement and reactions are transient UI processes. A reload cannot resume
   // their timers safely, so restore a coherent idle/sleeping state instead of

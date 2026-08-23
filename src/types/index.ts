@@ -23,6 +23,9 @@ export interface Needs {
   comfort: number;       // 0-100, hidden
   stimulation: number;   // 0-100, hidden
   social: number;        // 0-100, hidden
+  hygiene: number;       // 0-100, hidden; 100 is freshly washed
+  bladder: number;       // 0-100, hidden; lower means a stronger urge
+  bowel: number;         // 0-100, hidden; lower means a stronger urge
 }
 
 export interface PersonalityTraits {
@@ -54,6 +57,22 @@ export type LifePathId =
 
 export type LifePathPhase = 'unformed' | 'leaning' | 'committed' | 'embodied' | 'recovering';
 
+export interface LifePathEvidence {
+  // What the player says is context about the player, never a creature choice.
+  userMentions: number;
+  // Curiosity may produce a question, but does not count as adoption.
+  creatureCuriosities: number;
+  // Explicit first-person likes and wants from the creature.
+  creaturePreferences: number;
+  // Actions and decisions made by the creature in the room or over time.
+  creatureChoices: number;
+  // Dislikes and refusals are durable counter-evidence.
+  creatureRejections: number;
+  firstPositiveAt: number | null;
+  lastPositiveAt: number | null;
+  lastNegativeAt: number | null;
+}
+
 export interface LifePathMilestone {
   id: string;
   timestamp: number;
@@ -67,7 +86,9 @@ export interface LifePathMilestone {
 export interface DailyMomentChoice {
   id: string;
   label: string;
+  labelPl?: string;
   result: string;
+  resultPl?: string;
   pathEffects: Partial<Record<LifePathId, number>>;
   recoveryEffect?: number;
   bondEffect?: number;
@@ -77,12 +98,15 @@ export interface DailyMoment {
   id: string;
   day: number;
   title: string;
+  titlePl?: string;
   prompt: string;
+  promptPl?: string;
   choices: DailyMomentChoice[];
 }
 
 export interface LifePathState {
   scores: Record<LifePathId, number>;
+  evidence: Record<LifePathId, LifePathEvidence>;
   primary: LifePathId | null;
   secondary: LifePathId | null;
   phase: LifePathPhase;
@@ -104,6 +128,60 @@ export interface DevelopmentState {
   independence: number;        // 0-100
   stage: DevelopmentStage;
   hatched: boolean;            // permanent — once true, never false
+  experience: DevelopmentExperienceState;
+}
+
+export type MeaningfulFirstId =
+  | 'first_word'
+  | 'first_spontaneous_approach'
+  | 'first_refusal'
+  | 'first_favorite'
+  | 'first_dream'
+  | 'first_creation'
+  | 'first_opinion'
+  | 'first_shared_saying'
+  | 'mirror_recognition'
+  | 'first_autonomous_object';
+
+export interface MeaningfulFirst {
+  id: MeaningfulFirstId;
+  timestamp: number;
+  titleEn: string;
+  titlePl: string;
+  detailEn: string;
+  detailPl: string;
+  announced: boolean;
+}
+
+export type AutonomousMomentId =
+  | 'listen'
+  | 'watch_dust'
+  | 'stretch'
+  | 'sniff'
+  | 'yawn'
+  | 'seek_user'
+  | 'cautious_probe'
+  | 'bold_test'
+  | 'independent_nearby'
+  | 'steadfast_rest'
+  | 'favorite_return'
+  | 'mirror_check'
+  | 'imitate_user'
+  | 'rehearse_word'
+  | 'continue_creation';
+
+export interface AutonomousMomentRecord {
+  id: AutonomousMomentId;
+  timestamp: number;
+  objectType?: ObjectType;
+}
+
+export interface DevelopmentExperienceState {
+  firsts: MeaningfulFirst[];
+  recentAutonomy: AutonomousMomentRecord[];
+  lastAutonomousAt: number;
+  preferredRestSpot: { x: number; y: number };
+  favoriteObject: ObjectType | null;
 }
 
 export type DevelopmentStage =
@@ -119,10 +197,17 @@ export type DevelopmentStage =
 export type CreatureBehavior =
   | 'idle'
   | 'observing'
+  | 'hesitating'
   | 'walking'
   | 'investigating'
   | 'eating'
   | 'playing'
+  | 'settling'
+  | 'imitating'
+  | 'proud'
+  | 'uncomfortable'
+  | 'toileting'
+  | 'washing'
   | 'sleeping'
   | 'reacting';
 
@@ -200,6 +285,16 @@ export interface RoomObject {
   beingUsedByCreature: boolean;
 }
 
+export type RoomMessType = 'pee' | 'poop';
+
+export interface RoomMess {
+  id: string;
+  type: RoomMessType;
+  x: number;
+  y: number;
+  createdAt: number;
+}
+
 export type ObjectType =
   | 'food_bowl'
   | 'apple'
@@ -230,8 +325,20 @@ export interface Interest {
   discoveredAt: number;
   lastEngaged: number;
   exposures?: number;
-  source?: 'conversation' | 'object' | 'dream' | 'born';
+  source?: 'conversation' | 'object' | 'dream' | 'born' | 'creature';
   polarity?: number;
+  evidence?: InterestEvidence;
+}
+
+export interface InterestEvidence {
+  userMentions: number;
+  creatureCuriosities: number;
+  creaturePreferences: number;
+  creatureChoices: number;
+  creatureRejections: number;
+  firstPositiveAt: number | null;
+  lastPositiveAt: number | null;
+  lastNegativeAt: number | null;
 }
 
 export interface CreatureDream {
@@ -434,7 +541,25 @@ export interface PresenceState {
   longestStreak: number;
   lastVisitDay: string;
   pendingGreeting: string | null;
+  pendingTrace: ReturnTrace | null;
   absenceEpisodes: AbsenceEpisode[];
+}
+
+export type ReturnTraceKind =
+  | 'moved_object'
+  | 'used_object'
+  | 'rested'
+  | 'continued_creation'
+  | 'mirror_visit';
+
+export interface ReturnTrace {
+  id: string;
+  kind: ReturnTraceKind;
+  timestamp: number;
+  objectId?: string;
+  objectType?: ObjectType;
+  captionEn: string;
+  captionPl: string;
 }
 
 export interface AbsenceEpisode {
@@ -443,6 +568,7 @@ export interface AbsenceEpisode {
   returnedAt: number;
   durationMs: number;
   activityTypes: string[];
+  trace?: ReturnTrace;
 }
 
 export interface TouchBoundaryState {
@@ -492,6 +618,7 @@ export interface GameState {
   relationship: RelationshipModel;
   bond: BondState;
   roomObjects: RoomObject[];
+  roomMess: RoomMess[];
   inventory: ObjectType[];
   objectPreferences: Record<ObjectType, ObjectPreference>;
   interests: Interest[];

@@ -148,9 +148,10 @@ function buildChapter(state: GameState, now: number): GameState {
     .filter(fact => fact.lastMentioned >= startedAt)
     .sort((a, b) => b.confidence - a.confidence || b.lastMentioned - a.lastMentioned)
     .slice(0, 4);
-  const topics = getRankedInterests(state, 3).filter(interest => interest.lastEngaged >= startedAt).map(interest => interest.label);
-  const path = getLifePathTitle(state);
   const polish = state.conversation.language === 'pl';
+  const language = polish ? 'pl' : 'en';
+  const topics = getRankedInterests(state, 3, language).filter(interest => interest.lastEngaged >= startedAt).map(interest => interest.label);
+  const path = getLifePathTitle(state, language);
   const subjectText = facts.length > 0
     ? facts.map(fact => fact.value).join(', ')
     : polish ? 'małe rzeczy, które powtarzały się między nami' : 'small things that kept repeating between us';

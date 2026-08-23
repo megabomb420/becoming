@@ -1,4 +1,14 @@
-import { GameState, DevelopmentStage, Memory, VocabularyEntry } from '../types';
+import {
+  AutonomousMomentId,
+  DevelopmentExperienceState,
+  DevelopmentStage,
+  GameState,
+  MeaningfulFirst,
+  MeaningfulFirstId,
+  Memory,
+  ObjectType,
+  VocabularyEntry,
+} from '../types';
 
 const STAGE_THRESHOLDS: Record<DevelopmentStage, { cognitive: number; language: number }> = {
   egg: { cognitive: 0, language: 0 },
@@ -10,6 +20,279 @@ const STAGE_THRESHOLDS: Record<DevelopmentStage, { cognitive: number; language: 
   sentences: { cognitive: 75, language: 65 },
   mature: { cognitive: 90, language: 85 },
 };
+
+function stableUnit(seed: number, salt: number): number {
+  const raw = Math.sin(seed * 0.00019 + salt * 71.733) * 10000;
+  return raw - Math.floor(raw);
+}
+
+export function createDevelopmentExperience(seed: number): DevelopmentExperienceState {
+  return {
+    firsts: [],
+    recentAutonomy: [],
+    lastAutonomousAt: 0,
+    preferredRestSpot: {
+      x: 29 + stableUnit(seed, 3) * 42,
+      y: 59 + stableUnit(seed, 5) * 10,
+    },
+    favoriteObject: null,
+  };
+}
+
+export function migrateDevelopmentExperience(
+  value: Partial<DevelopmentExperienceState> | null | undefined,
+  seed: number,
+): DevelopmentExperienceState {
+  const base = createDevelopmentExperience(seed);
+  const allowedFirsts = new Set<MeaningfulFirstId>([
+    'first_word',
+    'first_spontaneous_approach',
+    'first_refusal',
+    'first_favorite',
+    'first_dream',
+    'first_creation',
+    'first_opinion',
+    'first_shared_saying',
+    'mirror_recognition',
+    'first_autonomous_object',
+  ]);
+  const allowedAutonomy = new Set<AutonomousMomentId>([
+    'listen',
+    'watch_dust',
+    'stretch',
+    'sniff',
+    'yawn',
+    'seek_user',
+    'cautious_probe',
+    'bold_test',
+    'independent_nearby',
+    'steadfast_rest',
+    'favorite_return',
+    'mirror_check',
+    'imitate_user',
+    'rehearse_word',
+    'continue_creation',
+  ]);
+  const firsts = Array.isArray(value?.firsts) ? value.firsts.slice(-24).flatMap(item => {
+    const first = item as Partial<MeaningfulFirst>;
+    if (!allowedFirsts.has(first.id as MeaningfulFirstId) || !Number.isFinite(first.timestamp)) return [];
+    const fallback = meaningfulFirstCopy(first.id as MeaningfulFirstId);
+    return [{
+      ...fallback,
+      id: first.id as MeaningfulFirstId,
+      timestamp: Number(first.timestamp),
+      titleEn: typeof first.titleEn === 'string' ? first.titleEn.slice(0, 80) : fallback.titleEn,
+      titlePl: typeof first.titlePl === 'string' ? first.titlePl.slice(0, 80) : fallback.titlePl,
+      detailEn: typeof first.detailEn === 'string' ? first.detailEn.slice(0, 240) : fallback.detailEn,
+      detailPl: typeof first.detailPl === 'string' ? first.detailPl.slice(0, 240) : fallback.detailPl,
+      announced: first.announced === true,
+    }];
+  }) : [];
+  const recentAutonomy = Array.isArray(value?.recentAutonomy) ? value.recentAutonomy.slice(-18).flatMap(item => {
+    if (!item || !allowedAutonomy.has(item.id as AutonomousMomentId) || !Number.isFinite(item.timestamp)) return [];
+    return [{
+      id: item.id as AutonomousMomentId,
+      timestamp: Number(item.timestamp),
+      objectType: typeof item.objectType === 'string' ? item.objectType as ObjectType : undefined,
+    }];
+  }) : [];
+  const rest = value?.preferredRestSpot;
+  return {
+    firsts,
+    recentAutonomy,
+    lastAutonomousAt: Number.isFinite(value?.lastAutonomousAt) ? Number(value?.lastAutonomousAt) : 0,
+    preferredRestSpot: rest && Number.isFinite(rest.x) && Number.isFinite(rest.y)
+      ? { x: Math.max(18, Math.min(82, Number(rest.x))), y: Math.max(54, Math.min(73, Number(rest.y))) }
+      : base.preferredRestSpot,
+    favoriteObject: typeof value?.favoriteObject === 'string' ? value.favoriteObject as ObjectType : null,
+  };
+}
+
+function meaningfulFirstCopy(id: MeaningfulFirstId): Omit<MeaningfulFirst, 'timestamp' | 'announced'> {
+  const copy: Record<MeaningfulFirstId, Omit<MeaningfulFirst, 'timestamp' | 'announced'>> = {
+    first_word: {
+      id,
+      titleEn: 'A word became its own',
+      titlePl: 'Słowo stało się jego',
+      detailEn: 'A sound returned with intention, no longer only an echo.',
+      detailPl: 'Dźwięk wrócił z intencją — nie był już tylko echem.',
+    },
+    first_spontaneous_approach: {
+      id,
+      titleEn: 'It came closer by itself',
+      titlePl: 'Samo podeszło bliżej',
+      detailEn: 'For the first time, closeness was its decision.',
+      detailPl: 'Po raz pierwszy bliskość była jego decyzją.',
+    },
+    first_refusal: {
+      id,
+      titleEn: 'A small no',
+      titlePl: 'Małe „nie”',
+      detailEn: 'It discovered that trust can include asking for space.',
+      detailPl: 'Odkryło, że zaufanie może też oznaczać prośbę o przestrzeń.',
+    },
+    first_favorite: {
+      id,
+      titleEn: 'Something became a favorite',
+      titlePl: 'Coś stało się ulubione',
+      detailEn: 'It returned to one thing often enough for preference to become attachment.',
+      detailPl: 'Wracało do jednej rzeczy tak często, aż upodobanie stało się przywiązaniem.',
+    },
+    first_dream: {
+      id,
+      titleEn: 'The first dream',
+      titlePl: 'Pierwszy sen',
+      detailEn: 'Memory loosened its edges and became somewhere new.',
+      detailPl: 'Wspomnienie straciło ostre krawędzie i stało się nowym miejscem.',
+    },
+    first_creation: {
+      id,
+      titleEn: 'The first deliberate mark',
+      titlePl: 'Pierwszy zamierzony ślad',
+      detailEn: 'Something appeared in the room that had not existed before.',
+      detailPl: 'W pokoju pojawiło się coś, czego wcześniej nie było.',
+    },
+    first_opinion: {
+      id,
+      titleEn: 'An opinion of its own',
+      titlePl: 'Własne zdanie',
+      detailEn: 'It did not only remember a subject; it began to take a position.',
+      detailPl: 'Nie tylko zapamiętało temat — zaczęło zajmować własne stanowisko.',
+    },
+    first_shared_saying: {
+      id,
+      titleEn: 'A phrase became ours',
+      titlePl: 'Zdanie stało się nasze',
+      detailEn: 'Repetition turned ordinary words into a private piece of language.',
+      detailPl: 'Powtórzenie zmieniło zwykłe słowa w kawałek wspólnego języka.',
+    },
+    mirror_recognition: {
+      id,
+      titleEn: 'It recognized itself',
+      titlePl: 'Rozpoznało siebie',
+      detailEn: 'The other creature in the glass finally became “me”.',
+      detailPl: 'Inny stworek w szkle w końcu stał się „mną”.',
+    },
+    first_autonomous_object: {
+      id,
+      titleEn: 'It chose what to do',
+      titlePl: 'Samo wybrało, co zrobić',
+      detailEn: 'A familiar thing was used without waiting to be shown.',
+      detailPl: 'Użyło znanej rzeczy, nie czekając na podpowiedź.',
+    },
+  };
+  return copy[id];
+}
+
+export function recordMeaningfulFirst(state: GameState, id: MeaningfulFirstId, now = Date.now()): GameState {
+  const experience = migrateDevelopmentExperience(state.development.experience, state.identity.seed);
+  if (experience.firsts.some(first => first.id === id)) return state;
+  const first: MeaningfulFirst = { ...meaningfulFirstCopy(id), timestamp: now, announced: false };
+  const memory: Memory = {
+    id: `mem-first-${id}-${now}`,
+    timestamp: now,
+    content: first.titleEn,
+    importance: 8,
+    emotionalValence: 0.75,
+    tags: ['development', 'first', id],
+    mentioned: false,
+    understood: state.development.cognitiveLevel >= 20,
+    compressed: false,
+  };
+  return {
+    ...state,
+    development: {
+      ...state.development,
+      experience: { ...experience, firsts: [...experience.firsts, first].slice(-24) },
+    },
+    memories: [...state.memories, memory].slice(-200),
+  };
+}
+
+export function getPendingMeaningfulFirst(state: GameState): MeaningfulFirst | null {
+  return state.development.experience?.firsts.find(first => !first.announced) ?? null;
+}
+
+export function markMeaningfulFirstAnnounced(state: GameState, id: MeaningfulFirstId): GameState {
+  const experience = migrateDevelopmentExperience(state.development.experience, state.identity.seed);
+  if (!experience.firsts.some(first => first.id === id && !first.announced)) return state;
+  return {
+    ...state,
+    development: {
+      ...state.development,
+      experience: {
+        ...experience,
+        firsts: experience.firsts.map(first => first.id === id ? { ...first, announced: true } : first),
+      },
+    },
+  };
+}
+
+export function recordAutonomousMoment(
+  state: GameState,
+  id: AutonomousMomentId,
+  now = Date.now(),
+  objectType?: ObjectType,
+): GameState {
+  const experience = migrateDevelopmentExperience(state.development.experience, state.identity.seed);
+  return {
+    ...state,
+    development: {
+      ...state.development,
+      experience: {
+        ...experience,
+        recentAutonomy: [...experience.recentAutonomy, { id, timestamp: now, objectType }].slice(-18),
+        lastAutonomousAt: now,
+      },
+    },
+  };
+}
+
+function refusalCount(state: GameState): number {
+  return state.touchBoundaries.boundariesShown
+    + Object.values(state.objectPreferences).reduce((sum, preference) => sum + preference.refusals, 0);
+}
+
+function strongestFavorite(state: GameState): ObjectType | null {
+  const ranked = (Object.entries(state.objectPreferences) as Array<[ObjectType, GameState['objectPreferences'][ObjectType]]>)
+    .filter(([, preference]) => preference.interactions >= 2 && preference.affinity >= 16)
+    .sort((a, b) => b[1].affinity - a[1].affinity || b[1].interactions - a[1].interactions);
+  return ranked[0]?.[0] ?? null;
+}
+
+/**
+ * Observe transitions already produced by the existing systems. This does not
+ * create another gameplay loop: it gives important changes one shared memory
+ * language and lets Room stage them once, without extra timers or AI calls.
+ */
+export function observeDevelopmentSignals(previous: GameState, nextInput: GameState, now = Date.now()): GameState {
+  let next = nextInput;
+  const favorite = strongestFavorite(next);
+  const currentExperience = migrateDevelopmentExperience(next.development.experience, next.identity.seed);
+  if (favorite !== currentExperience.favoriteObject) {
+    next = {
+      ...next,
+      development: {
+        ...next.development,
+        experience: { ...currentExperience, favoriteObject: favorite },
+      },
+    };
+  }
+  if (previous.vocabulary.length === 0 && next.vocabulary.length > 0) next = recordMeaningfulFirst(next, 'first_word', now);
+  if (refusalCount(previous) === 0 && refusalCount(next) > 0) next = recordMeaningfulFirst(next, 'first_refusal', now);
+  if (!previous.development.experience?.favoriteObject && favorite) next = recordMeaningfulFirst(next, 'first_favorite', now);
+  if (previous.innerLife.dreams.length === 0 && next.innerLife.dreams.length > 0) next = recordMeaningfulFirst(next, 'first_dream', now);
+  if (previous.creations.length === 0 && next.creations.length > 0) next = recordMeaningfulFirst(next, 'first_creation', now);
+  if (previous.innerLife.opinions.length === 0 && next.innerLife.opinions.length > 0) next = recordMeaningfulFirst(next, 'first_opinion', now);
+  const hadSaying = previous.sharedLanguage.phrases.some(phrase => phrase.adoptedAt);
+  const hasSaying = next.sharedLanguage.phrases.some(phrase => phrase.adoptedAt);
+  if (!hadSaying && hasSaying) next = recordMeaningfulFirst(next, 'first_shared_saying', now);
+  const recognized = new Set(['recognized', 'reflective']);
+  if (!recognized.has(previous.innerLife.selfAwareness.stage) && recognized.has(next.innerLife.selfAwareness.stage)) {
+    next = recordMeaningfulFirst(next, 'mirror_recognition', now);
+  }
+  return next;
+}
 
 export function getStageFromLevels(cognitive: number, language: number, hatched: boolean): DevelopmentStage {
   const stages: DevelopmentStage[] = ['mature', 'sentences', 'combining', 'first_words', 'communicating', 'animal', 'newborn', 'egg'];
@@ -186,8 +469,8 @@ export function advanceDevelopmentFromConversation(state: GameState, now = Date.
   return addGrowthMilestone(aged, next);
 }
 
-export function getDevelopmentLabel(stage: DevelopmentStage): string {
-  return {
+export function getDevelopmentLabel(stage: DevelopmentStage, language: 'en' | 'pl' = 'en'): string {
+  const english = {
     egg: 'Unhatched',
     newborn: 'Newborn',
     animal: 'Listening',
@@ -197,10 +480,21 @@ export function getDevelopmentLabel(stage: DevelopmentStage): string {
     sentences: 'Young mind',
     mature: 'Mature mind',
   }[stage];
+  const polish = {
+    egg: 'Przed wykluciem',
+    newborn: 'Noworodek',
+    animal: 'Nasłuchuje',
+    communicating: 'Szuka głosu',
+    first_words: 'Pierwsze słowa',
+    combining: 'Układa myśli',
+    sentences: 'Młody umysł',
+    mature: 'Dojrzały umysł',
+  }[stage];
+  return language === 'pl' ? polish : english;
 }
 
-export function getDevelopmentDescription(stage: DevelopmentStage): string {
-  return {
+export function getDevelopmentDescription(stage: DevelopmentStage, language: 'en' | 'pl' = 'en'): string {
+  const english = {
     egg: 'Waiting to emerge.',
     newborn: 'It hears your voice before it understands the words.',
     animal: 'It recognises tone and begins collecting familiar sounds.',
@@ -210,6 +504,17 @@ export function getDevelopmentDescription(stage: DevelopmentStage): string {
     sentences: 'It can reflect on patterns and ask what they mean.',
     mature: 'It speaks with a voice shaped by your shared history.',
   }[stage];
+  const polish = {
+    egg: 'Czeka, by się pojawić.',
+    newborn: 'Słyszy twój głos, zanim zacznie rozumieć słowa.',
+    animal: 'Rozpoznaje ton i zaczyna zbierać znajome dźwięki.',
+    communicating: 'Znaczenie powstaje po jednym słowie naraz.',
+    first_words: 'Potrafi nazwać fragmenty swojego rosnącego świata.',
+    combining: 'Łączy słowa, wspomnienia i proste opinie.',
+    sentences: 'Rozpoznaje wzorce i pyta, co znaczą.',
+    mature: 'Mówi głosem ukształtowanym przez waszą wspólną historię.',
+  }[stage];
+  return language === 'pl' ? polish : english;
 }
 
 export function shouldLearnWord(state: GameState, word: string): boolean {

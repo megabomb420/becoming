@@ -1,4 +1,5 @@
 import {
+  AutonomousMomentId,
   BondEventType,
   BondStage,
   BondState,
@@ -410,28 +411,37 @@ export function recordObjectExperience(
   return connectToUser ? recordBondEvent(withPreference, reaction.bondEvent) : withPreference;
 }
 
-const traitLabels: Record<keyof PersonalityTraits, string> = {
-  curiosity: 'curious',
-  caution: 'careful',
-  affection: 'affectionate',
-  independence: 'independent',
-  calmness: 'gentle',
-  impulsiveness: 'playful',
-  optimism: 'bright',
-  stubbornness: 'determined',
-  confidence: 'brave',
-  sociability: 'social',
+const traitLabels: Record<keyof PersonalityTraits, { en: string; pl: string }> = {
+  curiosity: { en: 'curious', pl: 'ciekawski' },
+  caution: { en: 'careful', pl: 'ostrożny' },
+  affection: { en: 'affectionate', pl: 'czuły' },
+  independence: { en: 'independent', pl: 'niezależny' },
+  calmness: { en: 'gentle', pl: 'łagodny' },
+  impulsiveness: { en: 'playful', pl: 'spontaniczny' },
+  optimism: { en: 'bright', pl: 'pogodny' },
+  stubbornness: { en: 'determined', pl: 'uparty' },
+  confidence: { en: 'brave', pl: 'odważny' },
+  sociability: { en: 'social', pl: 'towarzyski' },
 };
 
-export function getEmergingTraitLabels(personality: PersonalityTraits, count = 2): string[] {
+export function getEmergingTraitLabels(personality: PersonalityTraits, count = 2, language: 'en' | 'pl' = 'en'): string[] {
   return (Object.entries(personality) as Array<[keyof PersonalityTraits, number]>)
     .sort((a, b) => b[1] - a[1])
     .slice(0, count)
-    .map(([trait]) => traitLabels[trait]);
+    .map(([trait]) => traitLabels[trait][language]);
 }
 
-export function getBondDescription(stage: BondStage, creatureName: string | null) {
-  const name = creatureName || 'The creature';
+export function getBondDescription(stage: BondStage, creatureName: string | null, language: 'en' | 'pl' = 'en') {
+  const name = creatureName || (language === 'pl' ? 'Stworek' : 'The creature');
+  if (language === 'pl') {
+    const descriptions: Record<BondStage, string> = {
+      tentative: `${name} wciąż uczy się kształtu twojej obecności.`,
+      familiar: `${name} rozpoznaje twoje zwyczaje i uspokaja się, gdy wracasz.`,
+      close: `${name} szuka cię i spodziewa się, że go zrozumiesz.`,
+      bonded: `Dla ${name} twoja obecność przypomina dom.`,
+    };
+    return descriptions[stage];
+  }
   const descriptions: Record<BondStage, string> = {
     tentative: `${name} is still learning the shape of your presence.`,
     familiar: `${name} recognizes your routines and relaxes when you return.`,
@@ -439,4 +449,331 @@ export function getBondDescription(stage: BondStage, creatureName: string | null
     bonded: `To ${name}, your presence feels like home.`,
   };
   return descriptions[stage];
+}
+
+export interface VisiblePersonalitySignature {
+  id: string;
+  titleEn: string;
+  titlePl: string;
+  descriptionEn: string;
+  descriptionPl: string;
+}
+
+export interface AutonomousChoice {
+  id: AutonomousMomentId;
+  labelEn: string;
+  labelPl: string;
+  behavior: CreatureBehavior;
+  emotion: string;
+  duration: number;
+  action: 'ambient' | 'walk' | 'use_object';
+  objectId?: string;
+  objectType?: ObjectType;
+  target?: { x: number; y: number };
+  utterance?: string;
+  rare?: boolean;
+}
+
+/** A combination, not a single dominant slider, shapes possible behaviour. */
+function getTemperamentSignature(p: PersonalityTraits): VisiblePersonalitySignature {
+  if (p.curiosity >= 55 && p.caution >= 55) {
+    return {
+      id: 'careful_explorer',
+      titleEn: 'A careful explorer',
+      titlePl: 'Ostrożny odkrywca',
+      descriptionEn: 'Curiosity pulls it forward; caution makes every approach a small negotiation.',
+      descriptionPl: 'Ciekawość ciągnie je naprzód, a ostrożność zmienia każde podejście w małą negocjację.',
+    };
+  }
+  if (p.curiosity >= 55 && p.caution < 45 && (p.confidence >= 42 || p.impulsiveness >= 58)) {
+    return {
+      id: 'bold_tinkerer',
+      titleEn: 'A bold tinkerer',
+      titlePl: 'Śmiały eksperymentator',
+      descriptionEn: 'It learns by touching first and deciding what it thinks afterward.',
+      descriptionPl: 'Uczy się, najpierw dotykając, a dopiero potem decydując, co o tym myśli.',
+    };
+  }
+  if (p.affection >= 58 && p.independence >= 55) {
+    return {
+      id: 'nearby_not_held',
+      titleEn: 'Close on its own terms',
+      titlePl: 'Blisko, ale po swojemu',
+      descriptionEn: 'It chooses the same room and an easy line of sight without always choosing touch.',
+      descriptionPl: 'Wybiera ten sam pokój i miejsce, z którego cię widzi, choć nie zawsze wybiera dotyk.',
+    };
+  }
+  if (p.calmness >= 60 && p.stubbornness >= 52) {
+    return {
+      id: 'quietly_steadfast',
+      titleEn: 'Quietly steadfast',
+      titlePl: 'Cicho nieustępliwy',
+      descriptionEn: 'It forms small rituals, returns to chosen places and rarely changes its mind quickly.',
+      descriptionPl: 'Tworzy małe rytuały, wraca w wybrane miejsca i rzadko szybko zmienia zdanie.',
+    };
+  }
+  if (p.sociability >= 62 && p.confidence >= 45) {
+    return {
+      id: 'social_initiator',
+      titleEn: 'A social initiator',
+      titlePl: 'Towarzyski inicjator',
+      descriptionEn: 'It looks for a response and increasingly starts the first move itself.',
+      descriptionPl: 'Szuka odpowiedzi i coraz częściej samo wykonuje pierwszy ruch.',
+    };
+  }
+  if (p.impulsiveness >= 62 && p.optimism >= 58) {
+    return {
+      id: 'bright_impulse',
+      titleEn: 'Bright impulse',
+      titlePl: 'Jasny impuls',
+      descriptionEn: 'Its attention changes quickly, but delight leaves a clear trace.',
+      descriptionPl: 'Jego uwaga szybko się zmienia, ale zachwyt zostawia wyraźny ślad.',
+    };
+  }
+  const strongest = getEmergingTraitLabels(p, 2, 'en').join(' and ');
+  return {
+    id: 'still_forming',
+    titleEn: 'Still taking shape',
+    titlePl: 'Wciąż nabiera kształtu',
+    descriptionEn: `For now, ${strongest} tendencies are the easiest to notice.`,
+    descriptionPl: 'Na razie najłatwiej zauważyć dwie powracające skłonności.',
+  };
+}
+
+type SignatureState = Pick<GameState, 'personality'> & Partial<Pick<GameState, 'development' | 'objectPreferences'>>;
+
+function repeatedSignatureEvidence(state: SignatureState, signatureId: string) {
+  const autonomy = state.development?.experience?.recentAutonomy ?? [];
+  const ids: Partial<Record<string, AutonomousMomentId[]>> = {
+    careful_explorer: ['cautious_probe', 'mirror_check'],
+    bold_tinkerer: ['bold_test'],
+    nearby_not_held: ['independent_nearby', 'seek_user'],
+    quietly_steadfast: ['steadfast_rest', 'favorite_return'],
+    social_initiator: ['seek_user', 'imitate_user'],
+    bright_impulse: ['bold_test', 'favorite_return', 'continue_creation'],
+  };
+  const matching = new Set(ids[signatureId] ?? []);
+  let count = autonomy.filter(item => matching.has(item.id)).length;
+  if (state.objectPreferences) {
+    const preferences = Object.values(state.objectPreferences);
+    if (signatureId === 'careful_explorer') count += preferences.reduce((total, item) => total + item.refusals, 0);
+    if (signatureId === 'bold_tinkerer' || signatureId === 'bright_impulse') count += preferences.reduce((total, item) => total + item.positiveExperiences, 0);
+  }
+  return count;
+}
+
+/** A strong visible trait name needs repeated creature-owned behaviour. */
+export function getVisiblePersonalitySignature(state: SignatureState): VisiblePersonalitySignature {
+  const candidate = getTemperamentSignature(state.personality);
+  if (candidate.id === 'still_forming' || repeatedSignatureEvidence(state, candidate.id) >= 3) return candidate;
+  return {
+    id: 'still_forming',
+    titleEn: 'Still taking shape',
+    titlePl: 'Wciąż nabiera kształtu',
+    descriptionEn: 'Temperament appears in small reactions, but no pattern has repeated enough to name yet.',
+    descriptionPl: 'Temperament widać w drobnych reakcjach, ale żaden wzorzec nie powtórzył się jeszcze dość razy, by go nazwać.',
+  };
+}
+
+function deterministicUnit(seed: number, salt: number): number {
+  const raw = Math.sin(seed * 0.00017 + salt * 19.913) * 10000;
+  return raw - Math.floor(raw);
+}
+
+interface WeightedAutonomy extends AutonomousChoice {
+  weight: number;
+  cooldown: number;
+}
+
+/**
+ * One state-aware selector replaces the previous uniform cute-moment roll.
+ * It uses the existing Room heartbeat, so this adds no timer, render loop,
+ * model call or persistence cadence.
+ */
+export function chooseAutonomousMoment(state: GameState, now = Date.now()): AutonomousChoice | null {
+  const p = state.personality;
+  const signature = getTemperamentSignature(state.personality);
+  const experience = state.development.experience;
+  const favoriteType = experience?.favoriteObject;
+  const favorite = favoriteType ? state.roomObjects.find(object => object.type === favoriteType) : undefined;
+  const mirror = state.roomObjects.find(object => object.type === 'mirror');
+  const paper = state.roomObjects.find(object => object.type === 'paper');
+  const anyObject = [...state.roomObjects].sort((a, b) => {
+    const aPreference = state.objectPreferences[a.type];
+    const bPreference = state.objectPreferences[b.type];
+    const aScore = (aPreference.interactions === 0 ? 18 : 0) + aPreference.affinity - Math.abs(a.x - state.position.x) * 0.15;
+    const bScore = (bPreference.interactions === 0 ? 18 : 0) + bPreference.affinity - Math.abs(b.x - state.position.x) * 0.15;
+    return bScore - aScore;
+  })[0];
+  const candidates: WeightedAutonomy[] = [
+    { id: 'listen', labelEn: 'listens until the room answers', labelPl: 'słucha, aż pokój odpowie', behavior: 'observing', emotion: 'curious', duration: 2400, action: 'ambient', weight: 5 + p.calmness * 0.08, cooldown: 42_000 },
+    { id: 'watch_dust', labelEn: 'follows one drifting speck', labelPl: 'śledzi jeden opadający pyłek', behavior: 'observing', emotion: 'curious', duration: 2600, action: 'ambient', weight: 4 + p.curiosity * 0.09, cooldown: 52_000 },
+    { id: 'stretch', labelEn: 'stretches from nose to tail', labelPl: 'przeciąga się od nosa po ogon', behavior: 'reacting', emotion: 'neutral', duration: 2200, action: 'ambient', weight: 6 + state.needs.energy * 0.025, cooldown: 45_000 },
+    { id: 'sniff', labelEn: 'tests the air for what changed', labelPl: 'sprawdza powietrze, szukając zmiany', behavior: 'investigating', emotion: 'curious', duration: 2300, action: 'ambient', weight: 4 + p.curiosity * 0.075, cooldown: 48_000 },
+  ];
+
+  if (state.needs.energy < 58) {
+    candidates.push({ id: 'yawn', labelEn: 'lets a yawn rearrange its whole face', labelPl: 'ziewa tak, że zmienia mu się cała twarz', behavior: 'settling', emotion: 'neutral', duration: 2700, action: 'ambient', weight: 8 + (58 - state.needs.energy) * 0.22, cooldown: 65_000 });
+  }
+  if (state.needs.social < 62 || signature.id === 'social_initiator') {
+    candidates.push({
+      id: 'seek_user',
+      labelEn: 'comes nearer without being called',
+      labelPl: 'podchodzi bliżej bez wołania',
+      behavior: 'settling',
+      emotion: 'happy',
+      duration: 2900,
+      action: 'walk',
+      target: { x: 50, y: Math.max(54, experience?.preferredRestSpot.y - 4 || 58) },
+      weight: 4 + p.affection * 0.07 + (signature.id === 'social_initiator' ? 12 : 0),
+      cooldown: 150_000,
+      rare: true,
+    });
+  }
+  if (signature.id === 'careful_explorer' && anyObject) {
+    candidates.push({
+      id: 'cautious_probe',
+      labelEn: 'starts closer, pauses, then leans in',
+      labelPl: 'podchodzi, zatrzymuje się i dopiero wtedy wychyla',
+      behavior: 'hesitating',
+      emotion: 'curious',
+      duration: 3000,
+      action: 'walk',
+      objectId: anyObject.id,
+      objectType: anyObject.type,
+      target: { x: anyObject.x + (anyObject.x > 50 ? -15 : 15), y: anyObject.y },
+      weight: 24,
+      cooldown: 95_000,
+    });
+  }
+  if (signature.id === 'careful_explorer' && !anyObject) {
+    candidates.push({ id: 'cautious_probe', labelEn: 'takes one step, listens, then takes another', labelPl: 'robi krok, nasłuchuje i dopiero robi następny', behavior: 'hesitating', emotion: 'curious', duration: 2900, action: 'ambient', weight: 22, cooldown: 90_000 });
+  }
+  if (signature.id === 'bold_tinkerer' && anyObject) {
+    candidates.push({
+      id: 'bold_test',
+      labelEn: 'tests a thing before waiting for permission',
+      labelPl: 'sprawdza rzecz, zanim zdąży czekać na pozwolenie',
+      behavior: 'investigating',
+      emotion: 'curious',
+      duration: 2800,
+      action: 'use_object',
+      objectId: anyObject.id,
+      objectType: anyObject.type,
+      weight: 20,
+      cooldown: 125_000,
+    });
+  }
+  if (signature.id === 'bold_tinkerer' && !anyObject) {
+    candidates.push({ id: 'bold_test', labelEn: 'pats the floor just to see what happens', labelPl: 'klepie podłogę tylko po to, by zobaczyć, co się stanie', behavior: 'imitating', emotion: 'curious', duration: 2500, action: 'ambient', weight: 20, cooldown: 95_000 });
+  }
+  if (signature.id === 'nearby_not_held') {
+    candidates.push({
+      id: 'independent_nearby',
+      labelEn: 'chooses a nearby place with room around it',
+      labelPl: 'wybiera pobliskie miejsce, zostawiając sobie przestrzeń',
+      behavior: 'settling',
+      emotion: 'neutral',
+      duration: 2800,
+      action: 'walk',
+      target: experience?.preferredRestSpot,
+      weight: 19,
+      cooldown: 110_000,
+    });
+  }
+  if (signature.id === 'quietly_steadfast') {
+    candidates.push({
+      id: 'steadfast_rest',
+      labelEn: 'returns to exactly the place it chose before',
+      labelPl: 'wraca dokładnie w miejsce, które wybrało wcześniej',
+      behavior: 'settling',
+      emotion: 'neutral',
+      duration: 2900,
+      action: 'walk',
+      target: experience?.preferredRestSpot,
+      weight: 21,
+      cooldown: 105_000,
+    });
+  }
+  if (favorite && state.objectPreferences[favorite.type].interactions >= 2) {
+    candidates.push({
+      id: 'favorite_return',
+      labelEn: 'returns to a favorite without being shown',
+      labelPl: 'wraca do ulubionej rzeczy bez podpowiedzi',
+      behavior: 'investigating',
+      emotion: 'happy',
+      duration: 3000,
+      action: 'use_object',
+      objectId: favorite.id,
+      objectType: favorite.type,
+      weight: 12 + state.objectPreferences[favorite.type].affinity * 0.25,
+      cooldown: 180_000,
+      rare: true,
+    });
+  }
+  if (mirror && state.development.cognitiveLevel >= 12) {
+    candidates.push({
+      id: 'mirror_check',
+      labelEn: 'checks whether the reflection still follows',
+      labelPl: 'sprawdza, czy odbicie wciąż naśladuje',
+      behavior: 'observing',
+      emotion: 'curious',
+      duration: 3200,
+      action: 'use_object',
+      objectId: mirror.id,
+      objectType: mirror.type,
+      weight: 6 + p.curiosity * 0.055,
+      cooldown: 240_000,
+      rare: true,
+    });
+  }
+  if (state.socialLearning.imitated.length > 0 || state.conversation.totalUserMessages >= 3) {
+    candidates.push({ id: 'imitate_user', labelEn: 'tries a gesture it has seen from you', labelPl: 'próbuje gestu, który widziało u ciebie', behavior: 'imitating', emotion: 'curious', duration: 3100, action: 'ambient', weight: 5 + p.sociability * 0.07, cooldown: 170_000, rare: true });
+  }
+  const learnedWord = state.vocabulary[Math.abs((state.identity.seed + state.vocabulary.length) % Math.max(1, state.vocabulary.length))];
+  if (learnedWord) {
+    candidates.push({ id: 'rehearse_word', labelEn: 'quietly rehearses a word', labelPl: 'po cichu ćwiczy słowo', behavior: 'proud', emotion: 'curious', duration: 2800, action: 'ambient', utterance: learnedWord.word, weight: 7 + state.development.languageLevel * 0.035, cooldown: 145_000, rare: true });
+  }
+  if (paper && state.roomObjects.some(object => object.type === 'pencil') && state.creations.length > 0) {
+    candidates.push({
+      id: 'continue_creation',
+      labelEn: 'returns to an unfinished mark',
+      labelPl: 'wraca do niedokończonego śladu',
+      behavior: 'proud',
+      emotion: 'happy',
+      duration: 3200,
+      action: 'use_object',
+      objectId: paper.id,
+      objectType: paper.type,
+      weight: 5 + p.curiosity * 0.045 + state.development.cognitiveLevel * 0.035,
+      cooldown: 300_000,
+      rare: true,
+    });
+  }
+
+  const recent = experience?.recentAutonomy ?? [];
+  const eligible = candidates.map(candidate => {
+    const previousIndex = [...recent].reverse().findIndex(record => record.id === candidate.id);
+    const previous = previousIndex >= 0 ? [...recent].reverse()[previousIndex] : undefined;
+    if (previous && now - previous.timestamp < candidate.cooldown) return { ...candidate, weight: 0 };
+    const recencyFactor = previousIndex === 0 ? 0.08 : previousIndex === 1 ? 0.22 : previousIndex === 2 ? 0.48 : 1;
+    return { ...candidate, weight: candidate.weight * recencyFactor };
+  }).filter(candidate => candidate.weight > 0);
+  if (eligible.length === 0) return null;
+
+  // A quiet-room option keeps autonomy legible and prevents constant performance.
+  const quietWeight = 20 + state.needs.energy * 0.05;
+  const total = eligible.reduce((sum, candidate) => sum + candidate.weight, quietWeight);
+  let roll = deterministicUnit(state.identity.seed, Math.floor(now / 7000) + recent.length * 13) * total;
+  if (roll < quietWeight) return null;
+  roll -= quietWeight;
+  for (const candidate of eligible) {
+    if (roll <= candidate.weight) {
+      const { weight: _weight, cooldown: _cooldown, ...choice } = candidate;
+      return choice;
+    }
+    roll -= candidate.weight;
+  }
+  const { weight: _weight, cooldown: _cooldown, ...fallback } = eligible[eligible.length - 1];
+  return fallback;
 }

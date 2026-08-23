@@ -1,4 +1,4 @@
-import { AbsenceEpisode, ConversationLanguage, GameState, OfflineActivity, PresenceState, RelationshipModel, UserRoutine } from '../types';
+import { AbsenceEpisode, ConversationLanguage, GameState, OfflineActivity, PresenceState, RelationshipModel, ReturnTrace, UserRoutine } from '../types';
 
 const MIN_RETURN_GREETING_MS = 10 * 60_000;
 
@@ -22,7 +22,23 @@ export function createPresenceState(now = Date.now()): PresenceState {
     longestStreak: 1,
     lastVisitDay: dayKey(now),
     pendingGreeting: null,
+    pendingTrace: null,
     absenceEpisodes: [],
+  };
+}
+
+function migrateReturnTrace(value: Partial<ReturnTrace> | null | undefined): ReturnTrace | null {
+  if (!value || typeof value.id !== 'string' || !Number.isFinite(value.timestamp)) return null;
+  const kinds = new Set(['moved_object', 'used_object', 'rested', 'continued_creation', 'mirror_visit']);
+  if (!kinds.has(String(value.kind))) return null;
+  return {
+    id: value.id.slice(0, 80),
+    kind: value.kind as ReturnTrace['kind'],
+    timestamp: Number(value.timestamp),
+    objectId: typeof value.objectId === 'string' ? value.objectId.slice(0, 100) : undefined,
+    objectType: value.objectType,
+    captionEn: typeof value.captionEn === 'string' ? value.captionEn.slice(0, 180) : 'Something in the room changed.',
+    captionPl: typeof value.captionPl === 'string' ? value.captionPl.slice(0, 180) : 'Coś w pokoju się zmieniło.',
   };
 }
 
@@ -38,6 +54,7 @@ export function migratePresenceState(value: Partial<PresenceState> | null | unde
     longestStreak: Math.max(1, Number(value.longestStreak) || 1),
     lastVisitDay: typeof value.lastVisitDay === 'string' && value.lastVisitDay ? value.lastVisitDay : dayKey(fallbackTimestamp),
     pendingGreeting: typeof value.pendingGreeting === 'string' ? value.pendingGreeting.slice(0, 240) : null,
+    pendingTrace: migrateReturnTrace(value.pendingTrace),
     absenceEpisodes: Array.isArray(value.absenceEpisodes) ? value.absenceEpisodes.slice(-12).flatMap(item => {
       const episode = item as Partial<AbsenceEpisode>;
       if (!Number.isFinite(episode.returnedAt) || !Number.isFinite(episode.durationMs)) return [];
@@ -49,6 +66,7 @@ export function migratePresenceState(value: Partial<PresenceState> | null | unde
         returnedAt,
         durationMs,
         activityTypes: Array.isArray(episode.activityTypes) ? episode.activityTypes.slice(0, 5).map(item => String(item).slice(0, 48)) : [],
+        trace: migrateReturnTrace(episode.trace) ?? undefined,
       }];
     }) : [],
   };
@@ -58,6 +76,8 @@ function activitySummary(activityTypes: string[], language: ConversationLanguage
   const polish = language === 'pl';
   if (activityTypes.some(type => type === 'slept')) return polish ? 'spałem i przyniosłem ze snu kilka dziwnych obrazów' : 'I slept and brought back a few strange images';
   if (activityTypes.some(type => type === 'moved something')) return polish ? 'przestawiłem coś w pokoju i udawałem, że tak miało być' : 'I moved something in the room and pretended it was intentional';
+  if (activityTypes.some(type => type === 'continued a drawing')) return polish ? 'wróciłem do śladu na papierze i dodałem coś po swojemu' : 'I returned to the mark on the paper and added something of my own';
+  if (activityTypes.some(type => type === 'used a favorite')) return polish ? 'wróciłem do jednej z moich ulubionych rzeczy' : 'I returned to one of my favorite things';
   if (activityTypes.some(type => type === 'looked at objects')) return polish ? 'oglądałem rzeczy, które zostawiłeś w pokoju' : 'I looked closely at the things you left in the room';
   if (activityTypes.some(type => type === 'explored room')) return polish ? 'obchodziłem pokój, szukając czegoś nowego' : 'I explored the room, looking for something new';
   if (activityTypes.some(type => type === 'sat quietly')) return polish ? 'siedziałem cicho i układałem sobie myśli' : 'I sat quietly and arranged my thoughts';
@@ -135,6 +155,7 @@ export function registerReturn(state: GameState, awayMs: number, now = Date.now(
     returnedAt: now,
     durationMs: awayMs,
     activityTypes: [...new Set(activities.map(activity => activity.type.slice(0, 48)))].slice(0, 5),
+    trace: presence.pendingTrace ?? undefined,
   } : null;
   const baseGreeting = shouldGreet ? greeting(state.conversation.language, state.identity.name, awayMs, routine.familiarHour) : null;
   const activityLine = episode && awayMs >= 30 * 60_000 ? activitySummary(episode.activityTypes, state.conversation.language) : null;
@@ -150,9 +171,10 @@ export function registerReturn(state: GameState, awayMs: number, now = Date.now(
       currentStreak,
       longestStreak: Math.max(presence.longestStreak, currentStreak),
       lastVisitDay: today,
-      pendingGreeting: baseGreeting && activityLine
+      pendingGreeting: baseGreeting && activityLine && !presence.pendingTrace
         ? state.conversation.language === 'pl' ? `${baseGreeting} Kiedy cię nie było, ${activityLine}.` : `${baseGreeting} While you were gone, ${activityLine}.`
         : baseGreeting,
+      pendingTrace: presence.pendingTrace,
       absenceEpisodes: episode ? [...presence.absenceEpisodes, episode].slice(-12) : presence.absenceEpisodes,
     },
   };
@@ -161,6 +183,18 @@ export function registerReturn(state: GameState, awayMs: number, now = Date.now(
 export function consumeReturnGreeting(state: GameState): GameState {
   if (!state.presence.pendingGreeting) return state;
   return { ...state, presence: { ...state.presence, pendingGreeting: null } };
+}
+
+export function consumeReturnTrace(state: GameState): GameState {
+  const trace = state.presence.pendingTrace;
+  if (!trace) return state;
+  return {
+    ...state,
+    presence: { ...state.presence, pendingTrace: null },
+    roomObjects: state.roomObjects.map(object => object.state.returnTraceId === trace.id
+      ? { ...object, state: { ...object.state, returnTraceId: undefined } }
+      : object),
+  };
 }
 
 export function getVisitRitual(state: GameState): string | null {

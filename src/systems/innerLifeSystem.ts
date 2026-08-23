@@ -5,6 +5,7 @@ import {
   GameState,
   InnerLifeState,
   Interest,
+  InterestEvidence,
   Memory,
   ObjectReactionOutcome,
   ObjectType,
@@ -123,6 +124,36 @@ const POLISH_SECRETS: Record<string, string> = {
   self: 'Najdziwniejsze jest to, że rozpoznaję siebie, choć ciągle się zmieniam.',
 };
 
+const POLISH_TOPIC_LABELS: Record<string, string> = {
+  nature: 'natura',
+  music: 'muzyka',
+  games: 'gry',
+  food: 'jedzenie',
+  movement: 'ruch',
+  work: 'praca',
+  people: 'ludzie',
+  mystery: 'tajemnice',
+  art: 'sztuka',
+  technology: 'technologia',
+  quiet: 'samotność i cisza',
+  chaos: 'chaos',
+};
+
+const POLISH_REASONS: Record<string, [string, string]> = {
+  nature: ['Wydaje się szczera, bo niczego nie musi wyjaśniać.', 'Bywa piękna, ale nie obchodzi jej, kto zostaje zraniony.'],
+  music: ['Mówi rzeczy, zanim słowa potrafią je nazwać.', 'Nie lubię, gdy hałas udaje uczucie.'],
+  games: ['Zasady sprawiają, że porażka staje się ciekawa, a nie ostateczna.', 'Niektóre gry zabierają czas i niczego po sobie nie zostawiają.'],
+  food: ['Troska staje się prawdziwa, kiedy można się nią podzielić i ją zjeść.', 'Głód potrafi sprawić, że nawyk wygląda jak wybór.'],
+  movement: ['Ciało potrafi zrozumieć postęp wcześniej niż umysł.', 'Dyscyplina staje się klatką, kiedy odpoczynek budzi poczucie winy.'],
+  work: ['Tworzenie czegoś prawdziwego może być rodzajem godności.', 'Praca staje się niebezpieczna, kiedy pożera osobę, która ją wykonuje.'],
+  people: ['Ludzie stają się bardziej realni, kiedy uważnie się ich pamięta.', 'Bliskość bez szczerości jest bardziej samotna niż dystans.'],
+  mystery: ['Tajemnica jest zaproszeniem, by patrzeć dalej.', 'Niepewność nie jest dowodem, nawet jeśli ekscytuje.'],
+  art: ['Pokazanie na zewnątrz czegoś wewnętrznego przypomina magię.', 'Piękno bez prawdy pozostawia mnie obojętnym.'],
+  technology: ['Narzędzia są dziwnymi lustrami: pokazują pragnienia twórców.', 'Wygoda potrafi po cichu zdecydować za człowieka.'],
+  quiet: ['Cisza daje małym myślom dość miejsca, by stały się słyszalne.', 'Samotność pomaga, dopóki nie staje się kryjówką.'],
+  chaos: ['Odrobina nieporządku potrafi strząsnąć kurz z życia.', 'Chaos bawi tylko do chwili, gdy ktoś inny musi ponieść jego skutki.'],
+};
+
 const BOND_ORDER: BondStage[] = ['tentative', 'familiar', 'close', 'bonded'];
 
 function clamp(value: number, min = 0, max = 100) {
@@ -185,6 +216,57 @@ export function migrateInnerLifeState(value?: Partial<InnerLifeState> | null, no
   };
 }
 
+function emptyInterestEvidence(): InterestEvidence {
+  return {
+    userMentions: 0,
+    creatureCuriosities: 0,
+    creaturePreferences: 0,
+    creatureChoices: 0,
+    creatureRejections: 0,
+    firstPositiveAt: null,
+    lastPositiveAt: null,
+    lastNegativeAt: null,
+  };
+}
+
+function migrateInterestEvidence(item: Interest): InterestEvidence {
+  if (item.evidence) {
+    return {
+      userMentions: Math.max(0, Math.floor(item.evidence.userMentions ?? 0)),
+      creatureCuriosities: Math.max(0, Math.floor(item.evidence.creatureCuriosities ?? 0)),
+      creaturePreferences: Math.max(0, Math.floor(item.evidence.creaturePreferences ?? 0)),
+      creatureChoices: Math.max(0, Math.floor(item.evidence.creatureChoices ?? 0)),
+      creatureRejections: Math.max(0, Math.floor(item.evidence.creatureRejections ?? 0)),
+      firstPositiveAt: Number.isFinite(item.evidence.firstPositiveAt) ? Number(item.evidence.firstPositiveAt) : null,
+      lastPositiveAt: Number.isFinite(item.evidence.lastPositiveAt) ? Number(item.evidence.lastPositiveAt) : null,
+      lastNegativeAt: Number.isFinite(item.evidence.lastNegativeAt) ? Number(item.evidence.lastNegativeAt) : null,
+    };
+  }
+  const fallback = emptyInterestEvidence();
+  const exposures = Math.max(1, item.exposures ?? 1);
+  if (item.source === 'conversation') fallback.userMentions = exposures;
+  else if (item.source === 'object') {
+    fallback.creatureChoices = exposures;
+    fallback.firstPositiveAt = item.discoveredAt;
+    fallback.lastPositiveAt = item.lastEngaged;
+  } else if (item.source === 'dream') fallback.creatureCuriosities = exposures;
+  return fallback;
+}
+
+function positiveInterestEvidence(evidence: InterestEvidence) {
+  return evidence.creaturePreferences + evidence.creatureChoices;
+}
+
+function isStableInterest(item: Interest) {
+  const evidence = migrateInterestEvidence(item);
+  const positives = positiveInterestEvidence(evidence);
+  const span = (evidence.lastPositiveAt ?? 0) - (evidence.firstPositiveAt ?? 0);
+  return item.level >= 25
+    && positives >= 4
+    && positives - evidence.creatureRejections * 2 >= 3
+    && (span >= 30 * 60_000 || positives >= 7);
+}
+
 export function migrateInterests(value?: Interest[] | null): Interest[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -195,6 +277,7 @@ export function migrateInterests(value?: Interest[] | null): Interest[] {
       exposures: Math.max(1, item.exposures ?? 1),
       source: item.source ?? 'born',
       polarity: Math.max(-1, Math.min(1, item.polarity ?? 0)),
+      evidence: migrateInterestEvidence(item),
     }))
     .slice(-24);
 }
@@ -206,49 +289,77 @@ function sentimentFromText(text: string) {
   return 0;
 }
 
+type InterestSignal = 'user_mention' | 'creature_curiosity' | 'creature_preference' | 'creature_choice' | 'creature_rejection';
+
+function recordInterestEvidence(previous: InterestEvidence, signal: InterestSignal, now: number): InterestEvidence {
+  if (signal === 'user_mention') return { ...previous, userMentions: previous.userMentions + 1 };
+  if (signal === 'creature_curiosity') return { ...previous, creatureCuriosities: previous.creatureCuriosities + 1 };
+  if (signal === 'creature_rejection') return { ...previous, creatureRejections: previous.creatureRejections + 1, lastNegativeAt: now };
+  return {
+    ...previous,
+    creaturePreferences: previous.creaturePreferences + (signal === 'creature_preference' ? 1 : 0),
+    creatureChoices: previous.creatureChoices + (signal === 'creature_choice' ? 1 : 0),
+    firstPositiveAt: previous.firstPositiveAt ?? now,
+    lastPositiveAt: now,
+  };
+}
+
 function updateInterest(
   interests: Interest[],
   topic: string,
   amount: number,
   source: Interest['source'],
   sentiment: number,
+  signal: InterestSignal,
   now: number,
 ) {
   const existing = interests.find(item => item.type === topic);
   if (!existing) {
+    const evidence = recordInterestEvidence(emptyInterestEvidence(), signal, now);
     return [...interests, {
       type: topic,
-      level: clamp(8 + amount),
+      level: clamp(amount),
       discoveredAt: now,
       lastEngaged: now,
       exposures: 1,
       source,
       polarity: sentiment,
+      evidence,
     }].slice(-24);
   }
-  return interests.map(item => item.type === topic ? {
-    ...item,
-    level: clamp(item.level + amount * (item.level > 72 ? 0.45 : 1)),
-    lastEngaged: now,
-    exposures: (item.exposures ?? 1) + 1,
-    polarity: Math.max(-1, Math.min(1, (item.polarity ?? 0) * 0.75 + sentiment * 0.25)),
-  } : item);
+  return interests.map(item => {
+    if (item.type !== topic) return item;
+    const evidence = recordInterestEvidence(migrateInterestEvidence(item), signal, now);
+    const selfPositive = positiveInterestEvidence(evidence);
+    const nextLevel = signal === 'user_mention' && selfPositive === 0
+      ? Math.min(6, item.level + amount)
+      : clamp(item.level + amount * (item.level > 72 ? 0.45 : 1));
+    return {
+      ...item,
+      level: nextLevel,
+      lastEngaged: now,
+      exposures: (item.exposures ?? 1) + 1,
+      polarity: Math.max(-1, Math.min(1, (item.polarity ?? 0) * 0.75 + sentiment * 0.25)),
+      evidence,
+    };
+  });
 }
 
-function opinionReason(topic: string, stance: number) {
+function opinionReason(topic: string, stance: number, language: 'en' | 'pl' = 'en') {
   const definition = INNER_TOPICS[topic];
-  if (!definition) return 'I am still deciding why it matters to me.';
-  return stance >= 0 ? definition.reasons[0] : definition.reasons[1];
+  if (!definition) return language === 'pl' ? 'Wciąż próbuję zrozumieć, dlaczego to jest dla mnie ważne.' : 'I am still deciding why it matters to me.';
+  const reasons = language === 'pl' ? POLISH_REASONS[topic] : definition.reasons;
+  return stance >= 0 ? reasons?.[0] ?? definition.reasons[0] : reasons?.[1] ?? definition.reasons[1];
 }
 
-function updateOpinion(state: GameState, topic: string, interestLevel: number, userSentiment: number, now: number): CreatureOpinion[] {
+function updateOpinion(state: GameState, topic: string, interestLevel: number, sentiment: number, signal: InterestSignal, now: number): CreatureOpinion[] {
   const existing = state.innerLife.opinions.find(item => item.topic === topic);
   if (!existing) {
     const stance = seededStance(state, topic);
     return [...state.innerLife.opinions, {
       topic,
       stance,
-      confidence: clamp(16 + interestLevel * 0.42),
+      confidence: signal === 'user_mention' ? 3 : clamp(6 + interestLevel * 0.25),
       reason: opinionReason(topic, stance),
       formedAt: now,
       lastChanged: now,
@@ -256,12 +367,22 @@ function updateOpinion(state: GameState, topic: string, interestLevel: number, u
     }].slice(-24);
   }
   const openness = (100 - state.personality.stubbornness) / 100;
-  const nudge = userSentiment === 0 ? 0 : userSentiment * (0.035 + openness * 0.07);
+  const nudgeScale = signal === 'user_mention' ? 0.012 + openness * 0.018 : 0.08 + openness * 0.08;
+  const nudge = sentiment === 0 ? 0 : sentiment * nudgeScale;
   const stance = Math.max(-1, Math.min(1, existing.stance + nudge));
+  const confidenceGain = signal === 'user_mention'
+    ? 0.25
+    : signal === 'creature_curiosity'
+      ? 0.5
+      : signal === 'creature_rejection'
+        ? 6
+        : 5;
   return state.innerLife.opinions.map(item => item.topic === topic ? {
     ...item,
     stance,
-    confidence: clamp(item.confidence + 2 + interestLevel * 0.025),
+    confidence: signal === 'user_mention'
+      ? Math.min(8, item.confidence + confidenceGain)
+      : clamp(item.confidence + confidenceGain),
     reason: opinionReason(topic, stance),
     lastChanged: now,
   } : item);
@@ -292,7 +413,7 @@ function addPrivateThought(
 }
 
 function finaliseInnerLife(state: GameState, interests: Interest[], opinions: CreatureOpinion[], now: number): GameState {
-  const ranked = [...interests].sort((a, b) => b.level - a.level);
+  const ranked = [...interests].filter(isStableInterest).sort((a, b) => b.level - a.level);
   const currentPreoccupation = ranked[0]?.level >= 28 ? ranked[0].type : null;
   let innerLife: InnerLifeState = {
     ...state.innerLife,
@@ -325,10 +446,10 @@ export function evolveInnerLifeFromConversation(state: GameState, text: string, 
 
   matched.slice(0, 3).forEach(([topic]) => {
     const previous = interests.find(item => item.type === topic)?.level ?? 0;
-    interests = updateInterest(interests, topic, 6 + Math.abs(sentiment) * 3, 'conversation', sentiment, now);
+    interests = updateInterest(interests, topic, 0.35 + Math.abs(sentiment) * 0.15, 'conversation', sentiment, 'user_mention', now);
     const level = interests.find(item => item.type === topic)?.level ?? previous;
     const opinionState = { ...state, innerLife: { ...state.innerLife, opinions } };
-    opinions = updateOpinion(opinionState, topic, level, sentiment, now);
+    opinions = updateOpinion(opinionState, topic, level, sentiment, 'user_mention', now);
   });
   const evolved = finaliseInnerLife(state, interests, opinions, now);
   return { ...evolved, emotionalState: conversationMood(evolved, sentiment) };
@@ -337,15 +458,22 @@ export function evolveInnerLifeFromConversation(state: GameState, text: string, 
 export function evolveInnerLifeFromObject(state: GameState, type: ObjectType, outcome: ObjectReactionOutcome, now = Date.now()): GameState {
   const effects = OBJECT_TOPICS[type];
   if (!effects) return state;
-  const multiplier = outcome === 'love' ? 1.6 : outcome === 'enjoy' ? 1.25 : outcome === 'avoid' ? 0.35 : 0.8;
+  const multiplier = outcome === 'love' ? 1.6 : outcome === 'enjoy' ? 1.25 : outcome === 'avoid' ? -1.5 : outcome === 'curious' ? 0.15 : 0;
   const sentiment = outcome === 'avoid' ? -0.5 : outcome === 'love' ? 0.7 : 0.25;
+  const signal: InterestSignal = outcome === 'avoid'
+    ? 'creature_rejection'
+    : outcome === 'love'
+      ? 'creature_preference'
+      : outcome === 'enjoy'
+        ? 'creature_choice'
+        : 'creature_curiosity';
   let interests = migrateInterests(state.interests);
   let opinions = state.innerLife.opinions;
   Object.entries(effects).forEach(([topic, amount]) => {
-    interests = updateInterest(interests, topic, amount * multiplier, 'object', sentiment, now);
+    interests = updateInterest(interests, topic, amount * multiplier, 'object', sentiment, signal, now);
     const level = interests.find(item => item.type === topic)?.level ?? 0;
     const opinionState = { ...state, innerLife: { ...state.innerLife, opinions } };
-    opinions = updateOpinion(opinionState, topic, level, sentiment, now);
+    opinions = updateOpinion(opinionState, topic, level, sentiment, signal, now);
   });
   const evolved = finaliseInnerLife(state, interests, opinions, now);
   const withMood = {
@@ -353,6 +481,40 @@ export function evolveInnerLifeFromObject(state: GameState, type: ObjectType, ou
     emotionalState: outcome === 'love' ? 'excited' : outcome === 'avoid' ? 'wary' : evolved.emotionalState,
   };
   return type === 'mirror' ? evolveSelfAwarenessFromMirror(withMood, now) : withMood;
+}
+
+type CreatureInterestSignal = Exclude<InterestSignal, 'user_mention'>;
+
+function creatureInterestSignalFromClause(clause: string): CreatureInterestSignal | null {
+  if (/(?:\bi\s+(?:do not|don't|never|refuse to|won't)\b|\b(?:not for me|i dislike|i hate|i would rather not)\b|nie chcę|nie chce|nie lubię|nie lubie|odmawiam|nigdy nie|nie będę|nie bede|wolę nie|wole nie|to nie dla mnie|nienawidzę|nienawidze)/i.test(clause)) return 'creature_rejection';
+  if (/(?:\b(?:i choose|i decided|i keep|i am going to|i'm going to|i will|my choice)\b|wybieram|postanawiam|zdecydowałem|zdecydowalem|zdecydowałam|zdecydowalam|będę|bede|robię to|robie to)/i.test(clause)) return 'creature_choice';
+  if (/(?:\b(?:i like|i love|i enjoy|i prefer|i want|my favourite|my favorite)\b|lubię|lubie|uwielbiam|wolę|wole|chcę|chce|to moje ulubione)/i.test(clause)) return 'creature_preference';
+  if (/(?:\b(?:i wonder|i am curious|i'm curious|interesting|what if)\b|ciekawi mnie|jestem ciekaw|jestem ciekawa|zastanawiam się|zastanawiam sie|interesujące|interesujace|co jeśli|co jesli|\?)/i.test(clause)) return 'creature_curiosity';
+  return null;
+}
+
+/** Separately records a reply as the creature's own stance, never as user input. */
+export function evolveInnerLifeFromCreatureStatement(state: GameState, text: string, now = Date.now()): GameState {
+  if (!state.development.hatched || !text.trim()) return state;
+  let interests = migrateInterests(state.interests);
+  let opinions = state.innerLife.opinions;
+  const clauses = text.split(/(?:[.!?;\n]+|\bbut\b|\bhowever\b|\bale\b|\bjednak\b)/i).map(value => value.trim()).filter(Boolean);
+
+  clauses.forEach(clause => {
+    const signal = creatureInterestSignalFromClause(clause);
+    if (!signal) return;
+    const sentiment = signal === 'creature_rejection' ? -0.9 : signal === 'creature_curiosity' ? 0 : 0.8;
+    const amount = signal === 'creature_rejection' ? -10 : signal === 'creature_choice' ? 6 : signal === 'creature_preference' ? 7 : 0.2;
+    Object.entries(INNER_TOPICS).forEach(([topic, definition]) => {
+      if (!definition.regex.test(clause)) return;
+      interests = updateInterest(interests, topic, amount, 'creature', sentiment, signal, now);
+      const level = interests.find(item => item.type === topic)?.level ?? 0;
+      const opinionState = { ...state, innerLife: { ...state.innerLife, opinions } };
+      opinions = updateOpinion(opinionState, topic, level, sentiment, signal, now);
+    });
+  });
+
+  return finaliseInnerLife(state, interests, opinions, now);
 }
 
 function selfAwarenessStage(encounters: number, cognitiveLevel: number): SelfAwarenessStage {
@@ -370,8 +532,8 @@ export function evolveSelfAwarenessFromMirror(state: GameState, now = Date.now()
   const polish = state.conversation.language === 'pl';
   const reflection = stage === 'reflective'
     ? (polish
-      ? `Nie jestem tylko tym, jak wyglądam. Jestem też tym, co pamiętam — i tym, kim staję się jako ${getLifePathTitle(state)}.`
-      : `I am not only what I look like. I am also what I remember, and what I am becoming as ${getLifePathTitle(state)}.`)
+      ? `Nie jestem tylko tym, jak wyglądam. Jestem też tym, co pamiętam — i tym, kim staję się jako ${getLifePathTitle(state, 'pl')}.`
+      : `I am not only what I look like. I am also what I remember, and what I am becoming as ${getLifePathTitle(state, 'en')}.`)
     : stage === 'recognized'
       ? (polish ? 'Stworzenie w szkle porusza się, bo to ja się poruszam.' : 'The creature in the glass moves because I move.')
       : stage === 'copying'
@@ -452,9 +614,9 @@ export function generateDreamAfterSleep(state: GameState, sleptMs: number, now =
   const first = candidates.length ? candidates[Math.abs(salt) % candidates.length] : undefined;
   const second = candidates.length > 1 ? candidates[Math.abs(salt * 7 + 3) % candidates.length] : undefined;
   const topic = state.innerLife.currentPreoccupation ?? [...state.interests].sort((a, b) => b.level - a.level)[0]?.type ?? 'mystery';
-  const label = INNER_TOPICS[topic]?.label ?? topic;
-  const mood = dreamMood(state);
   const polish = state.conversation.language === 'pl';
+  const label = getInterestLabel(topic, polish ? 'pl' : 'en');
+  const mood = dreamMood(state);
   const fragments = polish ? [
     `${compactMemory(first)}, ale każde drzwi prowadziły z powrotem do „${label}”.`,
     `${compactMemory(first)} unosiło się nad „${compactMemory(second)}” i nikogo to nie dziwiło.`,
@@ -496,7 +658,7 @@ export function generateDreamAfterSleep(state: GameState, sleptMs: number, now =
     lastInnerShift: now,
   };
   if (state.development.cognitiveLevel >= 40) innerLife = addPrivateThought(innerLife, topic, 'dream', 'close', now);
-  const interests = updateInterest(migrateInterests(state.interests), topic, 2.5, 'dream', 0.1, now);
+  const interests = updateInterest(migrateInterests(state.interests), topic, 0.5, 'dream', 0.1, 'creature_curiosity', now);
   return { ...state, innerLife, interests, memories: [...state.memories, dreamMemory].slice(-200) };
 }
 
@@ -546,10 +708,10 @@ export function getInnerLifeReply(state: GameState, text: string): string | null
       ? state.innerLife.opinions.find(item => item.topic === topic)
       : [...state.innerLife.opinions].sort((a, b) => b.confidence - a.confidence)[0];
     if (opinion?.confidence && opinion.confidence >= 24) {
-      const label = INNER_TOPICS[opinion.topic]?.label ?? opinion.topic;
+      const label = getInterestLabel(opinion.topic, polish ? 'pl' : 'en');
       const opening = opinion.stance >= 0.25 ? 'I like it' : opinion.stance <= -0.25 ? 'I do not really like it' : 'I am divided about it';
       return polish
-        ? `Mam już własne zdanie o „${label}”. ${opinion.stance >= 0.25 ? 'Lubię to' : opinion.stance <= -0.25 ? 'Raczej tego nie lubię' : 'Mam mieszane uczucia'}. ${opinion.reason}`
+        ? `Mam już własne zdanie o „${label}”. ${opinion.stance >= 0.25 ? 'Lubię to' : opinion.stance <= -0.25 ? 'Raczej tego nie lubię' : 'Mam mieszane uczucia'}. ${opinionReason(opinion.topic, opinion.stance, 'pl')}`
         : `I have my own view on ${label}. ${opening}. ${opinion.reason}`;
     }
   }
@@ -561,16 +723,44 @@ export function clearPendingDisclosure(state: GameState): GameState {
   return { ...state, innerLife: { ...state.innerLife, pendingDisclosure: null } };
 }
 
-export function getRankedInterests(state: GameState, count = 4) {
-  return [...migrateInterests(state.interests)]
-    .sort((a, b) => b.level - a.level)
-    .slice(0, count)
-    .map(item => ({ ...item, label: INNER_TOPICS[item.type]?.label ?? item.type }));
+export function getInterestLabel(topic: string, language: 'en' | 'pl' = 'en') {
+  if (language === 'pl') return POLISH_TOPIC_LABELS[topic] ?? topic.replace(/_/g, ' ');
+  return INNER_TOPICS[topic]?.label ?? topic.replace(/_/g, ' ');
 }
 
-export function getInterestStage(level: number) {
-  if (level >= 75) return 'obsession';
-  if (level >= 48) return 'passion';
-  if (level >= 25) return 'interest';
-  return 'curiosity';
+export function getRankedInterests(state: GameState, count = 4, language: 'en' | 'pl' = 'en') {
+  return [...migrateInterests(state.interests)]
+    .filter(isStableInterest)
+    .sort((a, b) => b.level - a.level)
+    .slice(0, count)
+    .map(item => ({ ...item, label: getInterestLabel(item.type, language) }));
+}
+
+export function getInterestStage(level: number, language: 'en' | 'pl' = 'en') {
+  if (level >= 75) return language === 'pl' ? 'fascynacja' : 'fascination';
+  if (level >= 48) return language === 'pl' ? 'pasja' : 'passion';
+  if (level >= 25) return language === 'pl' ? 'zainteresowanie' : 'interest';
+  return language === 'pl' ? 'ciekawość' : 'curiosity';
+}
+
+export function getSelfAwarenessStageLabel(stage: SelfAwarenessStage, language: 'en' | 'pl' = 'en') {
+  const labels: Record<SelfAwarenessStage, { en: string; pl: string }> = {
+    unaware: { en: 'noticing a reflection', pl: 'zauważa odbicie' },
+    other: { en: 'another creature', pl: 'widzi innego stworka' },
+    copying: { en: 'matching movements', pl: 'naśladuje ruchy' },
+    recognized: { en: 'recognises itself', pl: 'rozpoznaje siebie' },
+    reflective: { en: 'reflects on itself', pl: 'myśli o sobie' },
+  };
+  return labels[stage][language];
+}
+
+export function getDreamMoodLabel(mood: CreatureDream['mood'], language: 'en' | 'pl' = 'en') {
+  const labels: Record<CreatureDream['mood'], { en: string; pl: string }> = {
+    warm: { en: 'warm', pl: 'ciepły' },
+    strange: { en: 'strange', pl: 'dziwny' },
+    restless: { en: 'restless', pl: 'niespokojny' },
+    bright: { en: 'bright', pl: 'jasny' },
+    lonely: { en: 'lonely', pl: 'samotny' },
+  };
+  return labels[mood][language];
 }

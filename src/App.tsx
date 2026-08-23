@@ -3,15 +3,16 @@ import { GameState, OfflineActivity } from './types';
 import { loadGameState, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
-import { updateNeeds } from './systems/needsSystem';
+import { advanceNeeds } from './systems/needsSystem';
 import EggHatching from './components/EggHatching';
 import Room from './components/Room';
 import { registerReturn } from './systems/presenceSystem';
 import { detectUiLanguage } from './systems/uiLanguage';
 import { uiLanguage } from './systems/uiLanguage';
 import PwaUpdateNotice from './components/PwaUpdateNotice';
+import { observeDevelopmentSignals } from './systems/developmentSystem';
 
-const APP_VERSION = '0.9.22';
+const APP_VERSION = '0.9.27';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -90,7 +91,7 @@ function App() {
     needsTimerRef.current = setInterval(() => {
       setGameState(prev => {
         if (!prev) return prev;
-        const updated = { ...prev, needs: updateNeeds(prev, 1) };
+        const updated = advanceNeeds(prev, 1).state;
         queueSave(updated);
         return updated;
       });
@@ -101,7 +102,8 @@ function App() {
   const handleStateChange = useCallback((newState: GameState | ((prev: GameState) => GameState)) => {
     setGameState(prev => {
       if (!prev) return prev;
-      const updated = typeof newState === 'function' ? newState(prev) : newState;
+      const candidate = typeof newState === 'function' ? newState(prev) : newState;
+      const updated = observeDevelopmentSignals(prev, candidate);
       gameStateRef.current = updated;
       queueSave(updated);
       return updated;

@@ -1,4 +1,6 @@
 import { CreationStage, CreatureCreation, GameState, Memory, ObjectType } from '../types';
+import { getRankedInterests } from './innerLifeSystem';
+import { getLifePathTitle } from './lifePathSystem';
 
 const STAGES: Array<{ stage: CreationStage; threshold: number; cognitive: number; language: number }> = [
   { stage: 'mark', threshold: 1, cognitive: 8, language: 0 },
@@ -19,9 +21,11 @@ function stableIndex(state: GameState, stage: CreationStage, length: number): nu
   return Math.abs((state.identity.seed * 31 + stageIndex * 17 + state.creations.length * 13) % length);
 }
 
-function inspiration(state: GameState): string {
-  const topInterest = [...state.interests].sort((a, b) => b.level - a.level)[0]?.type;
-  return topInterest || state.lifePath.primary || 'the room';
+function inspiration(state: GameState, language: 'en' | 'pl'): string {
+  const topInterest = getRankedInterests(state, 1, language)[0]?.label;
+  if (topInterest) return topInterest;
+  if (state.lifePath.primary) return getLifePathTitle(state, language);
+  return language === 'pl' ? 'pokój' : 'the room';
 }
 
 function copy(stage: CreationStage, source: string, polish: boolean): { title: string; description: string } {
@@ -72,7 +76,8 @@ export function evolveCreationFromObject(state: GameState, type: ObjectType, now
   const stage = eligibleStage(state);
   if (!stage) return state;
 
-  const source = inspiration(state);
+  const language = state.conversation.language === 'pl' ? 'pl' : 'en';
+  const source = inspiration(state, language);
   const words = copy(stage, source, state.conversation.language === 'pl');
   const glyphs = GLYPHS[stage];
   const creation: CreatureCreation = {
@@ -106,11 +111,11 @@ export function evolveCreationFromObject(state: GameState, type: ObjectType, now
   };
 }
 
-export function getCreationMastery(state: GameState): string {
+export function getCreationMastery(state: GameState, language: 'en' | 'pl' = 'en'): string {
   const stages = new Set(state.creations.map(creation => creation.stage));
-  if (stages.has('message')) return 'writes small messages';
-  if (stages.has('picture')) return 'makes pictures';
-  if (stages.has('shape')) return 'connects shapes';
-  if (stages.has('mark')) return 'makes deliberate marks';
-  return 'has not made a mark yet';
+  if (stages.has('message')) return language === 'pl' ? 'pisze krótkie wiadomości' : 'writes small messages';
+  if (stages.has('picture')) return language === 'pl' ? 'tworzy obrazki' : 'makes pictures';
+  if (stages.has('shape')) return language === 'pl' ? 'łączy kształty' : 'connects shapes';
+  if (stages.has('mark')) return language === 'pl' ? 'stawia celowe znaki' : 'makes deliberate marks';
+  return language === 'pl' ? 'nie zostawił jeszcze własnego śladu' : 'has not made a mark yet';
 }

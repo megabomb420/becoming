@@ -1,16 +1,39 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { GameState, ObjectType, RoomObject, CreatureBehavior } from '../types';
+import { GameState, ObjectType, RoomObject, CreatureBehavior, MeaningfulFirst } from '../types';
 import CreatureCanvas from './CreatureCanvas';
 import ChatInterface from './ChatInterface';
 import ObjectIcon from './ObjectIcon';
-import { touchCreature, feedCreature, putToSleep, wakeUp } from '../systems/needsSystem';
-import { getDevelopmentDescription, getDevelopmentLabel, updateDevelopment, learnWord } from '../systems/developmentSystem';
+import GlyphIcon from './GlyphIcon';
+import MemoryBookView from './MemoryBookView';
+import BecomingView from './BecomingView';
+import CareMark from './CareMark';
+import {
+  cleanRoomMess,
+  feedCreature,
+  putToSleep,
+  touchCreature,
+  useToilet,
+  wakeUp,
+  washCreature,
+} from '../systems/needsSystem';
+import {
+  getDevelopmentDescription,
+  getDevelopmentLabel,
+  getPendingMeaningfulFirst,
+  learnWord,
+  markMeaningfulFirstAnnounced,
+  recordAutonomousMoment,
+  recordMeaningfulFirst,
+  updateDevelopment,
+} from '../systems/developmentSystem';
 import { generateCreatureSpeech, shouldSpeak } from '../systems/languageSystem';
 import { shouldInitiateConversation, generateInitiatedTopic, clearInitiatedTopic } from '../systems/socialLearningSystem';
 import {
   chooseObjectReaction,
+  chooseAutonomousMoment,
   getBondDescription,
   getEmergingTraitLabels,
+  getVisiblePersonalitySignature,
   recordBondEvent,
   recordObjectExperience,
 } from '../systems/relationshipSystem';
@@ -19,6 +42,7 @@ import {
   evolveLifePathFromObject,
   getLifePathClues,
   getLifePathDescription,
+  getLifePathPhaseLabel,
   getLifePathTitle,
   getLifePathVisual,
   getRankedLifePaths,
@@ -26,10 +50,13 @@ import {
 } from '../systems/lifePathSystem';
 import {
   evolveInnerLifeFromObject,
+  getDreamMoodLabel,
+  getInterestLabel,
   getInterestStage,
   getRankedInterests,
+  getSelfAwarenessStageLabel,
 } from '../systems/innerLifeSystem';
-import { consumeReturnGreeting, getAbsenceSummary, getVisitRitual } from '../systems/presenceSystem';
+import { consumeReturnGreeting, consumeReturnTrace, getAbsenceSummary, getVisitRitual } from '../systems/presenceSystem';
 import {
   emitSensoryCue,
   loadSensoryPreferences,
@@ -39,7 +66,7 @@ import {
 } from '../systems/sensorySystem';
 import { evolveCreationFromObject, getCreationMastery } from '../systems/creationSystem';
 import { parseImportedGameState, serializeGameState } from '../systems/persistence';
-import { uiLanguage, uiText } from '../systems/uiLanguage';
+import { formatLearnedBehaviour, formatStoredMemory, getFactKindLabel, getOpenLoopKindLabel, uiLanguage, uiText } from '../systems/uiLanguage';
 import { evaluateTouchBoundary } from '../systems/boundarySystem';
 import { getAdoptedSharedPhrases } from '../systems/sharedLanguageSystem';
 
@@ -178,6 +205,7 @@ interface DragSession {
 }
 
 type CueTone = 'notice' | 'movement' | 'reaction' | 'ambient';
+type CareRitualEffect = 'toilet' | 'wash' | 'clean' | null;
 
 interface CreatureCue {
   icon: string;
@@ -189,10 +217,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const ui = uiLanguage(state.conversation.language);
   const polish = ui === 'pl';
   const t = (english: string, polishText: string) => uiText(ui, english, polishText);
+  const artBase = import.meta.env.BASE_URL;
   const [speech, setSpeech] = useState<string | null>(null);
   const [showMemoryBook, setShowMemoryBook] = useState(false);
   const [showBecoming, setShowBecoming] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
+  const [showCare, setShowCare] = useState(false);
   const [inventoryGroupId, setInventoryGroupId] = useState('care');
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
@@ -203,6 +233,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [initiatedTopic, setInitiatedTopic] = useState<string | null>(null);
   const [creatureCue, setCreatureCue] = useState<CreatureCue | null>(null);
   const [momentResult, setMomentResult] = useState<string | null>(null);
+  const [firstMoment, setFirstMoment] = useState<MeaningfulFirst | null>(null);
+  const [careEffect, setCareEffect] = useState<CareRitualEffect>(null);
 
   // Drag state
   const [draggingType, setDraggingType] = useState<ObjectType | null>(null);
@@ -230,6 +262,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const initiateTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const activityTimerRef = useRef<ReturnType<typeof setInterval>>();
   const momentResultTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const firstMomentTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const returnTraceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const careEffectTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const lastCareSignalRef = useRef(0);
+  const firstInFlightRef = useRef<string | null>(null);
   const activeObjectRef = useRef<string | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
   const roomRef = useRef<HTMLDivElement>(null);
@@ -247,14 +284,47 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
   useEffect(() => {
     const greeting = state.presence.pendingGreeting;
-    if (!greeting || initiatedTopic || showChat || state.sleepState === 'sleeping') return;
+    if (!greeting || state.presence.pendingTrace || initiatedTopic || showChat || state.sleepState === 'sleeping') return;
     setInitiatedTopic(greeting);
     onStateChange(prev => consumeReturnGreeting(prev));
-  }, [initiatedTopic, onStateChange, showChat, state.presence.pendingGreeting, state.sleepState]);
+  }, [initiatedTopic, onStateChange, showChat, state.presence.pendingGreeting, state.presence.pendingTrace, state.sleepState]);
 
   const emitCue = useCallback((cue: SensoryCue) => {
     emitSensoryCue(cue, sensoryPreferences);
   }, [sensoryPreferences]);
+
+  // The room gets the first word after an absence. Dialogue is held back until
+  // the changed position or object has had time to register visually.
+  useEffect(() => {
+    if (!state.presence.pendingTrace) return;
+    clearTimeout(returnTraceTimerRef.current);
+    returnTraceTimerRef.current = setTimeout(() => {
+      onStateChange(prev => consumeReturnTrace(prev));
+    }, 5200);
+    return () => clearTimeout(returnTraceTimerRef.current);
+  }, [onStateChange, state.presence.pendingTrace?.id]);
+
+  useEffect(() => {
+    const pending = getPendingMeaningfulFirst(state);
+    if (!pending || firstInFlightRef.current || showChat || showMemoryBook || showBecoming || showCare || state.sleepState === 'sleeping') return;
+    firstInFlightRef.current = pending.id;
+    setFirstMoment(pending);
+    emitCue('milestone');
+    if (behaviorRef.current === 'idle') {
+      behaviorRef.current = 'proud';
+      setTemporaryEmotion('happy', 3600);
+      onStateChange(prev => ({ ...prev, creatureBehavior: 'proud' }));
+    }
+    clearTimeout(firstMomentTimerRef.current);
+    firstMomentTimerRef.current = setTimeout(() => {
+      setFirstMoment(null);
+      firstInFlightRef.current = null;
+      onStateChange(prev => {
+        const announced = markMeaningfulFirstAnnounced(prev, pending.id);
+        return announced.creatureBehavior === 'proud' ? { ...announced, creatureBehavior: 'idle' } : announced;
+      });
+    }, 4300);
+  }, [emitCue, onStateChange, showBecoming, showCare, showChat, showMemoryBook, state.development.experience.firsts, state.sleepState]);
 
   const updateSensoryPreference = useCallback((key: keyof SensoryPreferences, value: boolean) => {
     setSensoryPreferences(previous => {
@@ -329,12 +399,20 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     }
   }, []);
 
+  const showCareEffect = useCallback((effect: Exclude<CareRitualEffect, null>, duration: number) => {
+    clearTimeout(careEffectTimerRef.current);
+    setCareEffect(effect);
+    careEffectTimerRef.current = setTimeout(() => setCareEffect(null), duration);
+  }, []);
+
   const clearActionTimers = useCallback(() => {
     clearTimeout(noticeTimerRef.current);
     clearTimeout(movementTimerRef.current);
     clearTimeout(reactionTimerRef.current);
     clearTimeout(ambientTimerRef.current);
     clearTimeout(cueTimerRef.current);
+    clearTimeout(careEffectTimerRef.current);
+    setCareEffect(null);
     setCreatureCue(null);
   }, []);
 
@@ -361,6 +439,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         creatureBehavior: reaction.behavior,
         currentActivity: localizedReaction,
         needs: {
+          ...prev.needs,
           hunger: Math.max(0, Math.min(100, prev.needs.hunger + (reaction.needDelta.hunger ?? 0))),
           energy: Math.max(0, Math.min(100, prev.needs.energy + (reaction.needDelta.energy ?? 0))),
           comfort: Math.max(0, Math.min(100, prev.needs.comfort + (reaction.needDelta.comfort ?? 0))),
@@ -438,9 +517,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     }, reactionDuration);
   }, [onStateChange, polish, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
 
-  const beginObjectInteraction = useCallback((object: RoomObject, initiatedByUser = true) => {
+  const beginObjectInteraction = useCallback((object: RoomObject, initiatedByUser = true, autonomousMomentId?: Parameters<typeof recordAutonomousMoment>[1]) => {
     const currentState = stateRef.current;
     if (currentState.sleepState === 'sleeping') return;
+
+    if (!initiatedByUser) {
+      const momentId = autonomousMomentId
+        ?? (currentState.development.experience.favoriteObject === object.type ? 'favorite_return' : 'bold_test');
+      onStateChange(prev => recordMeaningfulFirst(
+        recordAutonomousMoment(prev, momentId, Date.now(), object.type),
+        'first_autonomous_object',
+      ));
+    }
 
     setSelectedObjectId(null);
     clearActionTimers();
@@ -522,36 +610,51 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const startAmbientMoment = useCallback(() => {
     const currentState = stateRef.current;
     if (activeObjectRef.current || currentState.sleepState === 'sleeping' || behaviorRef.current !== 'idle') return;
+    const moment = chooseAutonomousMoment(currentState);
+    if (!moment) return;
+    const label = polish ? moment.labelPl : moment.labelEn;
+    const icon = moment.id === 'seek_user' || moment.id === 'independent_nearby'
+      ? '♡'
+      : moment.id === 'rehearse_word' || moment.id === 'continue_creation'
+        ? '✦'
+        : moment.action === 'walk'
+          ? '↝'
+          : '·';
 
-    const moments: Array<CreatureCue & { behavior: CreatureBehavior; emotion: string; duration: number }> = [
-      { icon: '·', label: 'listens to the room', tone: 'ambient', behavior: 'observing', emotion: 'curious', duration: 2200 },
-      { icon: '✦', label: 'watches a speck of dust', tone: 'ambient', behavior: 'observing', emotion: 'curious', duration: 2600 },
-      { icon: '~', label: 'stretches from nose to tail', tone: 'ambient', behavior: 'reacting', emotion: 'neutral', duration: 2100 },
-      { icon: '·', label: 'sniffs the air', tone: 'ambient', behavior: 'investigating', emotion: 'curious', duration: 2300 },
-    ];
-
-    if (currentState.needs.energy < 45) {
-      moments.push({ icon: '~', label: 'lets out a tiny yawn', tone: 'ambient', behavior: 'reacting', emotion: 'neutral', duration: 2500 });
-    }
-    if (currentState.needs.social < 55) {
-      moments.push({ icon: '♡', label: 'looks around for you', tone: 'ambient', behavior: 'observing', emotion: 'curious', duration: 2700 });
-    }
-    if (currentState.bond.stage === 'close' || currentState.bond.stage === 'bonded') {
-      moments.push({ icon: '♡', label: 'settles where it can see you', tone: 'ambient', behavior: 'reacting', emotion: 'happy', duration: 2800 });
+    if (moment.action === 'use_object' && moment.objectId) {
+      const object = currentState.roomObjects.find(item => item.id === moment.objectId);
+      if (object) beginObjectInteraction(object, false, moment.id);
+      return;
     }
 
-    const moment = moments[Math.floor(Math.random() * moments.length)];
-    behaviorRef.current = moment.behavior;
+    onStateChange(prev => {
+      let next = recordAutonomousMoment(prev, moment.id, Date.now(), moment.objectType);
+      if (moment.id === 'seek_user') next = recordMeaningfulFirst(next, 'first_spontaneous_approach');
+      return next;
+    });
     setTemporaryEmotion(moment.emotion, moment.duration);
-    showCreatureCue(moment, moment.duration);
-    onStateChange(prev => ({ ...prev, creatureBehavior: moment.behavior, currentActivity: moment.label }));
+    showCreatureCue({ icon, label, tone: 'ambient' }, moment.duration);
 
+    if (moment.action === 'walk' && moment.target) {
+      if (moment.id === 'cautious_probe') {
+        behaviorRef.current = 'hesitating';
+        onStateChange(prev => ({ ...prev, creatureBehavior: 'hesitating', currentActivity: label }));
+        ambientTimerRef.current = setTimeout(() => walkToIdlePosition(moment.target!), 1350);
+      } else {
+        walkToIdlePosition(moment.target);
+      }
+      return;
+    }
+
+    behaviorRef.current = moment.behavior;
+    if (moment.utterance) triggerSpeech(moment.utterance);
+    onStateChange(prev => ({ ...prev, creatureBehavior: moment.behavior, currentActivity: label }));
     ambientTimerRef.current = setTimeout(() => {
       if (activeObjectRef.current || behaviorRef.current !== moment.behavior) return;
       behaviorRef.current = 'idle';
       onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
     }, moment.duration);
-  }, [onStateChange, setTemporaryEmotion, showCreatureCue]);
+  }, [beginObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue, triggerSpeech, walkToIdlePosition]);
 
   // Intentional autonomous behaviour. The interval only chooses a new goal
   // while the creature is idle; user-selected objects always take priority.
@@ -574,7 +677,35 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
     const chooseBehavior = () => {
       const currentState = stateRef.current;
-      if (showChat || activeObjectRef.current || behaviorRef.current !== 'idle') return;
+      if (showChat || showCare || showInventory || activeObjectRef.current || behaviorRef.current !== 'idle') return;
+
+      const hasFoodReady = currentState.roomObjects.some(object => object.type === 'apple' || object.type === 'broccoli');
+      const careSignal = currentState.roomMess.length > 0
+        ? { icon: '◇', en: 'steps carefully around a messy patch', pl: 'ostrożnie omija zabrudzone miejsce' }
+        : currentState.needs.bowel < 26
+          ? { icon: '…', en: 'cannot quite find a comfortable way to sit', pl: 'nie może znaleźć wygodnej pozycji' }
+          : currentState.needs.bladder < 30
+            ? { icon: '…', en: 'keeps glancing toward the quiet corner', pl: 'zerka w stronę spokojnego kąta' }
+            : currentState.needs.hygiene < 35
+              ? { icon: '≈', en: 'grooms one patch, then gives up', pl: 'czyści kawałek futra, po czym rezygnuje' }
+              : currentState.needs.hunger < 32 && !hasFoodReady
+                ? { icon: '○', en: 'checks the place where food usually appears', pl: 'sprawdza miejsce, w którym zwykle pojawia się jedzenie' }
+                : null;
+
+      if (careSignal && Date.now() - lastCareSignalRef.current > 38_000) {
+        const label = polish ? careSignal.pl : careSignal.en;
+        lastCareSignalRef.current = Date.now();
+        behaviorRef.current = 'uncomfortable';
+        setTemporaryEmotion('concerned', 3200);
+        showCreatureCue({ icon: careSignal.icon, label, tone: 'notice' }, 3100);
+        onStateChange(prev => ({ ...prev, creatureBehavior: 'uncomfortable', currentActivity: label }));
+        ambientTimerRef.current = setTimeout(() => {
+          if (behaviorRef.current !== 'uncomfortable') return;
+          behaviorRef.current = 'idle';
+          onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
+        }, 3200);
+        return;
+      }
 
       const currentPos = creaturePosRef.current;
       const closestOfType = (types: ObjectType[]) => {
@@ -599,33 +730,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       if (!goal && currentState.needs.energy < 32) goal = closestOfType(['blanket']);
       if (!goal && currentState.needs.stimulation < 48) goal = closestOfType(['ball']);
 
-      if (!goal && currentState.roomObjects.length > 0) {
-        const curiosityChance = 0.12 + currentState.personality.curiosity / 500;
-        if (Math.random() < curiosityChance) {
-          const unseen = currentState.roomObjects.filter(obj => currentState.objectPreferences[obj.type].interactions === 0);
-          const familiar = [...currentState.roomObjects].sort((a, b) =>
-            currentState.objectPreferences[b.type].affinity - currentState.objectPreferences[a.type].affinity,
-          );
-          const pool = unseen.length > 0 && Math.random() < 0.65 ? unseen : familiar.slice(0, Math.max(1, Math.ceil(familiar.length / 2)));
-          goal = pool[Math.floor(Math.random() * pool.length)];
-        }
-      }
-
       if (goal) {
         beginObjectInteraction(goal, false);
         return;
       }
-
-      const idleRoll = Math.random();
-      if (idleRoll < 0.18) {
-        const idleSpot = IDLE_POSITIONS[Math.floor(Math.random() * IDLE_POSITIONS.length)];
-        walkToIdlePosition({
-          x: idleSpot.x + (Math.random() - 0.5) * 6,
-          y: idleSpot.y + (Math.random() - 0.5) * 4,
-        });
-      } else if (idleRoll < 0.5) {
-        startAmbientMoment();
-      }
+      startAmbientMoment();
     };
 
     const kickoff = setTimeout(chooseBehavior, 3500);
@@ -634,7 +743,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       clearTimeout(kickoff);
       clearInterval(behaviorTimerRef.current);
     };
-  }, [beginObjectInteraction, clearActionTimers, onStateChange, showChat, startAmbientMoment, state.sleepState, walkToIdlePosition]);
+  }, [beginObjectInteraction, clearActionTimers, onStateChange, polish, setTemporaryEmotion, showCare, showChat, showCreatureCue, showInventory, startAmbientMoment, state.sleepState, walkToIdlePosition]);
 
   useEffect(() => () => {
     clearActionTimers();
@@ -642,6 +751,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     clearTimeout(speechTimeoutRef.current);
     clearTimeout(cueTimerRef.current);
     clearTimeout(momentResultTimerRef.current);
+    clearTimeout(firstMomentTimerRef.current);
+    clearTimeout(returnTraceTimerRef.current);
   }, [clearActionTimers]);
 
   // External state changes (load/offline simulation) can update the stored
@@ -950,8 +1061,112 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setShowInventory(false);
   };
 
+  // ========== DAILY CARE ==========
+  // These actions extend the existing hidden-needs loop. They do not award
+  // points or expose numbers; the room and body language carry the feedback.
+  const finishCareAnimation = (expected: CreatureBehavior, duration: number) => {
+    clearTimeout(reactionTimerRef.current);
+    reactionTimerRef.current = setTimeout(() => {
+      if (behaviorRef.current !== expected) return;
+      behaviorRef.current = 'idle';
+      onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
+    }, duration);
+  };
+
+  const handleToilet = () => {
+    if (stateRef.current.sleepState === 'sleeping') {
+      showCreatureCue({ icon: '·', label: t('is sleeping too deeply right now', 'teraz śpi zbyt mocno'), tone: 'ambient' }, 2400);
+      return;
+    }
+    const now = Date.now();
+    const preview = useToilet(stateRef.current, now);
+    if (!preview.performed) {
+      setShowCare(false);
+      showCreatureCue({ icon: '·', label: t('does not need the toilet right now', 'teraz nie potrzebuje toalety'), tone: 'ambient' }, 2600);
+      return;
+    }
+
+    clearActionTimers();
+    setShowCare(false);
+    emitCue('toilet');
+    showCareEffect('toilet', 3300);
+    const activity = preview.result === 'both'
+      ? t('takes a proper bathroom break', 'załatwia wszystko w spokojnym kącie')
+      : preview.result === 'poop'
+        ? t('uses the toilet and looks relieved', 'robi kupę w toalecie i wyraźnie odczuwa ulgę')
+        : t('uses the toilet and relaxes', 'robi siku w toalecie i od razu się rozluźnia');
+    behaviorRef.current = 'toileting';
+    setTemporaryEmotion('happy', 3300);
+    showCreatureCue({ icon: '○', label: activity, tone: 'reaction' }, 3200);
+    onStateChange(prev => {
+      const result = useToilet(prev, now);
+      if (!result.performed) return result.state;
+      const developed = updateDevelopment(result.state, 0.22);
+      const bonded = recordBondEvent(developed, 'care');
+      return { ...bonded, emotionalState: 'neutral', creatureBehavior: 'toileting', currentActivity: activity };
+    });
+    finishCareAnimation('toileting', 3300);
+  };
+
+  const handleWash = () => {
+    if (stateRef.current.sleepState === 'sleeping') {
+      showCreatureCue({ icon: '·', label: t('can be washed after waking', 'można go umyć po obudzeniu'), tone: 'ambient' }, 2400);
+      return;
+    }
+    const preview = washCreature(stateRef.current);
+    if (!preview.performed) {
+      setShowCare(false);
+      showCreatureCue({ icon: '·', label: t('is already clean', 'jest już czysty'), tone: 'ambient' }, 2400);
+      return;
+    }
+
+    clearActionTimers();
+    setShowCare(false);
+    emitCue('wash');
+    showCareEffect('wash', 3500);
+    const activity = t('shakes warm drops from its fur', 'strzepuje ciepłe krople z futra');
+    behaviorRef.current = 'washing';
+    setTemporaryEmotion('happy', 3500);
+    showCreatureCue({ icon: '≈', label: activity, tone: 'reaction' }, 3400);
+    onStateChange(prev => {
+      const result = washCreature(prev);
+      if (!result.performed) return result.state;
+      const developed = updateDevelopment(result.state, 0.18);
+      const bonded = recordBondEvent(developed, 'care');
+      return { ...bonded, emotionalState: 'neutral', creatureBehavior: 'washing', currentActivity: activity };
+    });
+    finishCareAnimation('washing', 3500);
+  };
+
+  const handleCleanMess = (messId?: string) => {
+    const preview = cleanRoomMess(stateRef.current, messId);
+    if (!preview.performed) {
+      setShowCare(false);
+      showCreatureCue({ icon: '·', label: t('the room is already clean', 'pokój jest już czysty'), tone: 'ambient' }, 2400);
+      return;
+    }
+    emitCue('clean');
+    showCareEffect('clean', 2700);
+    setShowCare(false);
+    showCreatureCue({ icon: '◇', label: preview.count === 1 ? t('the floor is clean again', 'podłoga znów jest czysta') : t('the room feels clear again', 'w pokoju znów jest czysto'), tone: 'reaction' }, 2600);
+    onStateChange(prev => {
+      const result = cleanRoomMess(prev, messId);
+      if (!result.performed) return result.state;
+      const cleaned = result.state.roomMess.length === 0 ? { ...result.state, emotionalState: 'neutral' } : result.state;
+      return recordBondEvent(cleaned, 'care');
+    });
+  };
+
+  const handleOpenFood = () => {
+    setShowCare(false);
+    setInventoryGroupId('care');
+    setShowInventory(true);
+  };
+
   // ========== SLEEP ==========
   const handleSleepToggle = () => {
+    setShowCare(false);
+    setShowInventory(false);
     emitCue(state.sleepState === 'sleeping' ? 'wake' : 'sleep');
     if (state.sleepState === 'sleeping') {
       onStateChange(prev => wakeUp(prev));
@@ -962,12 +1177,16 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
   const handleOpenChatWithTopic = () => {
     emitCue('open');
+    setShowCare(false);
+    setShowInventory(false);
     setShowChat(true);
     setInitiatedTopic(null);
   };
 
   const handleOpenChat = () => {
     emitCue('open');
+    setShowCare(false);
+    setShowInventory(false);
     setShowChat(true);
   };
 
@@ -980,14 +1199,15 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   };
 
   const ageDays = Math.floor(state.development.chronologicalAge / (24 * 60 * 60 * 1000));
-  const developmentLabel = getDevelopmentLabel(state.development.stage);
-  const emergingTraits = getEmergingTraitLabels(state.personality);
-  const lifePathTitle = getLifePathTitle(state);
-  const lifePathDescription = getLifePathDescription(state);
-  const lifePathClues = getLifePathClues(state);
-  const rankedLifePaths = getRankedLifePaths(state);
+  const developmentLabel = getDevelopmentLabel(state.development.stage, ui);
+  const emergingTraits = getEmergingTraitLabels(state.personality, 2, ui);
+  const personalitySignature = getVisiblePersonalitySignature(state);
+  const lifePathTitle = getLifePathTitle(state, ui);
+  const lifePathDescription = getLifePathDescription(state, ui);
+  const lifePathClues = getLifePathClues(state, 3, ui);
+  const rankedLifePaths = getRankedLifePaths(state, 4, ui);
   const pathVisual = getLifePathVisual(state);
-  const rankedInterests = getRankedInterests(state, 4);
+  const rankedInterests = getRankedInterests(state, 4, ui);
   const latestDream = state.innerLife.dreams[state.innerLife.dreams.length - 1];
   const confidentOpinions = [...state.innerLife.opinions]
     .filter(opinion => opinion.confidence >= 28)
@@ -1002,6 +1222,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const recentAbsences = [...state.presence.absenceEpisodes].reverse().slice(0, 3);
   const sharedPhrases = getAdoptedSharedPhrases(state).slice(0, 4);
   const visitRitual = getVisitRitual(state);
+  const meaningfulFirsts = [...state.development.experience.firsts].sort((a, b) => b.timestamp - a.timestamp);
+  const returnTrace = state.presence.pendingTrace;
   const discoveredPreferences = INVENTORY_ORDER
     .map(type => ({ type, preference: state.objectPreferences[type] }))
     .filter(({ preference }) => preference.interactions >= 2 && (preference.affinity >= 12 || preference.affinity <= -8))
@@ -1012,11 +1234,35 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     : null;
   const activeInventoryGroup = INVENTORY_GROUPS.find(group => group.id === inventoryGroupId) ?? INVENTORY_GROUPS[0];
   const activeInventoryItems = activeInventoryGroup.items.filter(type => state.inventory.includes(type));
+  const careNeedsAttention = state.roomMess.length > 0
+    || state.needs.hunger < 36
+    || state.needs.hygiene < 38
+    || state.needs.bladder < 34
+    || state.needs.bowel < 28;
+  const careCalling = {
+    food: state.needs.hunger < 36,
+    toilet: state.needs.bladder < 34 || state.needs.bowel < 28,
+    wash: state.needs.hygiene < 38,
+    clean: state.roomMess.length > 0,
+  };
+  const careSummary = state.roomMess.length > 0
+    ? t('Something on the floor needs cleaning. No emergency — just part of sharing a room.', 'Coś na podłodze wymaga sprzątnięcia. Bez alarmu — tak wygląda wspólny pokój.')
+    : state.needs.bowel < 28 && state.needs.bladder < 34
+      ? t('It cannot settle. A bathroom break would probably help.', 'Nie może się ułożyć. Wizyta w toalecie prawdopodobnie pomoże.')
+      : state.needs.bowel < 28
+        ? t('Its way of sitting says more than words do.', 'Sposób, w jaki siada, mówi więcej niż słowa.')
+        : state.needs.bladder < 34
+          ? t('It keeps checking the quiet corner of the room.', 'Co chwilę zerka w spokojny kąt pokoju.')
+          : state.needs.hunger < 36
+            ? t('Its attention keeps drifting toward the food shelf.', 'Jego uwaga ciągle wraca do półki z jedzeniem.')
+            : state.needs.hygiene < 38
+              ? t('Its fur has lost some of its soft sheen.', 'Futro straciło trochę swojego miękkiego blasku.')
+              : t('Nothing is urgent. Ordinary care is enough.', 'Nic nie jest pilne. Wystarczy zwykła opieka.');
 
   return (
     <div
       ref={roomRef}
-      className="relative w-full h-full overflow-hidden"
+      className="terrarium-shell relative w-full h-full overflow-hidden"
       style={{ touchAction: draggingType ? 'none' : 'pan-y' }}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -1024,19 +1270,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     >
       {/* Room background */}
       <div className={`absolute inset-0 transition-all duration-1000 ${state.sleepState === 'sleeping' ? 'brightness-50' : 'brightness-100'}`}>
-        <div className="absolute top-0 left-0 right-0 h-[66%]" style={{ background: 'linear-gradient(180deg, #24211c 0%, #1b1915 82%, #171512 100%)' }} />
-        <div className="absolute top-[11%] left-[13%] right-[13%] h-px bg-warm-200/5" />
-        <div className="absolute top-[11%] bottom-[34%] left-[13%] w-px bg-warm-200/5" />
-        <div className="absolute top-[11%] bottom-[34%] right-[13%] w-px bg-warm-200/5" />
-        <div className="absolute bottom-0 left-0 right-0 h-[35%]" style={{ background: 'linear-gradient(180deg, #302a23 0%, #25211c 100%)' }} />
-        <div className="absolute top-[64.7%] left-0 right-0 h-[2px] bg-[#100f0d]/70 shadow-[0_-1px_0_rgba(224,203,176,0.05)]" />
-        <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)' }} />
-        <div className="absolute top-[18%] left-[50%] w-[360px] h-[360px] -translate-x-1/2 rounded-full opacity-25" style={{ background: 'radial-gradient(circle, rgba(218,181,126,0.3) 0%, rgba(180,137,82,.08) 38%, transparent 70%)' }} />
+        <div className="absolute inset-x-0 top-0 h-[67%]" style={{ background: 'linear-gradient(180deg, #1c2119 0%, #151812 68%, #11130f 100%)' }} />
+        <div className="absolute inset-x-0 bottom-0 h-[36%]" style={{ background: 'linear-gradient(180deg, #25291f 0%, #1a1d17 72%, #141611 100%)' }} />
+        <div className="absolute inset-x-0 top-[64.5%] h-px bg-[#080a07]/80 shadow-[0_-1px_0_rgba(216,210,191,.045)]" />
+        <div className="absolute inset-x-0 bottom-0 h-[35%] opacity-20" style={{ background: 'repeating-linear-gradient(103deg, transparent 0 54px, rgba(5,7,5,.58) 55px 57px)' }} />
+        <div className="absolute top-[12%] left-1/2 h-[370px] w-[370px] -translate-x-1/2 rounded-full opacity-50" style={{ background: 'radial-gradient(ellipse, rgba(191,177,132,.17) 0%, rgba(100,112,82,.055) 43%, transparent 70%)' }} />
+        <div className="absolute top-[9%] left-[7%] h-[44%] w-[38%] opacity-25" style={{ background: 'radial-gradient(ellipse at 0 0, rgba(126,145,105,.18), transparent 70%)' }} />
         <div className="absolute inset-0 transition-colors duration-[1800ms]" style={{ background: pathVisual.roomTint }} />
       </div>
 
       {/* Vignette */}
-      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%)' }} />
+      <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% 48%, transparent 42%, rgba(0,0,0,.42) 100%)' }} />
+      <div className="absolute inset-0 ambient-grain" aria-hidden="true" />
 
       {/* Sleep zzz */}
       {state.sleepState === 'sleeping' && state.development.stage !== 'egg' && (
@@ -1044,6 +1289,24 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           <span className="text-warm-200/40 text-sm font-serif">z z z</span>
         </div>
       )}
+
+      {/* Bathroom accidents are small persistent pieces of room state, not a
+          status icon. They remain where they happened until the player cleans
+          them, and can be tapped directly. */}
+      {state.roomMess.map(mess => (
+        <button
+          type="button"
+          key={mess.id}
+          aria-label={mess.type === 'pee' ? t('Clean the puddle', 'Posprzątaj kałużę') : t('Clean the poop', 'Posprzątaj kupę')}
+          title={t('Clean', 'Posprzątaj')}
+          className={`room-mess-button absolute z-[18] grid h-12 w-12 place-items-center rounded-full transition-transform active:scale-95 ${showCare ? 'is-noticed' : ''}`}
+          style={{ left: `${mess.x}%`, top: `${mess.y}%`, transform: 'translate(-50%, -50%)' }}
+          onPointerDown={event => event.stopPropagation()}
+          onClick={event => { event.stopPropagation(); handleCleanMess(mess.id); }}
+        >
+          <CareMark type={mess.type} size={52} className="room-mess-mark drop-shadow-[0_5px_5px_rgba(0,0,0,.25)]" />
+        </button>
+      ))}
 
       {/* Room objects (only placed ones) */}
       {state.roomObjects.map(obj => (
@@ -1071,7 +1334,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             }
           }}
         >
-          <span className={`relative block transition-transform duration-200 ${obj.beingUsedByCreature ? 'scale-110 drop-shadow-[0_0_12px_rgba(220,195,150,0.45)]' : 'hover:scale-105'}`}>
+          <span className={`relative block transition-transform duration-200 ${obj.state.returnTraceId === returnTrace?.id ? 'trace-halo' : ''} ${obj.beingUsedByCreature ? 'scale-110 drop-shadow-[0_0_12px_rgba(220,195,150,0.45)]' : 'hover:scale-105'}`}>
             <ObjectIcon type={obj.type} status={obj.state.status} size={58} />
             {showInventory && (
               <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-warm-100/25 bg-room-dark/95 text-[11px] text-warm-100 shadow-lg" aria-hidden="true">↓</span>
@@ -1092,18 +1355,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             <button
               type="button"
               onClick={() => beginObjectInteraction(selectedObject)}
-              className="rounded-xl bg-warm-100/90 px-3 py-2 text-[10px] font-serif text-room-dark active:scale-95"
+              className="min-h-11 min-w-11 rounded-xl bg-warm-100/90 px-3 py-2 text-[10px] font-serif text-room-dark active:scale-95"
             >
               {t('Use', 'Użyj')}
             </button>
             <button
               type="button"
               onClick={() => putAwayRoomObject(selectedObject.id)}
-              className="rounded-xl border border-warm-200/10 px-3 py-2 text-[10px] font-serif text-warm-100/70 active:scale-95"
+              className="min-h-11 rounded-xl border border-warm-200/10 px-3 py-2 text-[10px] font-serif text-warm-100/70 active:scale-95"
             >
               {t('Put away', 'Odłóż')}
             </button>
-            <button type="button" aria-label={t('Close', 'Zamknij')} onClick={() => setSelectedObjectId(null)} className="grid h-8 w-7 place-items-center text-sm text-warm-200/35">×</button>
+            <button type="button" aria-label={t('Close', 'Zamknij')} onClick={() => setSelectedObjectId(null)} className="grid h-11 w-11 place-items-center text-sm text-warm-200/45">×</button>
           </div>
         </div>
       )}
@@ -1123,6 +1386,17 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       )}
 
+      {/* Care is shown as a small room ritual, not a detached status update. */}
+      {(careEffect === 'wash' || careEffect === 'toilet') && (
+        <div
+          className={`care-ritual-underlay care-ritual-underlay--${careEffect}`}
+          style={{ left: `${creaturePos.x}%`, top: `${creaturePos.y}%` }}
+          aria-hidden="true"
+        >
+          <i /><i /><i />
+        </div>
+      )}
+
       {/* Creature */}
       <CreatureCanvas
         state={{
@@ -1136,6 +1410,33 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         onHoldStart={handleHoldStart}
         onHoldEnd={handleHoldEnd}
       />
+
+      {careEffect === 'wash' && (
+        <div
+          className="care-wash-drops"
+          style={{ left: `${creaturePos.x}%`, top: `${creaturePos.y}%` }}
+          aria-hidden="true"
+        >
+          <i /><i /><i /><i /><i />
+        </div>
+      )}
+
+      {careEffect === 'toilet' && (
+        <div
+          className="care-privacy-veil"
+          style={{ left: `${creaturePos.x}%`, top: `${creaturePos.y}%` }}
+          aria-hidden="true"
+        >
+          <i /><i /><span />
+        </div>
+      )}
+
+      {careEffect === 'clean' && (
+        <div className="care-cleaning-pass" aria-hidden="true">
+          <span />
+          <i /><i /><i /><i /><i />
+        </div>
+      )}
 
       {/* Intent is shown close to the creature, so every action reads as a
           small decision instead of a system status message. */}
@@ -1181,8 +1482,32 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       )}
 
+      {returnTrace && !showChat && !showMemoryBook && !showBecoming && !showCare && (
+        <div className="absolute left-4 right-4 bottom-24 z-40 pointer-events-none animate-fade-in" aria-live="polite">
+          <div className="return-trace max-w-sm mx-auto rounded-2xl px-4 py-3 flex items-center gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#c7a66c]/20 text-[#c7a66c]/75">
+              <GlyphIcon name="trace" size={20} />
+            </span>
+            <div>
+              <p className="eyebrow text-[#8d987c]/65">{t('The room remembers', 'Pokój pamięta')}</p>
+              <p className="text-[#ece8da]/78 text-xs font-serif leading-relaxed mt-1">{polish ? returnTrace.captionPl : returnTrace.captionEn}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {firstMoment && !returnTrace && !showChat && !showMemoryBook && !showBecoming && !showCare && (
+        <div className="absolute left-5 right-5 bottom-24 z-40 pointer-events-none animate-cue-pop" aria-live="polite">
+          <div className="max-w-sm mx-auto rounded-[1.2rem_.4rem_1.2rem_1.2rem] border border-[#c7a66c]/20 bg-[#1b1f18]/96 px-4 py-3 shadow-2xl">
+            <p className="eyebrow text-[#c7a66c]/58">{t('A first, quietly kept', 'Pierwszy raz, cicho zachowany')}</p>
+            <p className="display-title text-[#ece8da]/92 text-base mt-1.5">{polish ? firstMoment.titlePl : firstMoment.titleEn}</p>
+            <p className="text-[#d8d2bf]/62 text-[10px] font-serif leading-relaxed mt-1">{polish ? firstMoment.detailPl : firstMoment.detailEn}</p>
+          </div>
+        </div>
+      )}
+
       {/* Creature-initiated chat prompt */}
-      {initiatedTopic && !showChat && (
+      {initiatedTopic && !showChat && !showCare && (
         <div
           className="absolute top-[38%] left-1/2 -translate-x-1/2 z-40 animate-fade-in cursor-pointer"
           onClick={handleOpenChatWithTopic}
@@ -1198,44 +1523,45 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       )}
 
       {/* Top bar */}
-      <div className="absolute top-0 left-0 right-0 safe-top px-4 py-3 flex justify-between items-start z-30">
-        <button onClick={() => setShowBecoming(true)} className="text-left group min-h-11 -my-2 py-2">
-          <div className="text-warm-200/60 text-xs font-serif tracking-wider group-hover:text-warm-100 transition-colors">
-            {state.identity.name || 'New'} · {developmentLabel}
+      <div className="quiet-topbar absolute top-0 left-0 right-0 safe-top px-4 py-3 flex justify-between items-start z-30">
+        <button onClick={() => setShowBecoming(true)} className="text-left group tap-target -my-1 py-1 pr-3">
+          <div className="eyebrow text-[#8d987c]/70 group-hover:text-[#d8d2bf]/75 transition-colors">{developmentLabel}</div>
+          <div className="display-title text-[#ece8da]/86 text-lg mt-1 group-hover:text-[#ece8da] transition-colors">
+            {state.identity.name || t('New', 'Nowy')}
           </div>
-          <div className="text-[9px] font-serif uppercase tracking-[0.16em] mt-0.5 transition-colors" style={{ color: pathVisual.accent }}>
+          <div className="text-[8px] font-serif uppercase tracking-[0.15em] mt-0.5" style={{ color: pathVisual.accent }}>
             {lifePathTitle}
           </div>
         </button>
-        <div className="flex gap-1 items-start">
-          <button onClick={() => { emitCue('open'); setShowMemoryBook(true); }} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
-            {t('Memories', 'Wspomnienia')}
+        <div className="flex gap-0.5 items-start">
+          <button aria-label={t('Memory Book', 'Księga wspomnień')} title={t('Memory Book', 'Księga wspomnień')} onClick={() => { emitCue('open'); setShowMemoryBook(true); }} className="tap-target grid place-items-center text-[#d8d2bf]/55 hover:text-[#ece8da] rounded-full transition-colors">
+            <GlyphIcon name="memory" size={20} />
           </button>
-          <button aria-label={t('Settings', 'Ustawienia')} title={t('Settings', 'Ustawienia')} onClick={() => { emitCue('open'); setShowSettings(true); }} className="min-h-11 -my-2 px-2 py-2 text-warm-200/35 hover:text-warm-100 text-sm leading-none transition-colors">
-            •••
+          <button aria-label={t('Settings', 'Ustawienia')} title={t('Settings', 'Ustawienia')} onClick={() => { emitCue('open'); setShowSettings(true); }} className="tap-target grid place-items-center text-[#d8d2bf]/42 hover:text-[#ece8da] rounded-full transition-colors">
+            <GlyphIcon name="settings" size={20} />
           </button>
         </div>
       </div>
 
       {/* Daily moments are small dilemmas, not quests. Their choice changes
           the creature's path and becomes a remembered event. */}
-      {state.lifePath.pendingMoment && !showChat && !showMemoryBook && !showBecoming && state.sleepState !== 'sleeping' && (
+      {state.lifePath.pendingMoment && !showChat && !showMemoryBook && !showBecoming && !showCare && state.sleepState !== 'sleeping' && (
         <div className="absolute left-4 right-4 bottom-24 z-40 animate-slide-up">
           <div className="max-w-md mx-auto rounded-2xl border border-warm-300/20 bg-room-dark/94 backdrop-blur-xl p-4 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
               <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/55">{t('A moment', 'Chwila')} · {t('Day', 'Dzień')} {state.lifePath.pendingMoment.day}</p>
               <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: pathVisual.accent }} />
             </div>
-            <h2 className="text-warm-100 text-base font-serif mt-1">{state.lifePath.pendingMoment.title}</h2>
-            <p className="text-warm-200/65 text-xs leading-relaxed font-serif mt-1.5">{state.lifePath.pendingMoment.prompt}</p>
+            <h2 className="text-warm-100 text-base font-serif mt-1">{polish ? state.lifePath.pendingMoment.titlePl ?? state.lifePath.pendingMoment.title : state.lifePath.pendingMoment.title}</h2>
+            <p className="text-warm-200/65 text-xs leading-relaxed font-serif mt-1.5">{polish ? state.lifePath.pendingMoment.promptPl ?? state.lifePath.pendingMoment.prompt : state.lifePath.pendingMoment.prompt}</p>
             <div className="grid gap-2 mt-3">
               {state.lifePath.pendingMoment.choices.map(choice => (
                 <button
                   key={choice.id}
-                  onClick={() => handleMomentChoice(choice.id, choice.result)}
+                  onClick={() => handleMomentChoice(choice.id, polish ? choice.resultPl ?? choice.result : choice.result)}
                   className="rounded-xl border border-warm-200/10 bg-room-mid/70 px-3 py-2 text-left text-xs font-serif text-warm-100 hover:border-warm-300/30 active:scale-[0.99] transition-all"
                 >
-                  {choice.label}
+                  {polish ? choice.labelPl ?? choice.label : choice.label}
                 </button>
               ))}
             </div>
@@ -1243,7 +1569,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       )}
 
-      {momentResult && !showChat && !showMemoryBook && !showBecoming && (
+      {momentResult && !showChat && !showMemoryBook && !showBecoming && !showCare && (
         <div className="absolute left-5 right-5 bottom-24 z-40 pointer-events-none animate-cue-pop">
           <div className="max-w-sm mx-auto rounded-2xl border border-warm-300/20 bg-room-mid/94 backdrop-blur-xl px-4 py-3 text-center shadow-2xl">
             <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/45">{t('This became a memory', 'To stało się wspomnieniem')}</p>
@@ -1253,38 +1579,89 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       )}
 
       {/* Conversation is the primary way this creature grows. */}
-      {state.conversation.totalUserMessages === 0 && !showInventory && state.sleepState !== 'sleeping' && (
+      {state.conversation.totalUserMessages === 0 && !showInventory && !showCare && !returnTrace && !firstMoment && !state.lifePath.pendingMoment && state.sleepState !== 'sleeping' && (
         <button
           onClick={handleOpenChat}
-          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 rounded-full bg-warm-100/90 text-room-dark px-4 py-2 text-xs font-serif shadow-xl animate-cue-pop"
+          className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 min-h-11 rounded-full border border-[#ece8da]/20 bg-[#ece8da] text-[#171913] px-5 py-2 text-xs font-serif shadow-xl animate-cue-pop whitespace-nowrap"
         >
           {polish ? `Porozmawiaj z ${state.identity.name || 'stworkiem'}` : `Talk to ${state.identity.name || 'the creature'}`}
         </button>
       )}
 
       {/* Bottom controls */}
-      <div className="absolute bottom-0 left-0 right-0 safe-bottom px-4 py-4 flex justify-center items-end gap-3 z-30">
-        <button aria-label={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Put creature to sleep', 'Połóż stworka spać')} title={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Sleep', 'Sen')} onClick={handleSleepToggle} className="w-12 h-12 rounded-full bg-room-mid/80 backdrop-blur-sm border border-warm-200/10 flex items-center justify-center text-lg shadow-lg active:scale-95 transition-transform">
-          {state.sleepState === 'sleeping' ? '☀️' : '🌙'}
-        </button>
-        <button aria-label={t('Talk to creature', 'Porozmawiaj ze stworkiem')} title={t('Talk', 'Rozmowa')} onClick={handleOpenChat} className="w-[4.5rem] h-14 rounded-2xl bg-warm-100/90 text-room-dark backdrop-blur-sm border border-warm-50/30 flex flex-col items-center justify-center shadow-xl active:scale-95 transition-transform">
-          <span className="text-lg leading-none" aria-hidden="true">💬</span>
-          <span className="text-[10px] font-serif mt-0.5">{t('Talk', 'Rozmowa')}</span>
-        </button>
-        <button aria-label={t('Open things', 'Otwórz rzeczy')} title={t('Things', 'Rzeczy')} aria-expanded={showInventory} onClick={() => setShowInventory(!showInventory)} className={`w-12 h-12 rounded-full backdrop-blur-sm border flex items-center justify-center shadow-lg active:scale-95 transition-all ${showInventory ? 'bg-warm-100/90 border-warm-50/30' : 'bg-room-mid/80 border-warm-200/10'}`}>
-          <ObjectIcon type="box" status={showInventory ? 'opened' : undefined} size={29} />
-        </button>
+      <div className="absolute bottom-0 left-0 right-0 safe-bottom px-4 py-3 flex justify-center z-30">
+        <nav className="room-dock flex items-center gap-1 rounded-[1.7rem] px-1.5 py-1" aria-label={t('Room actions', 'Działania w pokoju')}>
+          <button aria-label={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Put creature to sleep', 'Połóż stworka spać')} title={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Sleep', 'Sen')} onClick={handleSleepToggle} className="dock-action">
+            <GlyphIcon name={state.sleepState === 'sleeping' ? 'sun' : 'moon'} size={21} />
+          </button>
+          <button
+            aria-label={careNeedsAttention ? t('Open care — something needs attention', 'Otwórz opiekę — coś wymaga uwagi') : t('Open care', 'Otwórz opiekę')}
+            title={t('Care', 'Opieka')}
+            aria-expanded={showCare}
+            onClick={() => { setShowInventory(false); setShowCare(current => !current); }}
+            className={`dock-action relative ${showCare ? 'bg-[#ece8da] !text-[#171913]' : ''}`}
+          >
+            <GlyphIcon name="care" size={21} />
+            {careNeedsAttention && <span className="care-seed" aria-hidden="true"><i /></span>}
+          </button>
+          <button data-primary="true" aria-label={t('Talk to creature', 'Porozmawiaj ze stworkiem')} title={t('Talk', 'Rozmowa')} onClick={handleOpenChat} className="dock-action flex-col gap-0.5">
+            <GlyphIcon name="chat" size={20} />
+            <span className="text-[9px] font-serif leading-none">{t('Talk', 'Rozmowa')}</span>
+          </button>
+          <button aria-label={t('Open things', 'Otwórz rzeczy')} title={t('Things', 'Rzeczy')} aria-expanded={showInventory} onClick={() => { setShowCare(false); setShowInventory(current => !current); }} className={`dock-action ${showInventory ? 'bg-[#ece8da] !text-[#171913]' : ''}`}>
+            <GlyphIcon name="shelf" size={22} />
+          </button>
+        </nav>
       </div>
+
+      {showCare && (
+        <section className="care-sheet absolute bottom-20 left-3 right-3 z-40 mx-auto max-w-md animate-slide-up" aria-label={t('Daily care', 'Codzienna opieka')}>
+          <div className="care-sheet-light" aria-hidden="true" />
+          <img src={`${artBase}art/care-motif.png`} alt="" className="care-sheet-motif motif-art" aria-hidden="true" />
+          <header className="care-sheet-header">
+            <div className="relative z-[2] max-w-[72%]">
+              <p className="care-kicker">{t('THE ORDINARY BODY', 'ZWYCZAJNE CIAŁO')}</p>
+              <h2>{t('Daily care', 'Codzienna opieka')}</h2>
+              <p className="care-summary">{careSummary}</p>
+            </div>
+            <button type="button" onClick={() => setShowCare(false)} aria-label={t('Close care', 'Zamknij opiekę')} className="care-sheet-close tap-target">
+              <GlyphIcon name="close" size={18} />
+            </button>
+          </header>
+          <div className="care-actions-grid">
+            <button type="button" onClick={handleOpenFood} className="care-action care-action--food" data-calling={careCalling.food || undefined}>
+              <span className="care-action-icon"><GlyphIcon name="food" size={21} /></span>
+              <span><span className="block text-xs text-warm-100">{t('Food', 'Jedzenie')}</span><span className="mt-0.5 block text-[10px] leading-tight text-warm-200/60">{t('Choose something from the shelf', 'Wybierz coś z półki')}</span></span>
+              {careCalling.food && <i className="care-action-pulse" aria-hidden="true" />}
+            </button>
+            <button type="button" onClick={handleToilet} className="care-action care-action--toilet" data-calling={careCalling.toilet || undefined}>
+              <span className="care-action-icon"><GlyphIcon name="toilet" size={21} /></span>
+              <span><span className="block text-xs text-warm-100">{t('Toilet', 'Toaleta')}</span><span className="mt-0.5 block text-[10px] leading-tight text-warm-200/60">{t('A quiet bathroom break', 'Chwila w spokojnym kącie')}</span></span>
+              {careCalling.toilet && <i className="care-action-pulse" aria-hidden="true" />}
+            </button>
+            <button type="button" onClick={handleWash} className="care-action care-action--wash" data-calling={careCalling.wash || undefined}>
+              <span className="care-action-icon"><GlyphIcon name="wash" size={21} /></span>
+              <span><span className="block text-xs text-warm-100">{t('Wash', 'Mycie')}</span><span className="mt-0.5 block text-[10px] leading-tight text-warm-200/60">{t('Warm water and clean fur', 'Ciepła woda i czyste futro')}</span></span>
+              {careCalling.wash && <i className="care-action-pulse" aria-hidden="true" />}
+            </button>
+            <button type="button" onClick={() => handleCleanMess()} className="care-action care-action--clean" data-calling={careCalling.clean || undefined}>
+              <span className="care-action-icon"><GlyphIcon name="clean" size={21} /></span>
+              <span><span className="block text-xs text-warm-100">{t('Clean room', 'Sprzątanie')}</span><span className="mt-0.5 block text-[10px] leading-tight text-warm-200/60">{state.roomMess.length > 0 ? (polish ? `${state.roomMess.length} ${state.roomMess.length === 1 ? 'ślad' : 'ślady'}` : `${state.roomMess.length} ${state.roomMess.length === 1 ? 'trace' : 'traces'}`) : t('The floor is clear', 'Podłoga jest czysta')}</span></span>
+              {careCalling.clean && <i className="care-action-pulse" aria-hidden="true" />}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Inventory tray */}
       {showInventory && (
-        <div ref={inventoryTrayRef} className="absolute bottom-20 left-3 right-3 rounded-[1.4rem] border border-warm-200/10 bg-[#211e1a]/96 p-4 shadow-[0_24px_70px_rgba(0,0,0,.58)] backdrop-blur-xl z-40 animate-slide-up">
+        <div ref={inventoryTrayRef} className="absolute bottom-20 left-3 right-3 rounded-[1.4rem] border border-white/[.09] bg-[#181b15]/[.98] p-4 shadow-[0_24px_70px_rgba(0,0,0,.58)] z-40 animate-slide-up">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
               <p className="text-warm-100/85 text-sm font-serif">{t('The shelf', 'Półka')}</p>
-              <p className="text-warm-200/40 text-[10px] font-serif leading-relaxed">{t('Take something out. In the room, choose Use or Put away.', 'Wyjmij coś. W pokoju wybierzesz: Użyj albo Odłóż.')}</p>
+              <p className="text-warm-200/68 text-[10px] font-serif leading-relaxed">{t('Take something out. In the room, choose Use or Put away.', 'Wyjmij coś. W pokoju wybierzesz: Użyj albo Odłóż.')}</p>
             </div>
-            <button onClick={() => setShowInventory(false)} className="shrink-0 rounded-full border border-warm-200/10 px-3 py-1.5 text-[10px] font-serif text-warm-100/70 hover:bg-warm-100/5">{t('Done', 'Gotowe')}</button>
+            <button onClick={() => setShowInventory(false)} className="tap-target shrink-0 rounded-full border border-warm-200/10 px-3 py-1.5 text-[10px] font-serif text-warm-100/70 hover:bg-warm-100/5">{t('Done', 'Gotowe')}</button>
           </div>
           <div className="grid grid-cols-4 gap-1 rounded-xl bg-room-dark/35 p-1">
             {INVENTORY_GROUPS.map(group => (
@@ -1292,7 +1669,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                 type="button"
                 key={group.id}
                 onClick={() => setInventoryGroupId(group.id)}
-                className={`min-h-9 rounded-lg px-1 text-[9px] font-serif transition-colors ${inventoryGroupId === group.id ? 'bg-warm-100/90 text-room-dark shadow' : 'text-warm-200/42 hover:text-warm-100'}`}
+                className={`min-h-11 rounded-lg px-1 text-[9px] font-serif transition-colors ${inventoryGroupId === group.id ? 'bg-warm-100/90 text-room-dark shadow' : 'text-warm-200/42 hover:text-warm-100'}`}
               >
                 {polish ? group.polish : group.english}
               </button>
@@ -1328,8 +1705,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       )}
 
-      {/* Memory Book Overlay */}
-      {showMemoryBook && (
+      {showMemoryBook && <MemoryBookView state={state} version={version} onClose={() => setShowMemoryBook(false)} />}
+
+      {/* Legacy markup remains temporarily as a compile-time reference while
+          the material Memory Book above becomes the single rendered view. */}
+      {false && showMemoryBook && (
         <div className="absolute inset-0 bg-room-dark/95 backdrop-blur-md z-50 animate-fade-in safe-top safe-bottom safe-x overflow-auto">
           <div className="max-w-md mx-auto p-6">
             <div className="flex justify-between items-center mb-6">
@@ -1345,7 +1725,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                 <div className="text-warm-200/40 text-xs mb-1">{t('Growing mind', 'Rosnący umysł')}</div>
                 <div className="text-warm-100 text-sm font-serif">{developmentLabel}</div>
                 <p className="text-warm-200/55 text-xs font-serif italic mt-1.5">
-                  {getDevelopmentDescription(state.development.stage)}
+                  {getDevelopmentDescription(state.development.stage, ui)}
                 </p>
                 <p className="text-warm-200/35 text-[10px] font-serif mt-2">
                   {polish ? `Zapamiętane rozmowy: ${state.conversation.totalUserMessages}` : `${state.conversation.totalUserMessages} conversation${state.conversation.totalUserMessages === 1 ? '' : 's'} remembered`}
@@ -1358,14 +1738,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                       .slice(0, 4)
                       .map(fact => (
                         <span key={fact.id} className="rounded-full bg-room-mid/70 border border-warm-200/10 px-2 py-1 text-[10px] text-warm-200/70">
-                          {fact.kind === 'name' ? 'you' : fact.kind}: {fact.value}
+                          {getFactKindLabel(fact.kind, ui)}: {fact.value}
                         </span>
                       ))}
                   </div>
                 )}
                 {state.socialLearning.imitated.length > 0 && (
                   <p className="text-warm-200/45 text-[10px] font-serif mt-2">
-                    {t('Learning from you', 'Uczy się od ciebie')}: {state.socialLearning.imitated.slice(-3).map(habit => `${habit.action} ${habit.target}`).join(', ')}
+                    {t('Learning from you', 'Uczy się od ciebie')}: {state.socialLearning.imitated.slice(-3).map(habit => formatLearnedBehaviour(habit.action, habit.target, ui)).join(', ')}
                   </p>
                 )}
               </div>
@@ -1376,14 +1756,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {rankedInterests.map(interest => (
                         <span key={interest.type} className="rounded-full bg-room-mid/70 border border-warm-200/10 px-2 py-1 text-[10px] text-warm-200/70 capitalize">
-                          {interest.label} · {getInterestStage(interest.level)}
+                          {interest.label} · {getInterestStage(interest.level, ui)}
                         </span>
                       ))}
                     </div>
                   )}
                   {latestDream && (
                     <div className="mt-3 rounded-xl bg-room-dark/25 border border-warm-200/5 p-3">
-                      <p className="text-[9px] uppercase tracking-widest text-warm-300/40">{t('Last dream', 'Ostatni sen')} · {latestDream.mood}</p>
+                      <p className="text-[9px] uppercase tracking-widest text-warm-300/40">{t('Last dream', 'Ostatni sen')} · {getDreamMoodLabel(latestDream.mood, ui)}</p>
                       <p className="text-warm-100/70 text-xs font-serif italic mt-1">{latestDream.fragment}</p>
                     </div>
                   )}
@@ -1391,7 +1771,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                     <div className="space-y-1.5 mt-3">
                       {confidentOpinions.map(opinion => (
                         <p key={opinion.topic} className="text-warm-200/55 text-[10px] font-serif">
-                          <span className="capitalize text-warm-100/70">{opinion.topic}</span> — {opinion.stance >= 0.25 ? 'drawn to it' : opinion.stance <= -0.25 ? 'pushes against it' : 'still divided'}
+                          <span className="text-warm-100/70">{getInterestLabel(opinion.topic, ui)}</span> — {opinion.stance >= 0.25 ? t('drawn to it', 'ciągnie go do tego') : opinion.stance <= -0.25 ? t('pushes against it', 'odpycha go to') : t('still divided', 'wciąż ma mieszane uczucia')}
                         </p>
                       ))}
                     </div>
@@ -1401,7 +1781,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   )}
                   {state.innerLife.selfAwareness.stage !== 'unaware' && (
                     <div className="mt-3 pt-3 border-t border-warm-200/5">
-                      <p className="text-[9px] uppercase tracking-widest text-warm-300/40">Mirror · {state.innerLife.selfAwareness.stage}</p>
+                      <p className="text-[9px] uppercase tracking-widest text-warm-300/40">{t('Mirror', 'Lustro')} · {getSelfAwarenessStageLabel(state.innerLife.selfAwareness.stage, ui)}</p>
                       {state.innerLife.selfAwareness.lastReflection && (
                         <p className="text-warm-100/60 text-[10px] font-serif italic mt-1">“{state.innerLife.selfAwareness.lastReflection}”</p>
                       )}
@@ -1416,7 +1796,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                     {activeConversationLoops.map(loop => (
                       <div key={loop.id} className="flex items-start gap-2 text-[10px] font-serif">
                         <span className="text-warm-300/35 mt-0.5">○</span>
-                        <span className="text-warm-100/65"><span className="uppercase tracking-wider text-warm-200/35">{loop.kind}</span> · {loop.subject}</span>
+                        <span className="text-warm-100/65"><span className="uppercase tracking-wider text-warm-200/35">{getOpenLoopKindLabel(loop.kind, ui)}</span> · {loop.subject}</span>
                       </div>
                     ))}
                   </div>
@@ -1447,7 +1827,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                       </div>
                     ))}
                   </div>
-                  <p className="text-warm-200/30 text-[9px] font-serif mt-2 capitalize">Paper & pencil · {getCreationMastery(state)}</p>
+                  <p className="text-warm-200/30 text-[9px] font-serif mt-2">{t('Paper and pencil', 'Papier i ołówek')} · {getCreationMastery(state, ui)}</p>
                 </div>
               )}
               {(visitRitual || state.presence.sessionCount > 1) && (
@@ -1495,7 +1875,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   {emergingTraits.join(' · ')}
                 </div>
                 <p className="text-warm-200/55 text-xs font-serif italic mt-1.5">
-                  {getBondDescription(state.bond.stage, state.identity.name)}
+                  {getBondDescription(state.bond.stage, state.identity.name, ui)}
                 </p>
                 {discoveredPreferences.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
@@ -1524,7 +1904,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                     {state.socialLearning.observations
                       .filter(o => o.exposureCount >= 2)
                       .slice(0, 5)
-                      .map(o => `${o.action} ${o.target}`)
+                      .map(o => formatLearnedBehaviour(o.action, o.target, ui))
                       .join(', ')}
                   </div>
                 </div>
@@ -1534,7 +1914,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   <div className="text-warm-200/40 text-xs mb-1">
                     Day {Math.max(1, Math.floor((mem.timestamp - state.identity.birthTimestamp) / (24 * 60 * 60 * 1000)) + 1)}
                   </div>
-                  <div className="text-warm-100 text-sm font-serif capitalize">{mem.content}</div>
+                  <div className="text-warm-100 text-sm font-serif">{formatStoredMemory(mem.content, ui)}</div>
                 </div>
               ))}
             </div>
@@ -1547,15 +1927,16 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       )}
 
-      {/* Becoming Overlay */}
-      {showBecoming && (
+      {showBecoming && <BecomingView state={state} onClose={() => setShowBecoming(false)} />}
+
+      {false && showBecoming && (
         <div className="absolute inset-0 bg-room-dark/97 backdrop-blur-xl z-50 animate-fade-in safe-top safe-bottom safe-x overflow-auto">
           <div className="max-w-md mx-auto p-6">
             <div className="flex justify-between items-start gap-4 mb-7">
               <div>
                 <p className="text-warm-300/45 text-[9px] uppercase tracking-[0.22em]">{t('What I am becoming', 'Kim się staję')}</p>
                 <h2 className="text-warm-100 text-2xl font-serif mt-1">{lifePathTitle}</h2>
-                <p className="text-[10px] uppercase tracking-widest mt-1" style={{ color: pathVisual.accent }}>{state.lifePath.phase}</p>
+                <p className="text-[10px] uppercase tracking-widest mt-1" style={{ color: pathVisual.accent }}>{getLifePathPhaseLabel(state.lifePath.phase, ui)}</p>
                 <p className="text-warm-200/30 text-[9px] font-serif mt-1">
                   Skin · {state.lifePath.phase === 'embodied' ? 'full form' : state.lifePath.secondary ? 'hybrid signs' : state.lifePath.phase === 'committed' ? 'settling in' : state.lifePath.phase === 'recovering' ? 'changing again' : 'first signs'}
                 </p>
@@ -1589,7 +1970,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   {rankedInterests.map(interest => (
                     <div key={interest.type} className="rounded-xl border border-warm-200/10 bg-room-mid/35 px-3 py-2">
                       <div className="text-warm-100/75 text-xs font-serif capitalize">{interest.label}</div>
-                      <div className="text-warm-200/35 text-[9px] uppercase tracking-widest mt-0.5">{getInterestStage(interest.level)}</div>
+                      <div className="text-warm-200/35 text-[9px] uppercase tracking-widest mt-0.5">{getInterestStage(interest.level, ui)}</div>
                     </div>
                   ))}
                 </div>
@@ -1598,7 +1979,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   <p className="text-warm-200/45 text-[10px] font-serif italic mt-1 capitalize">Mirror self · {state.innerLife.selfAwareness.stage}</p>
                 )}
                 {state.creations.length > 0 && (
-                  <p className="text-warm-200/45 text-[10px] font-serif italic mt-1 capitalize">Making · {getCreationMastery(state)}</p>
+                  <p className="text-warm-200/45 text-[10px] font-serif italic mt-1">{t('Making', 'Tworzenie')} · {getCreationMastery(state, ui)}</p>
                 )}
                 {state.touchBoundaries.boundariesShown > 0 && (
                   <p className="text-warm-200/45 text-[10px] font-serif italic mt-1">
@@ -1642,66 +2023,66 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       {/* Small local controls keep sensory feedback optional. No account or
           permission prompt is required; unsupported devices simply stay quiet. */}
       {showSettings && (
-        <div className="absolute inset-0 bg-room-dark/95 backdrop-blur-md z-50 animate-fade-in safe-top safe-bottom safe-x overflow-auto">
-          <div className="max-w-md mx-auto p-6">
+        <div className="functional-sheet safe-top safe-bottom safe-x animate-fade-in">
+          <div className="sheet-inner">
             <div className="flex justify-between items-center mb-7">
               <div>
-                <p className="text-warm-300/45 text-[9px] uppercase tracking-[0.22em]">{t('Presence', 'Obecność')}</p>
-                <h2 className="text-warm-100 text-xl font-serif mt-1">{t('How the room feels', 'Jak czuje się ten pokój')}</h2>
+                <p className="eyebrow text-[#a8ad91]/90">{t('On this device', 'Na tym urządzeniu')}</p>
+                <h2 className="display-title text-warm-100 text-2xl mt-2">{t('Settings', 'Ustawienia')}</h2>
               </div>
-              <button onClick={() => setShowSettings(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">{t('Close', 'Zamknij')}</button>
+              <button aria-label={t('Close settings', 'Zamknij ustawienia')} onClick={() => setShowSettings(false)} className="tap-target grid place-items-center text-warm-200/60 hover:text-warm-100 rounded-full"><GlyphIcon name="close" size={21} /></button>
             </div>
             <div className="space-y-3">
-              <div className="rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4">
+              <div className="ink-card p-4">
                 <div className="text-warm-100/85 text-sm font-serif">{t('Language', 'Język')}</div>
-                <p className="text-warm-200/40 text-[10px] font-serif mt-1">{t('Becoming speaks only Polish or English.', 'Becoming mówi tylko po polsku lub angielsku.')}</p>
+                <p className="text-warm-200/62 text-[10px] font-serif mt-1">{t('Becoming speaks only Polish or English.', 'Becoming mówi tylko po polsku lub angielsku.')}</p>
                 <div className="grid grid-cols-2 gap-2 mt-3" role="group" aria-label={t('Language', 'Język')}>
                   {(['pl', 'en'] as const).map(language => (
                     <button
                       key={language}
                       aria-pressed={ui === language}
                       onClick={() => onStateChange(prev => ({ ...prev, conversation: { ...prev.conversation, language } }))}
-                      className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-serif transition-colors ${ui === language ? 'border-warm-300/35 bg-warm-300/15 text-warm-100' : 'border-warm-200/10 bg-room-dark/25 text-warm-200/45'}`}
+                      className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-serif transition-colors ${ui === language ? 'border-warm-300/35 bg-warm-300/15 text-warm-100' : 'border-warm-200/10 bg-room-dark/25 text-warm-200/68'}`}
                     >
                       {language === 'pl' ? 'Polski' : 'English'}
                     </button>
                   ))}
                 </div>
               </div>
-              <label className="flex items-center justify-between gap-5 rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 cursor-pointer">
+              <label className="ink-card flex items-center justify-between gap-5 p-4 cursor-pointer">
                 <span>
                   <span className="block text-warm-100/85 text-sm font-serif">{t('Quiet sounds', 'Ciche dźwięki')}</span>
-                  <span className="block text-warm-200/40 text-[10px] font-serif mt-1">{t('Soft tones for touch, choices and waking.', 'Delikatne tony przy dotyku, wyborach i budzeniu.')}</span>
+                  <span className="block text-warm-200/62 text-[10px] font-serif mt-1">{t('Soft tones for touch, choices and waking.', 'Delikatne tony przy dotyku, wyborach i budzeniu.')}</span>
                 </span>
                 <input type="checkbox" checked={sensoryPreferences.sound} onChange={event => updateSensoryPreference('sound', event.target.checked)} className="accent-[#d8bd8f] w-5 h-5" />
               </label>
-              <label className="flex items-center justify-between gap-5 rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 cursor-pointer">
+              <label className="ink-card flex items-center justify-between gap-5 p-4 cursor-pointer">
                 <span>
                   <span className="block text-warm-100/85 text-sm font-serif">{t('Gentle haptics', 'Delikatne wibracje')}</span>
-                  <span className="block text-warm-200/40 text-[10px] font-serif mt-1">{t('Tiny pulses on devices that support vibration.', 'Krótkie impulsy na urządzeniach obsługujących wibracje.')}</span>
+                  <span className="block text-warm-200/62 text-[10px] font-serif mt-1">{t('Tiny pulses on devices that support vibration.', 'Krótkie impulsy na urządzeniach obsługujących wibracje.')}</span>
                 </span>
                 <input type="checkbox" checked={sensoryPreferences.haptics} onChange={event => updateSensoryPreference('haptics', event.target.checked)} className="accent-[#d8bd8f] w-5 h-5" />
               </label>
-              <div className="rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4">
+              <div className="ink-card p-4">
                 <div className="text-warm-100/85 text-sm font-serif">{t('Keep this creature', 'Zachowaj tego stworka')}</div>
-                <p className="text-warm-200/40 text-[10px] font-serif mt-1 leading-relaxed">{t('A private file can carry the whole life, memories, chats and creations to another device. Nothing is uploaded.', 'Prywatny plik przeniesie całe życie, wspomnienia, rozmowy i prace na inne urządzenie. Nic nie jest wysyłane.')}</p>
+                <p className="text-warm-200/62 text-[10px] font-serif mt-1 leading-relaxed">{t('A private file can carry the whole life, memories, chats and creations to another device. Nothing is uploaded.', 'Prywatny plik przeniesie całe życie, wspomnienia, rozmowy i prace na inne urządzenie. Nic nie jest wysyłane.')}</p>
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <button onClick={exportCreature} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">{t('Save backup', 'Zapisz backup')}</button>
                   <button onClick={() => importInputRef.current?.click()} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">{t('Open backup', 'Otwórz backup')}</button>
                 </div>
                 <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={event => void importCreature(event.target.files?.[0])} />
-                <p className="text-warm-300/35 text-[9px] font-serif mt-3">{t('The file contains personal conversations. Store it somewhere you trust.', 'Plik zawiera prywatne rozmowy. Przechowuj go w zaufanym miejscu.')}</p>
+                <p className="text-warm-200/62 text-[9px] font-serif mt-3">{t('The file contains personal conversations. Store it somewhere you trust.', 'Plik zawiera prywatne rozmowy. Przechowuj go w zaufanym miejscu.')}</p>
               </div>
               {onReset && (
                 <div className="rounded-2xl border border-red-200/10 bg-room-mid/25 p-4">
                   <div className="text-warm-100/70 text-sm font-serif">{t('Begin another life', 'Zacznij inne życie')}</div>
-                  <p className="text-warm-200/35 text-[10px] font-serif mt-1">{t('Save a backup first if you may want to return to this creature.', 'Najpierw zapisz backup, jeśli możesz chcieć wrócić do tego stworka.')}</p>
+                  <p className="text-warm-200/62 text-[10px] font-serif mt-1">{t('Save a backup first if you may want to return to this creature.', 'Najpierw zapisz backup, jeśli możesz chcieć wrócić do tego stworka.')}</p>
                   <button onClick={onReset} className="mt-3 min-h-11 w-full rounded-xl border border-red-200/15 px-3 py-2 text-red-100/55 text-xs font-serif active:scale-[0.98] transition-transform">{t('Start over', 'Zacznij od nowa')}</button>
                 </div>
               )}
             </div>
             {backupStatus && <p className="text-center text-warm-100/55 text-[10px] font-serif mt-5">{backupStatus}</p>}
-            <p className="text-center text-warm-200/25 text-[9px] font-serif mt-7">{t('Sensory choices stay only on this device.', 'Ustawienia dźwięku i wibracji zostają tylko na tym urządzeniu.')}</p>
+            <p className="text-center text-warm-200/58 text-[9px] font-serif mt-7">{t('Sensory choices stay only on this device.', 'Ustawienia dźwięku i wibracji zostają tylko na tym urządzeniu.')}</p>
           </div>
         </div>
       )}

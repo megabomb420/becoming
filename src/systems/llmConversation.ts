@@ -48,15 +48,17 @@ function compactHabits(state: GameState) {
 
 function influenceProfile(state: GameState) {
   const ranked = FLAWED_PATHS
-    .map(id => ({ id, score: state.lifePath.scores[id] ?? 0 }))
+    .map(id => {
+      const evidence = state.lifePath.evidence?.[id];
+      const positive = (evidence?.creaturePreferences ?? 0) + (evidence?.creatureChoices ?? 0);
+      const rejection = evidence?.creatureRejections ?? 0;
+      const selfWeight = Math.min(1, positive / 6);
+      const score = Math.max(0, (state.lifePath.scores[id] ?? 0) * selfWeight - rejection * 8);
+      return { id, score, positive, rejection };
+    })
     .sort((a, b) => b.score - a.score);
   const strongest = ranked[0];
-  const rewardedRiskExposure = state.socialLearning.observations.reduce((total, item) => {
-    if (!['substance', 'habit', 'language'].includes(item.behaviourType)) return total;
-    const reward = Math.max(0, item.perceivedReward);
-    return total + Math.min(8, item.exposureCount) * reward;
-  }, 0);
-  const viceDrift = Math.max(0, Math.min(100, strongest.score + rewardedRiskExposure * 1.8));
+  const viceDrift = Math.max(0, Math.min(100, strongest.score));
   const susceptibility = Math.max(0, Math.min(100,
     18
     + state.personality.impulsiveness * 0.3
@@ -71,7 +73,7 @@ function influenceProfile(state: GameState) {
   return {
     susceptibility: Math.round(susceptibility),
     viceDrift: Math.round(viceDrift),
-    strongestTemptation: strongest.score >= 8 ? strongest.id : null,
+    strongestTemptation: strongest.score >= 8 && strongest.positive >= 2 && strongest.positive - strongest.rejection * 2 > 0 ? strongest.id : null,
     strongestTemptationScore: Math.round(strongest.score),
     recovery: Math.round(state.lifePath.recovery),
   };
@@ -82,6 +84,19 @@ function toModelHistory(messages: ChatMessage[]): ApiMessage[] {
     role: message.sender === 'user' ? 'user' : 'assistant',
     content: message.text.slice(0, 1200),
   }));
+}
+
+function careContext(state: GameState) {
+  const hunger = state.needs.hunger < 24 ? 'very_hungry' : state.needs.hunger < 42 ? 'hungry' : state.needs.hunger > 82 ? 'full' : 'comfortable';
+  const hygiene = state.needs.hygiene < 24 ? 'very_dirty' : state.needs.hygiene < 45 ? 'needs_washing' : 'clean';
+  const bathroom = state.needs.bowel < 24 && state.needs.bladder < 30
+    ? 'needs_both'
+    : state.needs.bowel < 24
+      ? 'needs_to_poop'
+      : state.needs.bladder < 30
+        ? 'needs_to_pee'
+        : 'comfortable';
+  return { hunger, hygiene, bathroom, roomMess: Math.min(6, state.roomMess.length) };
 }
 
 function requestBody(state: GameState) {
@@ -112,6 +127,7 @@ function requestBody(state: GameState) {
     innerLife: {
       interests: getRankedInterests(state, 5).map(item => ({ topic: item.type, level: Math.round(item.level), polarity: Number((item.polarity ?? 0).toFixed(2)) })),
       opinions: [...state.innerLife.opinions]
+        .filter(item => item.confidence >= 12)
         .sort((a, b) => b.confidence - a.confidence)
         .slice(0, 6)
         .map(item => ({ topic: item.topic, stance: Number(item.stance.toFixed(2)), confidence: Math.round(item.confidence), reason: item.reason.slice(0, 140) })),
@@ -142,6 +158,7 @@ function requestBody(state: GameState) {
         summary: (getAbsenceSummary(state, episode) || '').slice(0, 180),
       })),
     },
+    care: careContext(state),
     sharedLanguage: getAdoptedSharedPhrases(state).slice(0, 4).map(phrase => phrase.text.slice(0, 48)),
     facts: compactFacts(state),
     habits: compactHabits(state),

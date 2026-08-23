@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.22
+> **Version:** 0.9.27
 > **Last Updated:** 2026-08-23
 
 ---
@@ -25,7 +25,7 @@ The project is built as a **polished vertical slice** — playable from birth th
 | Persistence | IndexedDB via `idb` library |
 | Rendering | HTML5 Canvas (creature), DOM (UI) |
 | AI mind | DeepSeek V4 Flash behind a private Cloudflare Worker proxy |
-| Icons | Generated via PIL (Python) |
+| Icons / art | Code-native SVG object and navigation icons plus four generated transparent editorial motifs |
 | Deployment | GitHub Pages via GitHub Actions |
 
 **Dev command:** `npm run dev` → `http://localhost:7100/`  
@@ -41,6 +41,7 @@ becoming/
 ├── public/
 │   ├── manifest.json           # PWA manifest
 │   ├── favicon.svg
+│   ├── art/                    # Memory, Dreams, Becoming, and Care motifs
 │   └── icon-{192,512,maskable}.png
 ├── src/
 │   ├── types/index.ts          # Core type definitions
@@ -58,7 +59,10 @@ becoming/
 │   │   ├── CreatureCanvas.tsx  # Canvas-based creature renderer
 │   │   ├── EggHatching.tsx     # Birth experience (tap egg, name creature)
 │   │   ├── Room.tsx            # Main game room (objects, creature, chat)
-│   │   └── ChatInterface.tsx   # Conversation UI
+│   │   ├── ChatInterface.tsx   # Conversation-as-presence UI
+│   │   ├── MemoryBookView.tsx  # Material keepsake / biography view
+│   │   ├── BecomingView.tsx    # Narrative identity view, no visible scores
+│   │   └── GlyphIcon.tsx       # Shared hand-drawn navigation icon language
 │   ├── App.tsx                 # Main app flow, offline sync
 │   ├── main.tsx                # Entry point
 │   └── index.css               # Tailwind + custom safe-area utilities
@@ -78,7 +82,7 @@ becoming/
 | PWA installability | ✅ | Manifest, service worker, offline shell, icons |
 | Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` flag prevents regression |
 | Creature rendering | ✅ | Canvas-based with breathing, blinking, expressive eyes/ears/tail, and distinct walking, observing, investigating, eating, playing, and settling body language |
-| Hidden needs system | ✅ | 5 internal needs decay over time; no visible stats |
+| Hidden needs system | ✅ | 8 internal needs decay over time; no visible stats |
 | Hidden personality | ✅ | Seeded traits that now evolve through care, play, touch, exploration, and conversation |
 | Bond development | ✅ | Persistent tentative → familiar → close → bonded relationship arc with milestone memories, bond-aware idle behavior, and later-stage speech |
 | Development stages | ✅ | `egg → newborn → animal → communicating → first_words → combining → sentences → mature`; stage regression prevented once hatched |
@@ -121,6 +125,14 @@ becoming/
 | Shared sayings | ✅ | Safe short phrases repeated two or three times can become persistent inside language visible in Memory Book and available to chat |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
+| Nocturnal Terrarium UI | ✅ | Intimate dark room, material Memory Book, voice-led Chat, narrative Becoming, restrained functional settings |
+| Visible personality signatures | ✅ | Seeded trait combinations alter early hesitations, approaches, rest choices, object initiative, imitation, and conversation presence |
+| Meaningful firsts | ✅ | First word, approach, refusal, favorite, dream, creation, opinion, shared saying, self-recognition, and autonomous object use are staged once and kept in memory |
+| State-aware autonomy | ✅ | Weighted deterministic selection uses needs, age, temperament, bond, interests, known objects, cooldowns, and persistent recency history without LLM calls |
+| Physical return traces | ✅ | Offline simulation moves or uses objects, continues a mark, touches the mirror, or changes the chosen rest place before dialogue explains anything |
+| Daily care physiology | ✅ | Hidden cleanliness, bladder, and bowel needs extend hunger; food affects later bathroom timing, body language replaces meters, and care never causes death or guilt |
+| Toilet, washing, and cleaning | ✅ | A compact care sheet opens food, toilet, washing, and room cleaning; pee/poop remain as tappable floor traces until cleaned, with bounded offline simulation |
+| Care-aware conversation | ✅ | Local fallback and the sanitised DeepSeek state can express hunger, bathroom needs, dirt, or a messy room without exposing values, shaming, or inventing danger |
 
 ### 🚧 Partial / Placeholder
 
@@ -368,6 +380,48 @@ Ambient speech and chat now use the same age ladder. A newborn speaks in short c
 
 Influence is no longer a blanket morality gate. Direct suggestions create small persistent path pressure, while susceptibility depends on temperament, bond, learned rewards, recovery, and existing drift. Ordinary in-world vice can produce curiosity, compromise, acceptance, denial, or relapse without canned lectures. The hard boundary is reserved for actionable real-world severe harm or crime. The PWA manifest and every install asset are now scoped to `/becoming/`, fixing the 404 caused by launching a home-screen install at the GitHub Pages domain root.
 
+### v0.9.23 — Nocturnal Terrarium
+
+The interface now follows one art direction: **Nocturnal Terrarium**. Peat, lichen, aged bone, dusty plum, and dim amber replace the earlier uniform brown-card treatment. The room is quieter and keeps decoration away from the creature; primary actions live in one matte dock with a shared hand-drawn icon language. Hatching now feels like the beginning of a life rather than an emoji reveal.
+
+Chat is no longer arranged as a standard two-sided bot messenger. The creature's words read as a continuous voice in the space, while the user's messages read as small material notes. Raw development meters and technical AI-presence labels were removed. Memory Book became a lighter paper keepsake with a stitched timeline, firsts, dreams, creations, relationship threads, and absence traces. Becoming became a narrative portrait of visible signs, temperament, inner weather, possible directions, and turns in the road; it no longer exposes path scores, percentages, or recovery bars. Settings remains a plain functional sheet.
+
+Three transparent, mobile-sized editorial motifs support Memory Book, Dreams, and Becoming. They share one tactile botanical-monoprint rendering and never define the creature's appearance. CSS grain and organic light handle ambient room texture without adding another heavy background image.
+
+### v0.9.24 — Early Signs
+
+Trait combinations now produce visible signatures during the first minutes. A curious-cautious creature approaches in stops; a curious-bold creature tests first; affectionate-independent creatures stay near with space around them; calm-stubborn creatures return to a chosen rest place; social-confidence and bright impulse have their own early patterns. These combinations affect behaviour rather than appearing as raw trait numbers.
+
+The existing Room heartbeat now uses a deterministic weighted autonomy selector instead of uniform random cute moments. Needs, personality, bond, developmental stage, learned objects, favorites, interests, imitated behaviour, recency, and cooldowns all alter selection. The persistent history prevents immediate repetition, keeps rare events rare, and requires no additional timer, render loop, IndexedDB cadence, AI call, or ordinary-behaviour LLM inference.
+
+Ten meaningful firsts share one non-gamified staging path: a short body-language change, the existing optional sensory cue, one quiet caption, and a durable Memory Book entry. Global transition observation attaches this to the existing vocabulary, boundary, preference, dream, creation, opinion, shared-language, and mirror systems instead of duplicating them.
+
+Offline simulation now leaves one physical trace for a real return: an object can move or show use, a drawing can continue, the mirror can carry a touch, or the creature can be found in its chosen rest place. The room shows that evidence first and only releases the greeting after it has been visible. Recent trace kinds are down-weighted, all text stays guilt-free, and legacy saves migrate to empty histories plus a deterministic rest place without changing identity or old memories.
+
+Final browser verification covered Room, the object shelf and object actions, Chat, Memory Book, Becoming, and Settings at both 390×844 and 320×568. The layouts have no horizontal overflow, safe-area padding remains additive, interactive controls are at least 44 px, and a computed contrast pass found no failures in the rendered primary views. The TypeScript check, production Vite/PWA build, established life-path suite, and new personality/autonomy/firsts/return-trace migration suite all pass.
+
+### v0.9.25 — An Ordinary Body
+
+The original hidden hunger model now includes cleanliness, bladder, and bowel needs. Feeding still satisfies hunger but also advances the later bathroom cycle; sleep slows bodily change instead of suspending it. When an urgent need reaches its limit, the creature is relieved and leaves a small persistent pee or poop mark near where it stood. The event lowers comfort and cleanliness but cannot cause illness, death, relationship loss, streak pressure, or guilt.
+
+Room gains one compact **Care** action beside sleep, conversation, and the shelf. It opens Food, Toilet, Wash, and Clean Room without showing a number or progress bar. Floor marks use restrained room-native illustrations, can be cleaned directly with one tap, and remain in local saves and backups until removed. Low cleanliness adds a few muted flecks to the creature; hunger, bathroom urgency, dirt, and a messy floor also alter idle body language and short captions.
+
+Active physiology reuses the existing one-minute needs heartbeat. Offline simulation uses gentler rates and creates at most one trace of each bathroom type per return, with a six-mark room bound. Legacy saves migrate to neutral body values and a clean room. The local conversation fallback can answer direct care questions, while the Worker accepts only whitelisted qualitative care states and forbids values, shame, invented danger, and return pressure. TypeScript, Worker protection tests, the two established system suites, and a dedicated care-cycle/migration suite pass; the care sheet and its four actions fit 320×568 with 44 px or larger targets and no horizontal overflow.
+
+### v0.9.26 — Care Rituals
+
+Daily care now belongs visually to the Nocturnal Terrarium instead of reading as a generic four-button menu. The sheet uses an irregular peat-and-lichen surface, quiet hierarchy, purpose-tinted hand-drawn actions, and a tactile transparent basin-and-linen motif created in the same material family as Memory Book, Dreams, and Becoming. Needs remain qualitative: the most relevant action receives only a small breathing seed, never a bar, score, warning badge, or guilt prompt.
+
+Care actions now briefly change the room itself. Washing sends restrained water rings and warm droplets around the creature; the bathroom break draws a soft reed-like privacy screen and plum floor shadow; cleaning carries a narrow sweep of light and dust motes across the shared floor. Opening Care gently marks any physical trace already in the room, while the dock's former notification dot is now an organic seed. All motion respects reduced-motion preferences and remains pointer-transparent.
+
+The final browser pass covers the rendered sheet at 390×844 and 320×568, including the generated asset, the active washing scene, page width, text contrast, and every visible button. There is no horizontal page overflow and no control smaller than 44 px. The new decorative asset is a real alpha PNG rather than a baked checkerboard, resized for the mobile bundle.
+
+### v0.9.27 — Evidence, Not Echoes
+
+Interests, life paths, and strong personality labels now require repeated creature-owned choices, behaviour, or stated preferences. User mentions have very little weight, curiosity is tracked separately, and explicit dislike or refusal is counter-evidence. Stable labels require several consistent signals spread over time (or an even larger body of evidence), while older saves without source-aware evidence are conservatively recalibrated instead of preserving fast, unsupported identities.
+
+Player-facing Polish and English now use localized path, interest, development, dream, memory, history, and technical-kind labels with safer language fallbacks. Regression tests cover a single player mention, repeated player-only conversations, creature refusal, gradual self-directed adoption, legacy migration, and stored-memory translation; TypeScript, system suites, Worker checks, the production build, and a rendered Polish UI pass are the release gates.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -379,7 +433,7 @@ Influence is no longer a blanket morality gate. Direct suggestions create small 
 - **Sound is intentionally minimal:** Current cues are short interaction tones rather than voiced creature vocalizations.
 - **Needs decay may feel too slow or too fast:** Tuned for 1-minute intervals. Real-world testing on mobile is needed.
 - **Object drag on mobile:** Pointer events should work on most mobile browsers, but long-press vs drag detection could conflict with browser gestures on some devices.
-- **Offline simulation is simple:** Does not model complex chained activities.
+- **Offline simulation is intentionally bounded:** It applies one visible, state-backed return trace rather than simulating long chains of unseen actions.
 
 ### Architecture
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the conversation automatically falls back to the smaller local mind.
@@ -415,6 +469,10 @@ Influence is no longer a blanket morality gate. Direct suggestions create small 
 - **Language constrains the LLM.** When an LLM is added, the speech generation pipeline must pass through a vocabulary whitelist and sentence-complexity gate.
 - **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
 - **No death from neglect.** Long absences change the creature (more independent, different trust level) but never punish the player.
+- **Nocturnal Terrarium art direction.** Room is a quiet habitat, Chat is a voice-led presence, Memory Book is a material keepsake, Becoming is a narrative portrait, and Settings is a functional sheet. Decorative assets support these roles but never define the creature.
+- **Visible development is staged, not scored.** Meaningful firsts, small gestures, object initiative, and physical return traces communicate growth. The stored numeric model remains hidden.
+- **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency.
+- **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, and accidents advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, death, sickness pressure, or manipulative absence mechanics.
 
 ---
 
@@ -448,5 +506,8 @@ location.reload();
 | How paper-and-pencil creations evolve | `src/systems/creationSystem.ts` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |
+| Personality signatures and autonomy weighting | `src/systems/relationshipSystem.ts` |
+| Meaningful firsts and development experience history | `src/systems/developmentSystem.ts` |
+| Material Memory Book and narrative Becoming UI | `src/components/MemoryBookView.tsx` + `src/components/BecomingView.tsx` |
 | Persistence | `src/systems/persistence.ts` |
 | Offline time | `src/systems/offlineSimulation.ts` |

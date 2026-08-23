@@ -4,12 +4,14 @@ import {
   appendCreatureMessage,
   beginConversationTurn,
   getConversationOpening,
-  getMindStatus,
 } from '../systems/conversationSystem';
 import { getDevelopmentDescription } from '../systems/developmentSystem';
-import { isLlmAvailable, requestCreatureReply } from '../systems/llmConversation';
+import { requestCreatureReply } from '../systems/llmConversation';
 import { getLifePathTitle, getLifePathVisual } from '../systems/lifePathSystem';
-import { getInterestStage, getRankedInterests } from '../systems/innerLifeSystem';
+import { getRankedInterests } from '../systems/innerLifeSystem';
+import { getVisiblePersonalitySignature } from '../systems/relationshipSystem';
+import { uiLanguage } from '../systems/uiLanguage';
+import GlyphIcon from './GlyphIcon';
 
 interface ChatInterfaceProps {
   state: GameState;
@@ -27,10 +29,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
   const initRef = useRef(false);
   const mountedRef = useRef(true);
   const messages = state.conversation.messages;
-  const isPolish = state.conversation.language === 'pl';
+  const ui = uiLanguage(state.conversation.language);
+  const isPolish = ui === 'pl';
   const pathVisual = getLifePathVisual(state);
-  const lifePathTitle = getLifePathTitle(state);
-  const strongestInterest = getRankedInterests(state, 1)[0];
+  const lifePathTitle = getLifePathTitle(state, ui);
+  const signature = getVisiblePersonalitySignature(state);
+  const strongestInterest = getRankedInterests(state, 1, ui)[0];
+  const creatureName = state.identity.name || (isPolish ? 'Stworek' : 'The creature');
   const polishDevelopment = {
     egg: 'Czeka, by się pojawić.',
     newborn: 'Mówi prosto. Dopiero zbiera własny ton.',
@@ -41,24 +46,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
     sentences: 'Rozpoznaje wzorce i pyta, co znaczą.',
     mature: 'Mówi głosem ukształtowanym przez wspólną historię.',
   }[state.development.stage];
-  const mindStatus = isPolish
-    ? `${lifePathTitle} · ${state.conversation.totalUserMessages} ${state.conversation.totalUserMessages === 1 ? 'wymiana' : state.conversation.totalUserMessages >= 2 && state.conversation.totalUserMessages <= 4 ? 'wymiany' : 'wymian'}`
-    : getMindStatus(state);
+  const presenceStatus = mindState === 'connecting'
+    ? (isPolish ? 'zbiera myśli…' : 'gathering a thought…')
+    : mindState === 'instinct'
+      ? (isPolish ? 'mówi z pamięci tego urządzenia' : 'speaking from this device’s memory')
+      : (isPolish ? signature.titlePl : signature.titleEn);
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
+    return () => { mountedRef.current = false; };
   }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length, isThinking]);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
     if (initRef.current) return;
@@ -70,8 +73,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
     }, 450 + Math.random() * 350);
     return () => {
       window.clearTimeout(timer);
-      // React StrictMode intentionally mounts effects twice in development.
-      // Resetting the guard lets the committed mount schedule the greeting.
       initRef.current = false;
     };
   }, [initialMessage, onStateChange]);
@@ -100,106 +101,87 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
-  const progress = Math.round((state.development.cognitiveLevel + state.development.languageLevel) / 2);
   const knownFacts = [...state.conversation.facts]
     .sort((a, b) => b.confidence - a.confidence || b.lastMentioned - a.lastMentioned)
-    .slice(0, 3);
+    .slice(0, 2);
 
   return (
-    <div className="absolute inset-0 bg-room-dark/98 backdrop-blur-xl z-50 flex flex-col safe-top safe-bottom safe-x animate-fade-in">
-      <header className="px-4 pt-3 pb-3 border-b border-warm-200/10 bg-room-dark/80">
+    <section className="night-sheet !overflow-hidden safe-top safe-bottom safe-x flex flex-col animate-fade-in" aria-label={isPolish ? `Rozmowa z ${creatureName}` : `Conversation with ${creatureName}`}>
+      <div className="absolute inset-0 ambient-grain opacity-50" aria-hidden="true" />
+      <header className="relative z-10 px-4 pt-2 pb-4 border-b border-white/[.06]">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <div
-            className="relative w-11 h-11 rounded-full border border-warm-200/20 shadow-lg flex items-center justify-center shrink-0"
+            className="relative w-12 h-12 shrink-0 rounded-[48%_52%_44%_56%] border border-white/10 flex items-center justify-center"
             style={{
-              background: `hsl(${(state.identity.appearance.baseHue + pathVisual.hueShift * pathVisual.strength + 360) % 360} ${pathVisual.saturation}% ${pathVisual.lightness}% / 0.78)`,
-              boxShadow: `0 0 24px ${pathVisual.aura}`,
+              background: `hsl(${(state.identity.appearance.baseHue + pathVisual.hueShift * pathVisual.strength + 360) % 360} ${pathVisual.saturation}% ${pathVisual.lightness}% / .74)`,
+              boxShadow: `0 0 28px ${pathVisual.aura}`,
             }}
             aria-hidden="true"
           >
-            <div className="flex gap-1">
-              <span className="w-1.5 h-2 rounded-full bg-room-dark/90" />
-              <span className="w-1.5 h-2 rounded-full bg-room-dark/90" />
+            <div className="flex gap-1.5">
+              <span className="w-1.5 h-2.5 rounded-full bg-[#14160f]/90" />
+              <span className="w-1.5 h-2.5 rounded-full bg-[#14160f]/90" />
             </div>
-            {isThinking && <span className="absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full bg-warm-300 animate-pulse border-2 border-room-dark" />}
+            {isThinking && <span className="absolute -right-0.5 bottom-1 w-2.5 h-2.5 rounded-full bg-[#c7a66c] animate-pulse" />}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-2">
-              <h1 className="text-warm-100 text-base font-serif truncate">{state.identity.name || 'The creature'}</h1>
-              <span className="text-[10px] uppercase tracking-widest" style={{ color: pathVisual.accent }}>{lifePathTitle}</span>
-            </div>
-            <p className="text-warm-200/45 text-[11px] font-serif">
-              {mindStatus} · {mindState === 'connecting' ? (isPolish ? 'łączenie z umysłem…' : 'connecting mind…') : mindState === 'online' ? (isPolish ? 'umysł AI online' : 'AI mind online') : mindState === 'instinct' ? (isPolish ? 'lokalny instynkt' : 'local instinct') : isLlmAvailable() ? (isPolish ? 'umysł AI gotowy' : 'AI mind ready') : (isPolish ? 'lokalny instynkt' : 'local instinct')}
-            </p>
-            <div className="h-0.5 mt-1.5 bg-room-mid rounded-full overflow-hidden max-w-48">
-              <div className="h-full bg-warm-300/45 transition-all duration-700" style={{ width: `${Math.max(4, progress)}%` }} />
-            </div>
+            <p className="eyebrow text-[#c7a66c]/78 truncate">{lifePathTitle}</p>
+            <h1 className="display-title text-[1.35rem] text-[#ece8da] truncate mt-1">{creatureName}</h1>
+            <p className="text-[10px] text-[#d8d2bf]/62 mt-1 truncate">{presenceStatus}{strongestInterest && strongestInterest.level >= 25 ? ` · ${isPolish ? 'myśli o' : 'thinking about'} ${strongestInterest.label}` : ''}</p>
           </div>
-          <button aria-label={isPolish ? 'Zamknij rozmowę' : 'Close conversation'} onClick={onClose} className="min-h-11 text-warm-200/55 hover:text-warm-100 text-sm px-2 py-2 transition-colors">
-            {isPolish ? 'Zamknij' : 'Close'}
+          <button aria-label={isPolish ? 'Zamknij rozmowę' : 'Close conversation'} onClick={onClose} className="tap-target grid place-items-center text-[#d8d2bf]/58 hover:text-[#ece8da] rounded-full">
+            <GlyphIcon name="close" size={21} />
           </button>
         </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="max-w-2xl mx-auto space-y-3">
+      <div ref={scrollRef} className="relative z-10 flex-1 overflow-y-auto px-5 py-5">
+        <div className="max-w-2xl mx-auto space-y-3.5">
           {messages.length === 0 && (
-            <div className="text-center py-12 max-w-sm mx-auto">
-              <p className="text-warm-100/65 text-sm font-serif">{isPolish ? polishDevelopment : getDevelopmentDescription(state.development.stage)}</p>
-              <p className="text-warm-200/30 text-xs font-serif italic mt-2">{isPolish ? 'Każda wiadomość staje się częścią jego rozwoju.' : 'Every message becomes part of how it grows.'}</p>
+            <div className="py-12 max-w-sm">
+              <p className="eyebrow text-[#8d987c]/70">{isPolish ? 'Głos, który dopiero powstaje' : 'A voice still forming'}</p>
+              <p className="display-title text-xl text-[#ece8da]/82 mt-3 text-balance">{isPolish ? polishDevelopment : getDevelopmentDescription(state.development.stage, ui)}</p>
+              <p className="text-[#d8d2bf]/58 text-xs font-serif italic mt-3 leading-relaxed">{isPolish ? 'Nie rozmawiasz z pustym oknem. To, co powiesz, zostanie w jego historii.' : 'You are not speaking into an empty window. What you say will remain in its history.'}</p>
             </div>
           )}
 
-          {messages.map(message => (
-            <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[84%] sm:max-w-[72%] px-4 py-2.5 rounded-2xl text-sm shadow-sm ${
-                message.sender === 'user'
-                  ? 'bg-warm-300/20 border border-warm-300/10 text-warm-100 rounded-br-md'
-                  : 'bg-room-mid/85 border border-warm-200/5 text-warm-200 rounded-bl-md'
-              }`}>
-                <p className="font-serif whitespace-pre-wrap leading-relaxed">{message.text}</p>
-                <p className="text-[9px] opacity-30 mt-1.5 text-right">
-                  {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </div>
-            </div>
+          {messages.map(message => message.sender === 'creature' ? (
+            <article key={message.id} className="creature-voice animate-fade-in">
+              <p className="whitespace-pre-wrap">{message.text}</p>
+              <time className="block text-[9px] font-sans text-[#d8d2bf]/52 mt-1.5" dateTime={new Date(message.timestamp).toISOString()}>
+                {creatureName} · {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </time>
+            </article>
+          ) : (
+            <article key={message.id} className="human-note animate-fade-in">
+              <p className="font-serif whitespace-pre-wrap text-sm leading-relaxed">{message.text}</p>
+              <time className="block text-[9px] text-[#d8d2bf]/52 mt-1.5 text-right" dateTime={new Date(message.timestamp).toISOString()}>
+                {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </time>
+            </article>
           ))}
 
           {isThinking && (
-            <div className="flex justify-start" aria-label={isPolish ? `${state.identity.name || 'Stworek'} myśli` : `${state.identity.name || 'The creature'} is thinking`}>
-              <div className="bg-room-mid/85 px-4 py-3 rounded-2xl rounded-bl-md border border-warm-200/5">
-                <div className="flex gap-1">
-                  {[0, 150, 300].map(delay => (
-                    <span key={delay} className="w-1.5 h-1.5 rounded-full bg-warm-200/40 animate-bounce" style={{ animationDelay: `${delay}ms` }} />
-                  ))}
-                </div>
+            <div className="creature-voice" aria-label={isPolish ? `${creatureName} myśli` : `${creatureName} is thinking`}>
+              <div className="flex gap-1.5 py-1">
+                {[0, 180, 360].map(delay => <span key={delay} className="w-1 h-1 rounded-full bg-[#c7a66c]/55 animate-bounce" style={{ animationDelay: `${delay}ms` }} />)}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      <footer className="px-4 pt-3 pb-3 border-t border-warm-200/10 bg-room-dark/90 backdrop-blur-md">
+      <footer className="relative z-10 writing-ledge px-4 pt-3 pb-2">
         <div className="max-w-2xl mx-auto">
           {knownFacts.length > 0 && (
-            <div className="flex gap-1.5 overflow-x-auto pb-2" aria-label={isPolish ? 'Rzeczy zapamiętane o tobie' : 'Things remembered about you'}>
-              {knownFacts.map(fact => (
-                <span key={fact.id} className="shrink-0 rounded-full bg-room-mid/70 border border-warm-200/10 px-2.5 py-1 text-[10px] text-warm-200/50 font-serif">
-                  {fact.kind === 'name' ? (isPolish ? 'ty' : 'you') : fact.kind}: {fact.value}
-                </span>
-              ))}
-            </div>
-          )}
-          {strongestInterest && strongestInterest.level >= 25 && (
-            <div className="flex justify-center pb-2">
-              <span className="rounded-full border border-warm-300/10 bg-warm-300/5 px-2.5 py-1 text-[10px] text-warm-200/45 font-serif capitalize">
-                {isPolish ? 'myśli o' : 'thinking about'} {strongestInterest.label} · {getInterestStage(strongestInterest.level)}
-              </span>
-            </div>
+            <p className="pb-2 px-1 text-[9px] text-[#d8d2bf]/58 font-serif truncate">
+              {isPolish ? 'Niesie ze sobą: ' : 'Carrying with it: '}
+              {knownFacts.map(fact => fact.value).join(' · ')}
+            </p>
           )}
           <div className="flex items-end gap-2">
             <textarea
@@ -208,25 +190,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
               value={input}
               onChange={event => setInput(event.target.value.slice(0, 500))}
               onKeyDown={handleKeyDown}
-              placeholder={isPolish ? 'Powiedz coś — słucha i zapamiętuje...' : 'Say something — it listens and remembers...'}
-              className="flex-1 min-h-11 max-h-28 resize-none bg-room-mid/55 border border-warm-200/10 rounded-xl px-4 py-3 text-warm-100 text-sm font-serif placeholder:text-warm-200/20 focus:outline-none focus:border-warm-300/35"
+              placeholder={isPolish ? `Powiedz coś ${creatureName}…` : `Say something to ${creatureName}…`}
+              aria-label={isPolish ? 'Twoja wiadomość' : 'Your message'}
+              className="flex-1 min-h-12 max-h-28 resize-none bg-[#252a20]/62 border border-white/[.08] rounded-[1.1rem_.45rem_1.1rem_1.1rem] px-4 py-3 text-[#ece8da] text-sm font-serif placeholder:text-[#d8d2bf]/48 focus:outline-none focus:border-[#c7a66c]/45"
             />
             <button
-              onClick={handleSend}
+              onClick={() => void handleSend()}
               disabled={!input.trim() || isThinking}
-              className="h-11 px-4 bg-warm-300/20 border border-warm-300/15 text-warm-100 rounded-xl text-sm font-serif disabled:opacity-30 active:scale-95 transition-all"
+              aria-label={isPolish ? 'Wyślij' : 'Send'}
+              className="h-12 w-12 grid place-items-center bg-[#ece8da] text-[#171913] rounded-[45%_55%_48%_52%] disabled:opacity-25 active:scale-95 transition-all"
             >
-              {isPolish ? 'Wyślij' : 'Send'}
+              <GlyphIcon name="send" size={21} />
             </button>
           </div>
-          <p className="text-warm-200/20 text-[9px] mt-2 text-center font-serif">
-              {isPolish
-                ? 'Pamięć zostaje na tym urządzeniu. Ostatnie wiadomości trafiają do prywatnego mózgu Becoming.'
-                : 'Memory stays on this device. Recent messages are sent to Becoming’s private mind.'}
-            </p>
+          <p className="text-[#d8d2bf]/58 text-[9px] mt-2 text-center leading-relaxed">
+            {isPolish ? 'Pamięć zostaje na tym urządzeniu. Ostatni fragment rozmowy trafia do prywatnego umysłu Becoming.' : 'Memory stays on this device. Only the latest conversation fragment reaches Becoming’s private mind.'}
+          </p>
         </div>
       </footer>
-    </div>
+    </section>
   );
 };
 
