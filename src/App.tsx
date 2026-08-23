@@ -8,7 +8,7 @@ import EggHatching from './components/EggHatching';
 import Room from './components/Room';
 import { registerReturn } from './systems/presenceSystem';
 
-const APP_VERSION = '0.9.14';
+const APP_VERSION = '0.9.15';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);

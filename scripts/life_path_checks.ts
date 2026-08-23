@@ -18,6 +18,7 @@ import { appendCreatureMessage, beginConversationTurn } from '../src/systems/con
 import { getDueOpenLoop, markOpenLoopAsked, migrateContinuityState } from '../src/systems/continuitySystem';
 import { consumeReturnGreeting, getVisitRitual, migratePresenceState, registerReturn } from '../src/systems/presenceSystem';
 import { evolveCreationFromObject, migrateCreations } from '../src/systems/creationSystem';
+import { parseImportedGameState, serializeGameState } from '../src/systems/persistence';
 
 let state = createHatchedCreature(createNewCreature('Test', 99117));
 state = {
@@ -214,4 +215,14 @@ assert.equal(maker.roomObjects.find(object => object.type === 'paper')?.state.st
 assert.ok(maker.memories.filter(memory => memory.tags.includes('creation')).length === 4);
 assert.deepEqual(migrateCreations([{ stage: 'invalid' as never }]), []);
 
-console.log('Life path, inner life, continuity, mirror, presence, and creation checks passed.');
+const backup = serializeGameState(maker);
+const recovered = parseImportedGameState(backup);
+assert.equal(recovered.identity.name, 'Maker');
+assert.deepEqual(recovered.creations.map(creation => creation.stage), ['mark', 'shape', 'picture', 'message']);
+assert.equal(recovered.development.hatched, true);
+assert.throws(() => parseImportedGameState('{not-json'), /valid Becoming backup/);
+const incompleteBackup = JSON.parse(backup);
+delete incompleteBackup.state.relationship;
+assert.throws(() => parseImportedGameState(JSON.stringify(incompleteBackup)), /complete Becoming creature/);
+
+console.log('Life path, inner life, continuity, mirror, presence, creation, and backup checks passed.');

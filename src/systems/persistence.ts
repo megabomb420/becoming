@@ -27,6 +27,9 @@ interface BecomingDB extends DBSchema {
 const DB_NAME = 'becoming-db';
 const DB_VERSION = 1;
 const BASE_INVENTORY: ObjectType[] = ['apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror'];
+const SAVE_FORMAT = 'becoming-save';
+const SAVE_FORMAT_VERSION = 1;
+const MAX_IMPORT_LENGTH = 2_000_000;
 
 let dbPromise: Promise<IDBPDatabase<BecomingDB>> | null = null;
 
@@ -136,6 +139,60 @@ function migrateState(state: GameState): GameState {
   }
 
   return syncDevelopmentWithAge(migrated);
+}
+
+interface SaveEnvelope {
+  format: typeof SAVE_FORMAT;
+  version: number;
+  exportedAt: number;
+  state: GameState;
+}
+
+export function serializeGameState(state: GameState): string {
+  const envelope: SaveEnvelope = {
+    format: SAVE_FORMAT,
+    version: SAVE_FORMAT_VERSION,
+    exportedAt: Date.now(),
+    state: { ...state, lastSaved: Date.now() },
+  };
+  return JSON.stringify(envelope, null, 2);
+}
+
+export function parseImportedGameState(source: string): GameState {
+  if (typeof source !== 'string' || source.length === 0 || source.length > MAX_IMPORT_LENGTH) {
+    throw new Error('This backup is empty or too large.');
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    throw new Error('This is not a valid Becoming backup.');
+  }
+  const envelope = value as Partial<SaveEnvelope>;
+  const candidate = envelope?.state as Partial<GameState> | undefined;
+  if (
+    envelope?.format !== SAVE_FORMAT
+    || envelope.version !== SAVE_FORMAT_VERSION
+    || !candidate
+    || typeof candidate.identity?.id !== 'string'
+    || !Number.isFinite(candidate.identity?.seed)
+    || !candidate.development
+    || !candidate.needs
+    || !candidate.personality
+    || !candidate.relationship
+    || !Array.isArray(candidate.relationship.routines)
+    || !Array.isArray(candidate.memories)
+    || !Array.isArray(candidate.vocabulary)
+    || !Array.isArray(candidate.roomObjects)
+    || !Array.isArray(candidate.inventory)
+  ) {
+    throw new Error('This file does not contain a complete Becoming creature.');
+  }
+  try {
+    return migrateState(candidate as GameState);
+  } catch {
+    throw new Error('This Becoming backup is damaged or incompatible.');
+  }
 }
 
 export async function loadGameState(): Promise<GameState | null> {

@@ -37,6 +37,7 @@ import {
   SensoryPreferences,
 } from '../systems/sensorySystem';
 import { evolveCreationFromObject, getCreationMastery } from '../systems/creationSystem';
+import { parseImportedGameState, serializeGameState } from '../systems/persistence';
 
 interface RoomProps {
   state: GameState;
@@ -162,6 +163,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [sensoryPreferences, setSensoryPreferences] = useState<SensoryPreferences>(() => loadSensoryPreferences());
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [creatureEmotion, setCreatureEmotion] = useState(state.emotionalState);
   const [initiatedTopic, setInitiatedTopic] = useState<string | null>(null);
   const [creatureCue, setCreatureCue] = useState<CreatureCue | null>(null);
@@ -196,6 +198,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const activeObjectRef = useRef<string | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
   const roomRef = useRef<HTMLDivElement>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // Keep refs in sync with latest state
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -225,6 +228,39 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       return next;
     });
   }, []);
+
+  const exportCreature = useCallback(() => {
+    const json = serializeGameState(stateRef.current);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeName = (stateRef.current.identity.name || 'creature').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-|-$/g, '') || 'creature';
+    link.href = url;
+    link.download = `becoming-${safeName}.json`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    setBackupStatus('Backup saved to this device.');
+  }, []);
+
+  const importCreature = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      if (file.size > 2_000_000) throw new Error('This backup is too large.');
+      const imported = parseImportedGameState(await file.text());
+      const name = imported.identity.name || 'this creature';
+      if (!window.confirm(`Replace the creature on this device with ${name}?`)) return;
+      onStateChange(imported);
+      setBackupStatus(`${name} is here. The imported memories are now active.`);
+      setShowSettings(false);
+    } catch (error) {
+      setBackupStatus(error instanceof Error ? error.message : 'The backup could not be opened.');
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  }, [onStateChange]);
 
   // One authored situation per creature-day gives the player something to
   // react to even when they do not know what to say in chat. The generator is
@@ -1445,8 +1481,19 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                 </span>
                 <input type="checkbox" checked={sensoryPreferences.haptics} onChange={event => updateSensoryPreference('haptics', event.target.checked)} className="accent-[#d8bd8f] w-5 h-5" />
               </label>
+              <div className="rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4">
+                <div className="text-warm-100/85 text-sm font-serif">Keep this creature</div>
+                <p className="text-warm-200/40 text-[10px] font-serif mt-1 leading-relaxed">A private file can carry the whole life, memories, chats and creations to another device. Nothing is uploaded.</p>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <button onClick={exportCreature} className="rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">Save backup</button>
+                  <button onClick={() => importInputRef.current?.click()} className="rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">Open backup</button>
+                </div>
+                <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={event => void importCreature(event.target.files?.[0])} />
+                <p className="text-warm-300/35 text-[9px] font-serif mt-3">The file contains personal conversations. Store it somewhere you trust.</p>
+              </div>
             </div>
-            <p className="text-center text-warm-200/25 text-[9px] font-serif mt-7">These choices stay only on this device.</p>
+            {backupStatus && <p className="text-center text-warm-100/55 text-[10px] font-serif mt-5">{backupStatus}</p>}
+            <p className="text-center text-warm-200/25 text-[9px] font-serif mt-7">Sensory choices stay only on this device.</p>
           </div>
         </div>
       )}

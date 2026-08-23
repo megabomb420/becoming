@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.14
+> **Version:** 0.9.15
 > **Last Updated:** 2026-08-23
 
 ---
@@ -113,6 +113,7 @@ becoming/
 | Shared rituals | ✅ | Visit timing and consecutive-day rhythm are learned locally and can become a visible relationship ritual |
 | Optional sound & haptics | ✅ | Synthesised interaction tones and restrained vibration can be controlled independently on-device |
 | Creature creations | ✅ | Paper + pencil mastery grows from a first mark into shapes, pictures, and a deliberate message kept in the room and Memory Book |
+| Private backup | ✅ | Export and restore the complete creature as a validated local JSON file with no login or cloud upload |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
@@ -125,7 +126,7 @@ becoming/
 ### ❌ Not Yet Implemented
 
 - Multi-creature comparison / sharing
-- Cloud sync
+- Automatic cloud sync
 - Voiced creature vocalizations
 - True time-based developmental milestones (currently uses interaction-driven progression)
 - Music creation by creature
@@ -312,6 +313,12 @@ Paper and pencil now form a persistent creative skill rather than replaying one 
 
 The three newest works enter the bounded DeepSeek state as sanitised data, allowing natural pride, shyness, criticism, or callbacks without inventing art that was never made. Legacy saves start with an empty gallery while preserving all existing paper, pencil, and preference progress.
 
+### v0.9.15 — Take Them With You
+
+The settings sheet can now save the complete creature to a human-portable JSON backup and restore it on another browser or phone. Identity, age, personality, relationship, conversations, chapters, open loops, paths, dreams, self-awareness, creations, room state, and preferences travel together. The flow requires no login, unknown service, or cloud storage; the file never leaves the device unless the player chooses where to put it.
+
+Imports are size-limited, format-versioned, structurally validated, and passed through the same migration and lifecycle repair used by IndexedDB saves. A damaged or unrelated JSON file cannot replace the current creature, and the UI warns that backups contain private conversation history.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -346,7 +353,7 @@ The three newest works enter the bounded DeepSeek state as sanitised data, allow
 
 ### Priority: Low / Future
 7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
-8. **Cloud sync / export** — allow players to back up or share their creature's save state.
+8. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
 9. **Notifications** — gentle, non-manipulative PWA notifications.
 
 ---
