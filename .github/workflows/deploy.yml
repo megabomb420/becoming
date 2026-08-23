@@ -23,11 +23,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+          cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Build
-        run: npm run build
+      - name: Test and build
+        run: npm run check
         env:
           VITE_BECOMING_API_URL: ${{ vars.BECOMING_API_URL }}
       - name: Upload artifact

@@ -21,15 +21,16 @@ The project is built as a **polished vertical slice** — playable from birth th
 |---|---|
 | Framework | React 18 + TypeScript |
 | Styling | Tailwind CSS 3 |
-| Build Tool | Vite 5 + vite-plugin-pwa |
+| Build Tool | Vite 8 + vite-plugin-pwa |
 | Persistence | IndexedDB via `idb` library |
 | Rendering | HTML5 Canvas (creature), DOM (UI) |
 | AI mind | DeepSeek V4 Flash behind a private Cloudflare Worker proxy |
 | Icons | Generated via PIL (Python) |
 | Deployment | GitHub Pages via GitHub Actions |
 
-**Dev command:** `npm run dev` → `http://localhost:7100/`  
-**Live URL:** `https://megabomb420.github.io/becoming/`
+- **Dev command:** `npm run dev` → `http://localhost:7100/`
+- **Full verification:** `npm run check`
+- **Live URL:** `https://megabomb420.github.io/becoming/`
 
 ---
 
@@ -37,11 +38,17 @@ The project is built as a **polished vertical slice** — playable from birth th
 
 ```
 becoming/
-├── .github/workflows/deploy.yml # GitHub Pages deployment
+├── README.md                    # Project overview and contributor entry point
+├── HANDOFF.md                   # Detailed product and implementation state
+├── .github/workflows/deploy.yml # Verification and GitHub Pages deployment
 ├── public/
 │   ├── manifest.json           # PWA manifest
 │   ├── favicon.svg
 │   └── icon-{192,512,maskable}.png
+├── scripts/
+│   ├── run_system_checks.mjs    # Isolated TypeScript check runner
+│   ├── life_path_checks.ts      # Deterministic system smoke checks
+│   └── gen_icons.py             # PWA icon generation
 ├── src/
 │   ├── types/index.ts          # Core type definitions
 │   ├── systems/
@@ -51,17 +58,34 @@ becoming/
 │   │   ├── developmentSystem.ts # Stage progression, vocabulary acquisition
 │   │   ├── languageSystem.ts   # Stage-constrained speech generation
 │   │   ├── conversationSystem.ts # Persistent dialogue, user facts, growing mind
+│   │   ├── llmConversation.ts  # Bounded private-AI request construction
 │   │   ├── offlineSimulation.ts # Time-passed simulation when app closed
 │   │   ├── memoryBook.ts       # Emergent biography generation
-│   │   └── socialLearningSystem.ts  # SOCIAL LEARNING & IMITATION
+│   │   ├── lifePathSystem.ts    # Paths, hybrids, consequences, and recovery
+│   │   ├── innerLifeSystem.ts   # Interests, opinions, dreams, private thoughts
+│   │   ├── continuitySystem.ts  # Chapters, open loops, and check-ins
+│   │   ├── presenceSystem.ts    # Returns, absence episodes, and rituals
+│   │   ├── creationSystem.ts    # Persistent creature-made works
+│   │   ├── boundarySystem.ts    # Touch consent and overstimulation
+│   │   ├── sharedLanguageSystem.ts # Shared sayings
+│   │   ├── socialLearningSystem.ts # Observation and imitation
+│   │   ├── relationshipSystem.ts # Bond progression
+│   │   ├── sensorySystem.ts     # Optional local sound and haptics
+│   │   └── uiLanguage.ts        # Polish/English interface copy
 │   ├── components/
 │   │   ├── CreatureCanvas.tsx  # Canvas-based creature renderer
 │   │   ├── EggHatching.tsx     # Birth experience (tap egg, name creature)
 │   │   ├── Room.tsx            # Main game room (objects, creature, chat)
-│   │   └── ChatInterface.tsx   # Conversation UI
+│   │   ├── ChatInterface.tsx   # Conversation UI
+│   │   ├── ObjectIcon.tsx      # Hand-drawn room-object icon system
+│   │   └── PwaUpdateNotice.tsx # Explicit safe-update prompt
 │   ├── App.tsx                 # Main app flow, offline sync
 │   ├── main.tsx                # Entry point
 │   └── index.css               # Tailwind + custom safe-area utilities
+├── worker/
+│   ├── src/index.js            # Cloudflare AI gateway and role protection
+│   ├── test.mjs                # Worker/security checks
+│   └── wrangler.toml
 ├── vite.config.ts
 ├── tailwind.config.js
 └── package.json
@@ -82,10 +106,10 @@ becoming/
 | Hidden personality | ✅ | Seeded traits that now evolve through care, play, touch, exploration, and conversation |
 | Bond development | ✅ | Persistent tentative → familiar → close → bonded relationship arc with milestone memories, bond-aware idle behavior, and later-stage speech |
 | Development stages | ✅ | `egg → newborn → animal → communicating → first_words → combining → sentences → mature`; stage regression prevented once hatched |
-| Language development | ✅ | Stage-constrained vocabulary; proto-sounds → words → combinations → sentences |
-| Object system | ✅ | Inventory tray (📦) with 9 object types; tap to place, drag to position, tap a placed object to call the creature, and `Tidy room` to reset the space |
+| Language development | ✅ | Natural speech is available from birth; age and development progressively increase complexity, memory, and opinion while room and chat use the same ladder |
+| Object system | ✅ | Grouped shelf with 9 placeable objects; tap or drag to place, select a room object for explicit `Use` / `Put away`, reposition it, or clear the room |
 | Object preferences | ✅ | Individual seeded tastes that evolve through experience; favorites, uncertainty, refusals, learned play, drawing, box hiding, and mirror recognition |
-| Feeding | ✅ | Food placement calls the creature immediately; food is consumed and returned to the tray for repeated use |
+| Feeding | ✅ | Explicitly using placed food calls the creature; consumed food returns to the shelf for repeated use |
 | Creature movement | ✅ | Goal-driven state machine: idle → notice → look → approach → react; bounded shared floor coordinates and refresh-rate-independent canvas movement |
 | Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
 | Sleep / wake cycle | ✅ | Room dims; "z z z" animation; energy restored on wake via `sleepStartTimestamp` |
@@ -120,6 +144,7 @@ becoming/
 | Touch boundaries | ✅ | Caution, independence, bond, and rapid-touch pressure decide when the creature accepts holding or asks for space |
 | Shared sayings | ✅ | Safe short phrases repeated two or three times can become persistent inside language visible in Memory Book and available to chat |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
+| Automated verification | ✅ | Deterministic system and Worker checks run with the production build before every GitHub Pages deployment |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
 ### 🚧 Partial / Placeholder
@@ -133,9 +158,9 @@ becoming/
 - Multi-creature comparison / sharing
 - Automatic cloud sync
 - Voiced creature vocalizations
-- True time-based developmental milestones (currently uses interaction-driven progression)
+- Complete long-form, time-based 30-day milestone arc (real-age development floors already exist)
 - Music creation by creature
-- Object discovery stages (e.g. paper → scribble → draw → write)
+- Broader object mastery beyond the existing paper-and-pencil creation arc
 - Lying / deception system
 
 ---
@@ -373,7 +398,7 @@ Influence is no longer a blanket morality gate. Direct suggestions create small 
 ## 6. Known Remaining Issues
 
 ### Build / TypeScript
-- **None currently.** Build passes cleanly (`npm run build` → 0 errors).
+- **None currently.** `npm run check` passes the deterministic system checks, Worker/security checks, TypeScript compilation, and production PWA build.
 
 ### Logic / UX
 - **Sound is intentionally minimal:** Current cues are short interaction tones rather than voiced creature vocalizations.
@@ -384,7 +409,7 @@ Influence is no longer a blanket morality gate. Direct suggestions create small 
 ### Architecture
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the conversation automatically falls back to the smaller local mind.
 - **Public gateway protection is best-effort:** Role attacks and task abuse are filtered and rate-limited, but a determined hostile client can spoof browser headers. Durable Cloudflare rate limiting or Turnstile remains a future hardening option.
-- **Coverage is targeted, not comprehensive:** Life-path, hybrid, daily-choice, recovery, worker, and TypeScript smoke checks exist; older systems still need broader automated coverage.
+- **Coverage is targeted, not comprehensive:** The existing system and Worker checks now block a broken deployment, but older conversation, social-learning, age-floor, needs-decay, and interaction cases still need broader unit coverage.
 
 ---
 
@@ -412,7 +437,7 @@ Influence is no longer a blanket morality gate. Direct suggestions create small 
 - **No visible stats, ever.** All creature state is communicated through body language, expressions, movement, sounds, and eventually language. This is a non-negotiable design principle.
 - **Local-first.** All core systems run in the browser. AI is reserved only for higher-level cognition and the app works fully offline.
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
-- **Language constrains the LLM.** When an LLM is added, the speech generation pipeline must pass through a vocabulary whitelist and sentence-complexity gate.
+- **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
 - **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
 - **No death from neglect.** Long absences change the creature (more independent, different trust level) but never punish the player.
 
@@ -420,7 +445,7 @@ Influence is no longer a blanket morality gate. Direct suggestions create small 
 
 ## 9. How to Reset / Start Fresh
 
-In the app, tap the small **"Reset"** text in the top-right corner. This clears IndexedDB and reloads the page.
+In the app, open **Settings**, scroll to **Begin another life / Zacznij inne życie**, and choose **Start over / Zacznij od nowa**. Save a private backup first if the creature may be needed later. Reset clears IndexedDB and reloads the page.
 
 To manually clear from console:
 ```js
@@ -446,7 +471,25 @@ location.reload();
 | How optional tones and haptics work | `src/systems/sensorySystem.ts` |
 | How the two-language shell chooses copy | `src/systems/uiLanguage.ts` |
 | How paper-and-pencil creations evolve | `src/systems/creationSystem.ts` |
+| How touch boundaries work | `src/systems/boundarySystem.ts` |
+| How shared sayings are adopted | `src/systems/sharedLanguageSystem.ts` |
+| How bounded AI requests are created | `src/systems/llmConversation.ts` |
+| How the private AI boundary is enforced | `worker/src/index.js` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
+| How room objects are drawn | `src/components/ObjectIcon.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |
 | Persistence | `src/systems/persistence.ts` |
 | Offline time | `src/systems/offlineSimulation.ts` |
+
+---
+
+## 11. Validation and Deployment
+
+```bash
+npm ci
+npm test       # deterministic systems + Worker/security checks
+npm run build  # TypeScript + production PWA build
+npm run check  # complete local and CI verification
+```
+
+The GitHub Pages workflow runs `npm run check` before uploading the production artifact. A failed system check, Worker check, TypeScript compilation, or Vite build prevents deployment.
