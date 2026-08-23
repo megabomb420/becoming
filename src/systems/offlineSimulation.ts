@@ -1,4 +1,5 @@
 import { GameState, Memory, OfflineActivity } from '../types';
+import { generateDreamAfterSleep } from './innerLifeSystem';
 
 export function simulateOfflineTime(state: GameState, awayMs: number): { state: GameState; activities: OfflineActivity[] } {
   const activities: OfflineActivity[] = [];
@@ -32,6 +33,7 @@ export function simulateOfflineTime(state: GameState, awayMs: number): { state: 
           energy: Math.min(100, currentState.needs.energy + 60),
         },
       };
+      currentState = generateDreamAfterSleep(currentState, sleepDuration, now);
       activities.push({ type: 'slept', duration: sleptMinutes, timestamp: now - sleepDuration / 2 });
     } else {
       // Still sleeping or just woke up
@@ -68,6 +70,7 @@ export function simulateOfflineTime(state: GameState, awayMs: number): { state: 
           energy: Math.min(100, currentState.needs.energy + 40),
         },
       };
+      currentState = generateDreamAfterSleep(currentState, awayMs * 0.6, now);
       activities.push({ type: 'slept', duration: awayMinutes * 0.6, timestamp: now - awayMs / 2 });
     }
   }

@@ -1,5 +1,6 @@
 import { ChatMessage, GameState } from '../types';
 import { getLifePathTitle, getRankedLifePaths } from './lifePathSystem';
+import { getRankedInterests } from './innerLifeSystem';
 
 const API_URL = (import.meta.env.VITE_BECOMING_API_URL || '').replace(/\/$/, '');
 const MAX_CONTEXT_MESSAGES = 14;
@@ -72,6 +73,16 @@ function requestBody(state: GameState) {
       recovery: Math.round(state.lifePath.recovery),
       tendencies: getRankedLifePaths(state, 4).map(path => ({ id: path.id, score: Math.round(path.score) })),
       recentTurns: state.lifePath.history.slice(-4).map(item => ({ title: item.title, detail: item.detail })),
+    },
+    innerLife: {
+      interests: getRankedInterests(state, 5).map(item => ({ topic: item.type, level: Math.round(item.level), polarity: Number((item.polarity ?? 0).toFixed(2)) })),
+      opinions: [...state.innerLife.opinions]
+        .sort((a, b) => b.confidence - a.confidence)
+        .slice(0, 6)
+        .map(item => ({ topic: item.topic, stance: Number(item.stance.toFixed(2)), confidence: Math.round(item.confidence), reason: item.reason.slice(0, 140) })),
+      recentDreams: state.innerLife.dreams.slice(-2).map(item => ({ title: item.title.slice(0, 60), fragment: item.fragment.slice(0, 220), mood: item.mood })),
+      preoccupation: state.innerLife.currentPreoccupation,
+      pendingDisclosure: state.innerLife.pendingDisclosure,
     },
     facts: compactFacts(state),
     habits: compactHabits(state),

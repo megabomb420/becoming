@@ -12,6 +12,12 @@ import { advanceDevelopmentFromConversation, getDevelopmentLabel, syncDevelopmen
 import { attemptImitation, findExistingObservation, parseUserStatement, recordObservation } from './socialLearningSystem';
 import { recordBondEvent } from './relationshipSystem';
 import { evolveLifePath, getLifePathTitle } from './lifePathSystem';
+import {
+  clearPendingDisclosure,
+  evolveInnerLifeFromConversation,
+  getInnerLifeReply,
+  revealPrivateThoughtIfAsked,
+} from './innerLifeSystem';
 
 const MAX_MESSAGES = 120;
 const MAX_FACTS = 32;
@@ -421,10 +427,14 @@ export function beginConversationTurn(state: GameState, text: string, now = Date
     }
   }
   updated = evolveLifePath(updated, text, now);
+  updated = evolveInnerLifeFromConversation(updated, text, now);
+  const revelation = revealPrivateThoughtIfAsked(updated, text, now);
+  updated = revelation.state;
+  const innerLifeReply = revelation.reply ?? getInnerLifeReply(updated, text);
   updated = advanceDevelopmentFromConversation(updated, now);
   const merged = mergeFact(updated, extractUserFact(text), now);
   updated = recordBondEvent(merged.state, 'conversation');
-  return { state: updated, reply: generateReply(updated, text, merged.fact) };
+  return { state: updated, reply: innerLifeReply ?? generateReply(updated, text, merged.fact) };
 }
 
 export function appendCreatureMessage(state: GameState, text: string, now = Date.now()): GameState {
@@ -437,7 +447,7 @@ export function appendCreatureMessage(state: GameState, text: string, now = Date
     text,
     timestamp: now,
   };
-  return {
+  return clearPendingDisclosure({
     ...state,
     conversation: {
       ...state.conversation,
@@ -446,7 +456,7 @@ export function appendCreatureMessage(state: GameState, text: string, now = Date
       lastCreatureMessage: text,
       lastConversationAt: now,
     },
-  };
+  });
 }
 
 export function getConversationOpening(state: GameState): string {

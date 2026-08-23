@@ -1,4 +1,5 @@
 import { GameState, Needs, Memory } from '../types';
+import { generateDreamAfterSleep } from './innerLifeSystem';
 
 const NEED_DECAY_RATES = {
   hunger: 0.8,
@@ -83,18 +84,19 @@ export function putToSleep(state: GameState): GameState {
   };
 }
 
-export function wakeUp(state: GameState): GameState {
+export function wakeUp(state: GameState, now = Date.now()): GameState {
   const sleepStart = state.sleepStartTimestamp ?? state.lastSaved;
-  const sleptDuration = state.currentActivity === 'sleeping' ? Date.now() - sleepStart : 0;
+  const sleptDuration = state.currentActivity === 'sleeping' ? now - sleepStart : 0;
   const energyGain = Math.min(100, state.needs.energy + (sleptDuration / 60000) * 2);
 
-  return {
+  const awakeState: GameState = {
     ...state,
     sleepState: 'awake',
     currentActivity: null,
     sleepStartTimestamp: undefined,
     needs: { ...state.needs, energy: Math.min(100, energyGain) },
   };
+  return generateDreamAfterSleep(awakeState, sleptDuration, now);
 }
 
 export function touchCreature(state: GameState, touchType: 'tap' | 'stroke' | 'hold'): GameState {

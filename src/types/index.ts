@@ -229,6 +229,48 @@ export interface Interest {
   level: number;
   discoveredAt: number;
   lastEngaged: number;
+  exposures?: number;
+  source?: 'conversation' | 'object' | 'dream' | 'born';
+  polarity?: number;
+}
+
+export interface CreatureDream {
+  id: string;
+  timestamp: number;
+  title: string;
+  fragment: string;
+  sourceMemoryIds: string[];
+  mood: 'warm' | 'strange' | 'restless' | 'bright' | 'lonely';
+  shared: boolean;
+}
+
+export interface CreatureOpinion {
+  topic: string;
+  stance: number; // -1 to 1; the user's view can nudge but not overwrite it
+  confidence: number; // 0-100
+  reason: string;
+  formedAt: number;
+  lastChanged: number;
+  disclosed: boolean;
+}
+
+export interface PrivateThought {
+  id: string;
+  content: string;
+  source: 'interest' | 'opinion' | 'dream' | 'bond';
+  createdAt: number;
+  revealedAt: number | null;
+  minimumBond: BondStage;
+}
+
+export interface InnerLifeState {
+  dreams: CreatureDream[];
+  opinions: CreatureOpinion[];
+  privateThoughts: PrivateThought[];
+  currentPreoccupation: string | null;
+  pendingDisclosure: string | null;
+  lastDreamAt: number;
+  lastInnerShift: number;
 }
 
 // === SOCIAL LEARNING TYPES ===
@@ -359,6 +401,7 @@ export interface GameState {
   inventory: ObjectType[];
   objectPreferences: Record<ObjectType, ObjectPreference>;
   interests: Interest[];
+  innerLife: InnerLifeState;
   // Social learning state
   socialLearning: SocialLearningState;
   // Persistent conversations and facts learned directly from the user

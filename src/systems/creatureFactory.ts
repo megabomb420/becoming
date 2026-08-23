@@ -1,6 +1,7 @@
 import { CreatureIdentity, CreatureAppearance, GameState, DevelopmentState, Needs, PersonalityTraits, RelationshipModel, SocialLearningState, ConversationState, ObjectType } from '../types';
 import { createBondState, createObjectPreferences } from './relationshipSystem';
 import { createLifePathState } from './lifePathSystem';
+import { createInnerLifeState } from './innerLifeSystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -113,6 +114,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     inventory: [...ALL_INVENTORY_ITEMS],
     objectPreferences: createObjectPreferences(personality, seed),
     interests: [],
+    innerLife: createInnerLifeState(birthTime),
     socialLearning,
     conversation,
     lastSaved: birthTime,

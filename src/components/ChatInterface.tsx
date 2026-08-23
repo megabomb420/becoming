@@ -9,6 +9,7 @@ import {
 import { getDevelopmentDescription } from '../systems/developmentSystem';
 import { isLlmAvailable, requestCreatureReply } from '../systems/llmConversation';
 import { getLifePathTitle, getLifePathVisual } from '../systems/lifePathSystem';
+import { getInterestStage, getRankedInterests } from '../systems/innerLifeSystem';
 
 interface ChatInterfaceProps {
   state: GameState;
@@ -29,6 +30,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
   const isPolish = state.conversation.language === 'pl';
   const pathVisual = getLifePathVisual(state);
   const lifePathTitle = getLifePathTitle(state);
+  const strongestInterest = getRankedInterests(state, 1)[0];
 
   useEffect(() => {
     mountedRef.current = true;
@@ -177,6 +179,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
                   {fact.kind === 'name' ? 'you' : fact.kind}: {fact.value}
                 </span>
               ))}
+            </div>
+          )}
+          {strongestInterest && strongestInterest.level >= 25 && (
+            <div className="flex justify-center pb-2">
+              <span className="rounded-full border border-warm-300/10 bg-warm-300/5 px-2.5 py-1 text-[10px] text-warm-200/45 font-serif capitalize">
+                {isPolish ? 'myśli o' : 'thinking about'} {strongestInterest.label} · {getInterestStage(strongestInterest.level)}
+              </span>
             </div>
           )}
           <div className="flex items-end gap-2">

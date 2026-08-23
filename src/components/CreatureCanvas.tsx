@@ -162,7 +162,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
 
     // Tail
     if (app.tailLength > 0) {
-      const excited = behavior === 'playing' || state.emotionalState === 'happy';
+      const excited = behavior === 'playing' || state.emotionalState === 'happy' || state.emotionalState === 'excited';
       const tailWag = Math.sin(time * (excited ? 0.014 : 0.005)) * (excited ? 0.55 : 0.28);
       ctx.save();
       ctx.rotate(tailWag - 0.2);
@@ -241,6 +241,26 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
         ctx.arc(10, -9, 2, 0, Math.PI * 2);
         ctx.fill();
       }
+
+      if (state.emotionalState === 'skeptical' || state.emotionalState === 'wary') {
+        ctx.strokeStyle = 'rgba(42,32,24,0.75)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-20, -25);
+        ctx.lineTo(-6, -22);
+        ctx.moveTo(6, -22);
+        ctx.lineTo(20, -25);
+        ctx.stroke();
+      } else if (state.emotionalState === 'concerned') {
+        ctx.strokeStyle = 'rgba(42,32,24,0.65)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-20, -22);
+        ctx.lineTo(-7, -25);
+        ctx.moveTo(7, -25);
+        ctx.lineTo(20, -22);
+        ctx.stroke();
+      }
     }
 
     // Nose
@@ -254,10 +274,13 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    if (state.emotionalState === 'happy') {
+    if (state.emotionalState === 'happy' || state.emotionalState === 'excited') {
       ctx.arc(0, 4, 6, 0.1, Math.PI - 0.1);
-    } else if (state.emotionalState === 'sad') {
+    } else if (state.emotionalState === 'sad' || state.emotionalState === 'concerned') {
       ctx.arc(0, 10, 6, Math.PI + 0.1, -0.1);
+    } else if (state.emotionalState === 'skeptical' || state.emotionalState === 'wary') {
+      ctx.moveTo(-5, 5);
+      ctx.quadraticCurveTo(1, 3, 5, 5);
     } else {
       ctx.moveTo(-4, 4);
       ctx.quadraticCurveTo(0, 6, 4, 4);

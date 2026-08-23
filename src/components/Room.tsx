@@ -23,6 +23,11 @@ import {
   getRankedLifePaths,
   resolveDailyMoment,
 } from '../systems/lifePathSystem';
+import {
+  evolveInnerLifeFromObject,
+  getInterestStage,
+  getRankedInterests,
+} from '../systems/innerLifeSystem';
 
 interface RoomProps {
   state: GameState;
@@ -184,6 +189,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   useEffect(() => { creatureEmotionRef.current = creatureEmotion; }, [creatureEmotion]);
   useEffect(() => { creaturePosRef.current = creaturePos; }, [creaturePos]);
   useEffect(() => { behaviorRef.current = state.creatureBehavior; }, [state.creatureBehavior]);
+  useEffect(() => {
+    if (!emotionTimerRef.current) setCreatureEmotion(state.emotionalState);
+  }, [state.emotionalState]);
 
   // One authored situation per creature-day gives the player something to
   // react to even when they do not know what to say in chat. The generator is
@@ -202,7 +210,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const setTemporaryEmotion = useCallback((emotion: string, duration = 2800) => {
     clearTimeout(emotionTimerRef.current);
     setCreatureEmotion(emotion);
-    emotionTimerRef.current = setTimeout(() => setCreatureEmotion('neutral'), duration);
+    emotionTimerRef.current = setTimeout(() => {
+      emotionTimerRef.current = undefined;
+      setCreatureEmotion(stateRef.current.emotionalState);
+    }, duration);
   }, []);
 
   const showCreatureCue = useCallback((cue: CreatureCue | null, duration?: number) => {
@@ -293,7 +304,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
         next = learnWord(next, type, 'food');
       }
       const experienced = recordObjectExperience(next, type, reaction, initiatedByUser);
-      return evolveLifePathFromObject(experienced, type, reaction.outcome);
+      const pathEvolved = evolveLifePathFromObject(experienced, type, reaction.outcome);
+      return evolveInnerLifeFromObject(pathEvolved, type, reaction.outcome);
     });
 
     behaviorRef.current = reaction.behavior;
@@ -572,7 +584,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
           const topic = generateInitiatedTopic(currentState);
           if (topic) {
             setInitiatedTopic(topic.openingLine);
-            onStateChange(prev => clearInitiatedTopic(prev));
+            onStateChange(prev => clearInitiatedTopic(prev, topic.observationId));
             return;
           }
         }
@@ -796,6 +808,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const lifePathClues = getLifePathClues(state);
   const rankedLifePaths = getRankedLifePaths(state);
   const pathVisual = getLifePathVisual(state);
+  const rankedInterests = getRankedInterests(state, 4);
+  const latestDream = state.innerLife.dreams[state.innerLife.dreams.length - 1];
+  const confidentOpinions = [...state.innerLife.opinions]
+    .filter(opinion => opinion.confidence >= 28)
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 3);
   const discoveredPreferences = INVENTORY_ORDER
     .map(type => ({ type, preference: state.objectPreferences[type] }))
     .filter(({ preference }) => preference.interactions >= 2 && (preference.affinity >= 12 || preference.affinity <= -8))
@@ -1110,6 +1128,38 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                   </p>
                 )}
               </div>
+              {(rankedInterests.length > 0 || latestDream || confidentOpinions.length > 0) && (
+                <div className="border-l-2 border-warm-300/30 pl-4">
+                  <div className="text-warm-200/40 text-xs mb-1">Inner life</div>
+                  {rankedInterests.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {rankedInterests.map(interest => (
+                        <span key={interest.type} className="rounded-full bg-room-mid/70 border border-warm-200/10 px-2 py-1 text-[10px] text-warm-200/70 capitalize">
+                          {interest.label} · {getInterestStage(interest.level)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {latestDream && (
+                    <div className="mt-3 rounded-xl bg-room-dark/25 border border-warm-200/5 p-3">
+                      <p className="text-[9px] uppercase tracking-widest text-warm-300/40">Last dream · {latestDream.mood}</p>
+                      <p className="text-warm-100/70 text-xs font-serif italic mt-1">{latestDream.fragment}</p>
+                    </div>
+                  )}
+                  {confidentOpinions.length > 0 && (
+                    <div className="space-y-1.5 mt-3">
+                      {confidentOpinions.map(opinion => (
+                        <p key={opinion.topic} className="text-warm-200/55 text-[10px] font-serif">
+                          <span className="capitalize text-warm-100/70">{opinion.topic}</span> — {opinion.stance >= 0.25 ? 'drawn to it' : opinion.stance <= -0.25 ? 'pushes against it' : 'still divided'}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  {state.innerLife.privateThoughts.some(thought => !thought.revealedAt) && (
+                    <p className="text-warm-300/35 text-[9px] font-serif mt-3">Some thoughts are still private. Trust may uncover them.</p>
+                  )}
+                </div>
+              )}
               <div className="border-l-2 border-warm-300/30 pl-4">
                 <div className="text-warm-200/40 text-xs mb-1">Becoming</div>
                 <div className="text-warm-100 text-sm font-serif capitalize">
@@ -1150,7 +1200,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                   </div>
                 </div>
               )}
-              {state.memories.filter(m => m.importance >= 6).slice(-10).map(mem => (
+              {state.memories.filter(m => m.importance >= 6 && !m.tags.includes('dream')).slice(-10).map(mem => (
                 <div key={mem.id} className="border-l-2 border-warm-300/30 pl-4">
                   <div className="text-warm-200/40 text-xs mb-1">
                     Day {Math.max(1, Math.floor((mem.timestamp - state.identity.birthTimestamp) / (24 * 60 * 60 * 1000)) + 1)}
@@ -1202,6 +1252,21 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                 )) : <p className="text-warm-200/35 text-xs font-serif italic">Still too young to have hardened into a type.</p>}
               </div>
             </div>
+
+            {rankedInterests.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Inner weather</h3>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {rankedInterests.map(interest => (
+                    <div key={interest.type} className="rounded-xl border border-warm-200/10 bg-room-mid/35 px-3 py-2">
+                      <div className="text-warm-100/75 text-xs font-serif capitalize">{interest.label}</div>
+                      <div className="text-warm-200/35 text-[9px] uppercase tracking-widest mt-0.5">{getInterestStage(interest.level)}</div>
+                    </div>
+                  ))}
+                </div>
+                {latestDream && <p className="text-warm-200/45 text-[10px] font-serif italic mt-3">Dreaming lately: “{latestDream.title}”</p>}
+              </div>
+            )}
 
             <div className="mt-6">
               <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Pull of possible lives</h3>

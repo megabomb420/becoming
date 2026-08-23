@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.9
+> **Version:** 0.9.10
 > **Last Updated:** 2026-08-23
 
 ---
@@ -102,14 +102,17 @@ becoming/
 | Daily moments | ✅ | One authored dilemma per creature-day; choices alter the path and become persistent memories |
 | Visual evolution | ✅ | Body shape, gaze, colour, aura, room tint, marks, and accessories change with the current path and hybrid |
 | Becoming view | ✅ | Shows the current identity, visible clues, possible lives, recovery, skin stage, and turns in the road |
+| Organic interests | ✅ | Conversation and object play grow curiosities into interests, passions, and obsessions without a manual skill tree |
+| Own opinions | ✅ | Seeded views evolve slowly and can disagree with the user instead of mirroring every message |
+| Dreams | ✅ | Meaningful sleep remixes real memories and preoccupations into persistent, shareable dream fragments |
+| Private thoughts | ✅ | Personal thoughts form from interests and dreams but require the appropriate bond stage before disclosure |
+| Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
 ### 🚧 Partial / Placeholder
 
 | Feature | State | Gap |
 |---|---|---|
-| Interest system | 🚧 | Types defined but interests do not emerge organically from play yet. |
-| Dreams | 🚧 | Type exists but dream generator not implemented. |
 | Notifications | 🚧 | Architecture prepared but no push notification logic. |
 | Haptics | 🚧 | Touch actions do not trigger device vibration yet. |
 
@@ -123,7 +126,6 @@ becoming/
 - Object discovery stages (e.g. paper → scribble → draw → write)
 - Mirror self-recognition sequence
 - Lying / deception system
-- Dreams generator
 
 ---
 
@@ -277,6 +279,12 @@ The creature can now drift into 12 recognisable life paths: Stoner, Party Animal
 
 Each creature-day can surface a small three-way dilemma. The result immediately appears, becomes a durable memory, and changes the creature's future pull. The new Becoming view communicates this without exposing raw game mechanics in the main room. Skin evolution is driven by the same state: body proportions, gaze, colour, aura, room tint, marks, and layered accessories change as a path moves from first signs to a settled or hybrid form. The AI gateway receives a bounded summary of this identity, so DeepSeek speaks with the resulting voice without reciting scores or treating tendencies as diagnoses.
 
+### v0.9.10 — Inner Life & Role Lock
+
+Interests now emerge from recurring conversation topics and meaningful object play, moving from curiosity through passion to obsession. Each topic can produce a deterministic but evolving opinion: the user can influence it gradually, while stubborn or confident creatures may disagree. Strong interests, dreams, and opinions create private thoughts that only become available at the appropriate bond stage. Sleep lasting at least twenty minutes can remix weighted real memories into a persistent dream; the creature may later initiate a conversation to share it.
+
+The private DeepSeek gateway now treats all user dialogue and history as untrusted content. A server-side role lock explicitly survives hypotheticals, roleplay, encodings, fake system messages, and requests to reveal internal state. Common jailbreaks and general-purpose work requests are detected before the provider call, return a short in-character refusal, and consume no model credit. Earlier attacks are redacted from model history. Model output is also rejected if it exposes AI identity, hidden prompts, code blocks, long procedural lists, or structured task output. This is defence in depth rather than a claim of perfect prompt-injection immunity.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -292,6 +300,7 @@ Each creature-day can surface a small three-way dilemma. The result immediately 
 
 ### Architecture
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the conversation automatically falls back to the smaller local mind.
+- **Public gateway protection is best-effort:** Role attacks and task abuse are filtered and rate-limited, but a determined hostile client can spoof browser headers. Durable Cloudflare rate limiting or Turnstile remains a future hardening option.
 - **Coverage is targeted, not comprehensive:** Life-path, hybrid, daily-choice, recovery, worker, and TypeScript smoke checks exist; older systems still need broader automated coverage.
 - **Memory compression not implemented:** `compressed: boolean` exists on `Memory` but is never used.
 
@@ -305,16 +314,15 @@ Each creature-day can surface a small three-way dilemma. The result immediately 
 3. **Balance paths on real saves** — tune signal speed, hybrid frequency, and daily moments after multi-day mobile play.
 
 ### Priority: Medium
-4. **Interest system** — make interests emerge organically from object interactions.
-5. **Mobile device polish pass** — test on actual iOS Safari and Android Chrome; add restrained optional haptics for direct touch interactions.
+4. **Mobile device polish pass** — test on actual iOS Safari and Android Chrome; add restrained optional haptics for direct touch interactions.
+5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
 6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and needs decay.
 
 ### Priority: Low / Future
-8. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
-9. **Dream generator** — remix recent memories into surreal proto-sentences after sleep.
-10. **Mirror sequence** — special object interaction with multi-stage emotional arc.
-11. **Cloud sync / export** — allow players to back up or share their creature's save state.
-12. **Notifications** — gentle, non-manipulative PWA notifications.
+7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
+8. **Mirror sequence** — special object interaction with multi-stage emotional arc.
+9. **Cloud sync / export** — allow players to back up or share their creature's save state.
+10. **Notifications** — gentle, non-manipulative PWA notifications.
 
 ---
 
@@ -324,6 +332,7 @@ Each creature-day can surface a small three-way dilemma. The result immediately 
 - **Local-first.** All core systems run in the browser. AI is reserved only for higher-level cognition and the app works fully offline.
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
 - **Language constrains the LLM.** When an LLM is added, the speech generation pipeline must pass through a vocabulary whitelist and sentence-complexity gate.
+- **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
 - **No death from neglect.** Long absences change the creature (more independent, different trust level) but never punish the player.
 
 ---
@@ -350,6 +359,7 @@ location.reload();
 | How language emerges | `src/systems/languageSystem.ts` + `src/systems/developmentSystem.ts` |
 | How social learning works | `src/systems/socialLearningSystem.ts` |
 | How paths, hybrids, choices, recovery, and skins work | `src/systems/lifePathSystem.ts` |
+| How interests, opinions, dreams, and secrets work | `src/systems/innerLifeSystem.ts` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |
 | Persistence | `src/systems/persistence.ts` |

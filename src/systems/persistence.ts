@@ -4,6 +4,7 @@ import { migrateBondState, migrateObjectPreferences } from './relationshipSystem
 import { migrateConversationState } from './conversationSystem';
 import { syncDevelopmentWithAge } from './developmentSystem';
 import { bootstrapLifePathState, migrateLifePathState } from './lifePathSystem';
+import { migrateInnerLifeState, migrateInterests } from './innerLifeSystem';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -113,6 +114,11 @@ function migrateState(state: GameState): GameState {
   migrated.lifePath = migrated.lifePath
     ? migrateLifePathState(migrated.lifePath, migrated.personality)
     : bootstrapLifePathState(migrated.personality, migrated.socialLearning.observations);
+
+  // v0.9.10: existing creatures keep every previous memory and gain a
+  // backwards-compatible inner life. Placeholder interests are preserved.
+  migrated.interests = migrateInterests(migrated.interests);
+  migrated.innerLife = migrateInnerLifeState(migrated.innerLife);
 
   // Ensure hatched creatures never have stage 'egg'
   if (migrated.development.hatched && migrated.development.stage === 'egg') {

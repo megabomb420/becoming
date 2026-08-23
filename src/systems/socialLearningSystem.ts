@@ -621,7 +621,11 @@ export function shouldInitiateConversation(state: GameState): boolean {
     obs => obs.exposureCount >= 2 && !obs.mentioned && !obs.imitated
   );
   const hasPathThought = Boolean(state.lifePath.primary && state.lifePath.history.length > 0);
-  if (askableObs.length === 0 && !hasPathThought) return false;
+  const hasInnerThought = Boolean(
+    state.innerLife.dreams.some(dream => !dream.shared)
+    || state.innerLife.currentPreoccupation,
+  );
+  if (askableObs.length === 0 && !hasPathThought && !hasInnerThought) return false;
 
   const curiosityFactor = personality.curiosity / 100;
   const attachmentFactor = state.relationship.attachment / 200;
@@ -640,9 +644,31 @@ export function generateInitiatedTopic(state: GameState): InitiatedTopic | null 
     obs => obs.exposureCount >= 2 && !obs.mentioned && !obs.imitated
   );
   if (askableObs.length === 0) {
+    const polish = state.conversation.language === 'pl';
+    const unsharedDream = [...state.innerLife.dreams].reverse().find(dream => !dream.shared);
+    if (unsharedDream) {
+      return {
+        observationId: unsharedDream.id,
+        openingLine: polish
+          ? `Miałem dziwny sen: ${unsharedDream.fragment}`
+          : `I had a strange dream: ${unsharedDream.fragment}`,
+        topic: unsharedDream.title,
+        urgency: unsharedDream.mood === 'restless' || unsharedDream.mood === 'lonely' ? 0.75 : 0.45,
+      };
+    }
+    if (state.innerLife.currentPreoccupation) {
+      const topic = state.innerLife.currentPreoccupation;
+      return {
+        observationId: `interest-${topic}`,
+        openingLine: polish
+          ? `Ostatnio ciągle wracam myślami do: ${topic}. Nie wiem jeszcze dlaczego.`
+          : `I keep returning to ${topic} lately. I do not know why yet.`,
+        topic,
+        urgency: 0.4,
+      };
+    }
     const primary = state.lifePath.primary;
     if (!primary) return null;
-    const polish = state.conversation.language === 'pl';
     const lines: Record<string, [string, string]> = {
       stoner: ['Mam teorię, ale zgubiłem jej początek.', 'I have a theory, but I lost the beginning.'],
       party_animal: ['Cisza zaczyna mnie obrażać. Robimy coś?', 'The silence is starting to insult me. Are we doing something?'],
@@ -709,9 +735,13 @@ export function generateInitiatedTopic(state: GameState): InitiatedTopic | null 
   };
 }
 
-export function clearInitiatedTopic(state: GameState): GameState {
+export function clearInitiatedTopic(state: GameState, topicId?: string): GameState {
   return {
     ...state,
+    innerLife: topicId?.startsWith('dream-') ? {
+      ...state.innerLife,
+      dreams: state.innerLife.dreams.map(dream => dream.id === topicId ? { ...dream, shared: true } : dream),
+    } : state.innerLife,
     socialLearning: {
       ...state.socialLearning,
       lastBehaviourQuestion: Date.now(),
