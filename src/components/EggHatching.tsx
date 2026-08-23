@@ -84,8 +84,10 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
       </div>
 
       {stage !== 'naming' && (
-        <div 
-          className="relative cursor-pointer select-none"
+        <button
+          type="button"
+          aria-label={stage === 'cracking' ? 'Finish hatching' : 'Tap egg to hatch'}
+          className="relative cursor-pointer select-none bg-transparent border-0 p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-warm-200/60 rounded-full"
           onClick={handleTap}
         >
           {/* Glow */}
@@ -147,7 +149,7 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
               Almost there...
             </p>
           )}
-        </div>
+        </button>
       )}
 
       {stage === 'naming' && (

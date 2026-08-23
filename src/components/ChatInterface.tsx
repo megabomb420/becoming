@@ -126,7 +126,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
               <div className="h-full bg-warm-300/45 transition-all duration-700" style={{ width: `${Math.max(4, progress)}%` }} />
             </div>
           </div>
-          <button aria-label="Close conversation" onClick={onClose} className="text-warm-200/55 hover:text-warm-100 text-sm px-2 py-2 transition-colors">
+          <button aria-label="Close conversation" onClick={onClose} className="min-h-11 text-warm-200/55 hover:text-warm-100 text-sm px-2 py-2 transition-colors">
             Close
           </button>
         </div>

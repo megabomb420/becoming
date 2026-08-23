@@ -42,6 +42,7 @@ import { parseImportedGameState, serializeGameState } from '../systems/persisten
 interface RoomProps {
   state: GameState;
   onStateChange: (state: GameState | ((prev: GameState) => GameState)) => void;
+  onReset?: () => void;
   version?: string;
 }
 
@@ -155,7 +156,7 @@ interface CreatureCue {
   tone: CueTone;
 }
 
-const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
+const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) => {
   const [speech, setSpeech] = useState<string | null>(null);
   const [showMemoryBook, setShowMemoryBook] = useState(false);
   const [showBecoming, setShowBecoming] = useState(false);
@@ -1057,7 +1058,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
 
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 safe-top px-4 py-3 flex justify-between items-start z-30">
-        <button onClick={() => setShowBecoming(true)} className="text-left group">
+        <button onClick={() => setShowBecoming(true)} className="text-left group min-h-11 -my-2 py-2">
           <div className="text-warm-200/60 text-xs font-serif tracking-wider group-hover:text-warm-100 transition-colors">
             {state.identity.name || 'New'} · {developmentLabel}
           </div>
@@ -1065,14 +1066,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
             {lifePathTitle}
           </div>
         </button>
-        <div className="flex gap-3">
-          <button onClick={() => { emitCue('open'); setShowBecoming(true); }} className="text-warm-200/45 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
-            Becoming
-          </button>
-          <button onClick={() => { emitCue('open'); setShowMemoryBook(true); }} className="text-warm-200/60 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
+        <div className="flex gap-1 items-start">
+          <button onClick={() => { emitCue('open'); setShowMemoryBook(true); }} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
             Memories
           </button>
-          <button aria-label="Settings" title="Settings" onClick={() => { emitCue('open'); setShowSettings(true); }} className="text-warm-200/35 hover:text-warm-100 text-sm leading-none transition-colors">
+          <button aria-label="Settings" title="Settings" onClick={() => { emitCue('open'); setShowSettings(true); }} className="min-h-11 -my-2 px-2 py-2 text-warm-200/35 hover:text-warm-100 text-sm leading-none transition-colors">
             •••
           </button>
         </div>
@@ -1184,7 +1182,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
           <div className="max-w-md mx-auto p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-warm-100 text-xl font-serif">Memory Book</h2>
-              <button onClick={() => setShowMemoryBook(false)} className="text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
+              <button onClick={() => setShowMemoryBook(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
             </div>
             <div className="space-y-4">
               <div className="border-l-2 border-warm-300/30 pl-4">
@@ -1380,7 +1378,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                   Skin · {state.lifePath.phase === 'embodied' ? 'full form' : state.lifePath.secondary ? 'hybrid signs' : state.lifePath.phase === 'committed' ? 'settling in' : state.lifePath.phase === 'recovering' ? 'changing again' : 'first signs'}
                 </p>
               </div>
-              <button onClick={() => setShowBecoming(false)} className="text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
+              <button onClick={() => setShowBecoming(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
             </div>
 
             <div className="rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 shadow-xl" style={{ boxShadow: `0 18px 70px ${pathVisual.aura}` }}>
@@ -1464,7 +1462,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                 <p className="text-warm-300/45 text-[9px] uppercase tracking-[0.22em]">Presence</p>
                 <h2 className="text-warm-100 text-xl font-serif mt-1">How the room feels</h2>
               </div>
-              <button onClick={() => setShowSettings(false)} className="text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
+              <button onClick={() => setShowSettings(false)} className="min-h-11 -my-2 px-2 py-2 text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
             </div>
             <div className="space-y-3">
               <label className="flex items-center justify-between gap-5 rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 cursor-pointer">
@@ -1485,12 +1483,19 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                 <div className="text-warm-100/85 text-sm font-serif">Keep this creature</div>
                 <p className="text-warm-200/40 text-[10px] font-serif mt-1 leading-relaxed">A private file can carry the whole life, memories, chats and creations to another device. Nothing is uploaded.</p>
                 <div className="grid grid-cols-2 gap-2 mt-3">
-                  <button onClick={exportCreature} className="rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">Save backup</button>
-                  <button onClick={() => importInputRef.current?.click()} className="rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">Open backup</button>
+                  <button onClick={exportCreature} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">Save backup</button>
+                  <button onClick={() => importInputRef.current?.click()} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">Open backup</button>
                 </div>
                 <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={event => void importCreature(event.target.files?.[0])} />
                 <p className="text-warm-300/35 text-[9px] font-serif mt-3">The file contains personal conversations. Store it somewhere you trust.</p>
               </div>
+              {onReset && (
+                <div className="rounded-2xl border border-red-200/10 bg-room-mid/25 p-4">
+                  <div className="text-warm-100/70 text-sm font-serif">Begin another life</div>
+                  <p className="text-warm-200/35 text-[10px] font-serif mt-1">Save a backup first if you may want to return to this creature.</p>
+                  <button onClick={onReset} className="mt-3 min-h-11 w-full rounded-xl border border-red-200/15 px-3 py-2 text-red-100/55 text-xs font-serif active:scale-[0.98] transition-transform">Start over</button>
+                </div>
+              )}
             </div>
             {backupStatus && <p className="text-center text-warm-100/55 text-[10px] font-serif mt-5">{backupStatus}</p>}
             <p className="text-center text-warm-200/25 text-[9px] font-serif mt-7">Sensory choices stay only on this device.</p>

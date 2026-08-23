@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.15
+> **Version:** 0.9.16
 > **Last Updated:** 2026-08-23
 
 ---
@@ -92,7 +92,7 @@ becoming/
 | Offline simulation | ✅ | Calculates what happened while app was closed; respects sleep state; models night spans |
 | Persistent state | ✅ | IndexedDB survives refresh, restart, reopening; migration layer repairs old saves |
 | Memory Book | ✅ | Emergent biography from significant memories |
-| Mobile-first UX | ✅ | Safe areas, touch-optimized, no tutorials |
+| Mobile-first UX | ✅ | Tested at 390×844 and 320×568; safe-area offsets, 44 px primary targets, scrollable sheets, and non-overlapping controls |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
 | Creature-initiated chat | ✅ | Creature can start conversations based on observations |
 | Chat interface | ✅ | Full-screen conversation with constrained responses |
@@ -319,6 +319,12 @@ The settings sheet can now save the complete creature to a human-portable JSON b
 
 Imports are size-limited, format-versioned, structurally validated, and passed through the same migration and lifecycle repair used by IndexedDB saves. A damaged or unrelated JSON file cannot replace the current creature, and the UI warns that backups contain private conversation history.
 
+### v0.9.16 — Mobile Sanity
+
+A real browser pass at 390×844 and 320×568 exposed an overlap between the hidden reset action and the settings menu, 16-pixel top-bar targets, and safe-area utilities that erased ordinary padding on devices without a notch. Reset now lives inside the scrollable settings sheet behind the existing confirmation; the redundant top-bar Becoming action was removed because the creature name already opens that view.
+
+Primary top controls, sheet closers, chat close, backup actions, and reset now provide at least 44-pixel targets. Top and bottom safe areas add breathing room instead of replacing it, narrow settings scroll fully, and the egg is a semantic keyboard-focusable button. The complete local hatch → room → settings → chat walkthrough produced no browser console errors or warnings.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -347,7 +353,7 @@ Imports are size-limited, format-versioned, structurally validated, and passed t
 3. **Object mastery** — extend the new creation arc to music, boxes, keepsakes, and collaborative play.
 
 ### Priority: Medium
-4. **Mobile device polish pass** — test sound, vibration, safe areas, and drag behaviour on actual iOS Safari and Android Chrome.
+4. **Physical-device polish pass** — verify vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
 5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
 6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and needs decay.
 

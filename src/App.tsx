@@ -8,7 +8,7 @@ import EggHatching from './components/EggHatching';
 import Room from './components/Room';
 import { registerReturn } from './systems/presenceSystem';
 
-const APP_VERSION = '0.9.15';
+const APP_VERSION = '0.9.16';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -149,15 +149,7 @@ function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden relative">
-      <Room state={safeState} onStateChange={handleStateChange} version={APP_VERSION} />
-      
-      {/* Hidden reset */}
-      <button
-        onClick={handleReset}
-        className="absolute top-3 right-3 z-40 text-warm-200/20 hover:text-warm-200/50 text-xs font-serif"
-      >
-        Reset
-      </button>
+      <Room state={safeState} onStateChange={handleStateChange} onReset={handleReset} version={APP_VERSION} />
     </div>
   );
 }
