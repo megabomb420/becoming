@@ -18,6 +18,9 @@ interface MemoryBookViewProps {
 
 const labels: Record<ObjectType, { en: string; pl: string }> = {
   food_bowl: { en: 'bowl', pl: 'miska' },
+  water_bowl: { en: 'water bowl', pl: 'miska z wodą' },
+  litter_box: { en: 'litter box', pl: 'kuweta' },
+  wash_basin: { en: 'wash basin', pl: 'miska do mycia' },
   apple: { en: 'apple', pl: 'jabłko' },
   broccoli: { en: 'broccoli', pl: 'brokuł' },
   ball: { en: 'ball', pl: 'piłka' },

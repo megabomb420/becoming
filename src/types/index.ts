@@ -18,14 +18,108 @@ export interface CreatureAppearance {
 }
 
 export interface Needs {
-  hunger: number;        // 0-100, hidden
-  energy: number;        // 0-100, hidden
-  comfort: number;       // 0-100, hidden
-  stimulation: number;   // 0-100, hidden
-  social: number;        // 0-100, hidden
-  hygiene: number;       // 0-100, hidden; 100 is freshly washed
-  bladder: number;       // 0-100, hidden; lower means a stronger urge
-  bowel: number;         // 0-100, hidden; lower means a stronger urge
+  // Every need uses the same direction: 100 means settled, 0 means urgent.
+  hunger: number;
+  hydration: number;
+  energy: number;
+  bladder: number;
+  bowel: number;
+  hygiene: number;
+  comfort: number;
+  stimulation: number;
+  social: number;
+}
+
+export type WeatherMode = 'unconfigured' | 'device' | 'city' | 'disabled';
+export type WeatherPermission = 'unknown' | 'prompt' | 'granted' | 'denied' | 'unavailable';
+export type WeatherCondition =
+  | 'clear'
+  | 'partly_cloudy'
+  | 'overcast'
+  | 'fog'
+  | 'drizzle'
+  | 'rain'
+  | 'snow'
+  | 'storm'
+  | 'unknown';
+
+export interface WeatherLocation {
+  source: 'device' | 'city';
+  name: string;
+  latitude: number;
+  longitude: number;
+  timezone: string | null;
+  countryCode: string | null;
+  country: string | null;
+}
+
+export interface WeatherSnapshot {
+  locationKey: string;
+  fetchedAt: number;
+  observedAt: number;
+  timezone: string;
+  utcOffsetSeconds: number;
+  temperatureC: number;
+  apparentTemperatureC: number;
+  precipitationMm: number;
+  precipitationProbability: number | null;
+  weatherCode: number;
+  condition: WeatherCondition;
+  cloudCover: number;
+  windSpeedKph: number;
+  isDay: boolean;
+  sunrise: string;
+  sunset: string;
+  dailyDate: string;
+  dailyMinC: number;
+  dailyMaxC: number;
+}
+
+export type ThermalStimulus = 'cold' | 'cool' | 'mild' | 'warm' | 'hot';
+
+export interface EnvironmentalStimulus {
+  condition: WeatherCondition;
+  thermal: ThermalStimulus;
+  intensity: number;
+  precipitation: number;
+  cloudiness: number;
+  wind: number;
+  temperatureStress: number;
+  cozyPotential: number;
+  novelty: number;
+}
+
+export interface WeatherPreference {
+  affinity: number;
+  exposures: number;
+  positiveResponses: number;
+  waryResponses: number;
+  lastExperiencedAt: number;
+}
+
+export type WeatherErrorCode =
+  | 'offline'
+  | 'permission_denied'
+  | 'location_unavailable'
+  | 'weather_unavailable'
+  | 'city_not_found';
+
+export interface WorldEnvironment {
+  settings: {
+    mode: WeatherMode;
+    onboardingSeen: boolean;
+    permission: WeatherPermission;
+    location: WeatherLocation | null;
+  };
+  current: WeatherSnapshot | null;
+  stimulus: EnvironmentalStimulus;
+  preferences: Record<WeatherCondition, WeatherPreference>;
+  status: 'idle' | 'locating' | 'loading' | 'ready' | 'stale' | 'error' | 'disabled';
+  lastAttemptAt: number;
+  nextRefreshAt: number;
+  lastError: WeatherErrorCode | null;
+  lastReactionAt: number;
+  recentReactionKeys: string[];
 }
 
 export interface PersonalityTraits {
@@ -297,6 +391,9 @@ export interface RoomMess {
 
 export type ObjectType =
   | 'food_bowl'
+  | 'water_bowl'
+  | 'litter_box'
+  | 'wash_basin'
   | 'apple'
   | 'broccoli'
   | 'ball'
@@ -610,6 +707,7 @@ export interface CreatureCreation {
 export interface GameState {
   identity: CreatureIdentity;
   needs: Needs;
+  world: WorldEnvironment;
   personality: PersonalityTraits;
   lifePath: LifePathState;
   development: DevelopmentState;
@@ -633,6 +731,9 @@ export interface GameState {
   touchBoundaries: TouchBoundaryState;
   sharedLanguage: SharedLanguageState;
   lastSaved: number;
+  // Kept separately from lastSaved so debounced persistence never loses or
+  // double-counts elapsed need time.
+  needsUpdatedAt: number;
   currentActivity: string | null;
   emotionalState: string;
   sleepState: 'awake' | 'drowsy' | 'sleeping';

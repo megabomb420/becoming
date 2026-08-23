@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { GameState, MemoryBookEntry, ObjectType } from '../types';
+import { GameState, MemoryBookEntry, Needs, ObjectType } from '../types';
 import { migrateBondState, migrateObjectPreferences } from './relationshipSystem';
 import { migrateConversationState } from './conversationSystem';
 import { migrateDevelopmentExperience, syncDevelopmentWithAge } from './developmentSystem';
@@ -10,7 +10,8 @@ import { migratePresenceState } from './presenceSystem';
 import { migrateCreations } from './creationSystem';
 import { migrateTouchBoundaryState } from './boundarySystem';
 import { migrateSharedLanguageState } from './sharedLanguageSystem';
-import { migrateNeeds, migrateRoomMess } from './needsSystem';
+import { migrateRoomMess } from './needsSystem';
+import { migrateWorldEnvironment } from './environmentSystem';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -29,7 +30,10 @@ interface BecomingDB extends DBSchema {
 
 const DB_NAME = 'becoming-db';
 const DB_VERSION = 1;
-const BASE_INVENTORY: ObjectType[] = ['apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror'];
+const BASE_INVENTORY: ObjectType[] = [
+  'water_bowl', 'litter_box', 'wash_basin',
+  'apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror',
+];
 const SAVE_FORMAT = 'becoming-save';
 const SAVE_FORMAT_VERSION = 1;
 const MAX_IMPORT_LENGTH = 2_000_000;
@@ -49,13 +53,47 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
   return dbPromise;
 }
 
-function migrateState(state: GameState): GameState {
+function validNeed(value: unknown, fallback: number) {
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value as number)) : fallback;
+}
+
+export function migrateGameState(state: GameState): GameState {
   // Migrate old state that may be missing new fields
   const migrated = { ...state };
 
-  // v0.9.25: physiology extends the original hidden need model. Legacy
-  // creatures receive neutral, deterministic starting values and a clean room.
-  migrated.needs = migrateNeeds(migrated.needs);
+  // v0.10: all needs share one clear direction (100 settled, 0 urgent).
+  // The old minute-based model could leave every legacy value at zero after a
+  // short absence. A one-time floor moves those five values out of crisis;
+  // physical needs that did not exist before also start comfortably.
+  const oldNeeds = (migrated.needs ?? {}) as Partial<Needs>;
+  const legacyNeeds = !Number.isFinite(oldNeeds.hydration)
+    || !Number.isFinite(oldNeeds.bladder)
+    || !Number.isFinite(oldNeeds.bowel)
+    || !Number.isFinite(oldNeeds.hygiene)
+    || !Number.isFinite(migrated.needsUpdatedAt);
+  const legacyValue = (value: unknown, fallback: number) => {
+    const migratedValue = validNeed(value, fallback);
+    return legacyNeeds ? Math.max(68, migratedValue) : migratedValue;
+  };
+  migrated.needs = {
+    hunger: legacyValue(oldNeeds.hunger, 78),
+    hydration: validNeed(oldNeeds.hydration, 82),
+    energy: legacyValue(oldNeeds.energy, 78),
+    bladder: validNeed(oldNeeds.bladder, 88),
+    bowel: validNeed(oldNeeds.bowel, 90),
+    hygiene: validNeed(oldNeeds.hygiene, 82),
+    comfort: legacyValue(oldNeeds.comfort, 78),
+    stimulation: legacyValue(oldNeeds.stimulation, 74),
+    social: legacyValue(oldNeeds.social, 74),
+  };
+  const savedAt = Number.isFinite(migrated.lastSaved) ? migrated.lastSaved : migrated.identity.birthTimestamp;
+  migrated.needsUpdatedAt = Number.isFinite(migrated.needsUpdatedAt) ? migrated.needsUpdatedAt : savedAt;
+
+  // v0.11: weather consent, the rounded selected place, the last successful
+  // Open-Meteo snapshot, learned weather preferences, and cache timestamps all
+  // live with the creature in IndexedDB. Older saves begin unconfigured and
+  // receive the same one-time consent choice as a fresh creature.
+  migrated.world = migrateWorldEnvironment(migrated.world);
   migrated.roomMess = migrateRoomMess(migrated.roomMess);
 
   // Ensure development.hatched exists
@@ -203,7 +241,7 @@ export function parseImportedGameState(source: string): GameState {
     throw new Error('This file does not contain a complete Becoming creature.');
   }
   try {
-    return migrateState(candidate as GameState);
+    return migrateGameState(candidate as GameState);
   } catch {
     throw new Error('This Becoming backup is damaged or incompatible.');
   }
@@ -213,7 +251,7 @@ export async function loadGameState(): Promise<GameState | null> {
   const db = await getDB();
   const result = await db.get('gameState', 'current');
   if (!result) return null;
-  return migrateState(result);
+  return migrateGameState(result);
 }
 
 export async function saveGameState(state: GameState): Promise<void> {

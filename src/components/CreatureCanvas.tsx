@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { GameState } from '../types';
 import { getLifePathVisual } from '../systems/lifePathSystem';
+import { getDominantNeed, getNeedUrgency } from '../systems/needsSystem';
+import { getEffectiveStimulus } from '../systems/environmentSystem';
 
 interface CreatureCanvasProps {
   state: GameState;
@@ -23,6 +25,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
   const hasMovedRef = useRef(false);
   const strokeStartRef = useRef<{ x: number; y: number } | null>(null);
   const holdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const environmentalStimulus = getEffectiveStimulus(state.world);
 
   // Smooth position interpolation
   useEffect(() => {
@@ -79,10 +82,23 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     const saturation = 20 + (pathVisual.saturation - 20) * pathVisual.strength;
     const lightness = 52 + (pathVisual.lightness - 52) * pathVisual.strength;
     const hasPath = (id: typeof pathVisual.paths[number]) => pathVisual.paths.includes(id);
+    const dominantNeed = getDominantNeed(state, true);
+    const dominantUrgency = dominantNeed ? getNeedUrgency(state.needs[dominantNeed]) : 'settled';
+    const needStrength = dominantUrgency === 'urgent' ? 1 : dominantUrgency === 'attention' ? 0.65 : dominantUrgency === 'notice' ? 0.3 : 0;
+    const environment = environmentalStimulus;
+    const coldStrength = Math.max(0, -environment.temperatureStress);
+    const heatStrength = Math.max(0, environment.temperatureStress);
+    const stormCaution = environment.condition === 'storm'
+      ? environment.intensity * Math.max(0, state.personality.caution - state.personality.curiosity + 25) / 125
+      : 0;
+    const weatherCuriosity = (environment.condition === 'snow' || environment.condition === 'fog' || environment.condition === 'storm')
+      ? environment.novelty * state.personality.curiosity / 100
+      : 0;
 
     // Each state has its own body language. The movement is deliberately
     // small: it should make the creature readable without turning it into a
     // collection of disconnected canned animations.
+    let motionX = 0;
     let motionY = 0;
     let motionRotation = 0;
     let motionScaleX = 1;
@@ -157,6 +173,32 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       motionScaleX = 1 + settle * 0.025;
       motionScaleY = 1 - settle * 0.018;
     }
+
+    if (!isSleeping && dominantNeed === 'energy') {
+      motionY += 2.5 * needStrength;
+      motionScaleY -= 0.035 * needStrength;
+      motionScaleX += 0.025 * needStrength;
+    }
+    if (!isSleeping && (dominantNeed === 'hunger' || dominantNeed === 'hydration')) {
+      motionY += 1.5 * needStrength;
+      motionRotation += 0.018 * needStrength;
+    }
+    if (!isSleeping && (dominantNeed === 'bladder' || dominantNeed === 'bowel')) {
+      motionX += Math.sin(time * 0.008) * 2.8 * needStrength;
+      motionRotation += Math.sin(time * 0.01) * 0.025 * needStrength;
+    }
+    if (!isSleeping && coldStrength > 0.08) {
+      motionX += Math.sin(time * 0.026) * coldStrength * 1.7;
+      motionScaleX += coldStrength * 0.035;
+      motionScaleY -= coldStrength * 0.045;
+    }
+    if (!isSleeping && heatStrength > 0.08) {
+      motionY += heatStrength * 1.8;
+      motionScaleY -= heatStrength * 0.025;
+    }
+    if (!isSleeping && environment.wind > 0.22) {
+      motionRotation += Math.sin(time * 0.0065) * environment.wind * 0.018;
+    }
     
     // Blink logic
     const blink = blinkStateRef.current;
@@ -171,7 +213,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     }
 
     ctx.save();
-    ctx.translate(x, y + motionY);
+    ctx.translate(x + motionX, y + motionY);
     ctx.scale(state.facing === 'left' ? -1 : 1, 1);
     ctx.rotate(motionRotation);
     ctx.scale(breath * motionScaleX * pathVisual.width, breath * motionScaleY * pathVisual.height);
@@ -199,7 +241,8 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     // Tail
     if (app.tailLength > 0) {
       const excited = behavior === 'playing' || state.emotionalState === 'happy' || state.emotionalState === 'excited';
-      const tailWag = Math.sin(time * (excited ? 0.014 : 0.005)) * (excited ? 0.55 : 0.28);
+      const tailWag = Math.sin(time * (excited ? 0.014 : 0.005)) * (excited ? 0.55 : 0.28)
+        + Math.sin(time * 0.008) * environment.wind * 0.16;
       ctx.save();
       ctx.rotate(tailWag - 0.2);
       ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness + 3}%)`;
@@ -241,7 +284,8 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     if (app.earShape !== 'none') {
       ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${Math.max(32, lightness - 4)}%)`;
       const earW = app.earShape === 'pointy' ? 12 : 16;
-      const perk = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'proud' ? 4 : 0;
+      const autonomousPerk = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'proud' ? 4 : 0;
+      const perk = Math.max(autonomousPerk, weatherCuriosity * 3);
       const earH = (app.earShape === 'pointy' ? 22 : 18) + perk;
       // Left ear
       ctx.beginPath();
@@ -261,9 +305,11 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
 
     // Eyes
     const attentive = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'imitating' || behavior === 'proud' || behavior === 'uncomfortable';
-    const eyeW = 10 * eyeSize * (attentive ? 1.08 : 1);
+    const weatherEyeScale = 1 + weatherCuriosity * 0.09 + stormCaution * 0.05;
+    const eyeW = 10 * eyeSize * (attentive ? 1.08 : 1) * weatherEyeScale;
     const pathEyeHeight = 1 - pathVisual.eyeDroop * pathVisual.strength;
-    const openEyeHeight = 10 * eyeSize * pathEyeHeight * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
+    const tiredEyeScale = state.sleepState === 'drowsy' || dominantNeed === 'energy' ? Math.max(0.48, 1 - needStrength * 0.46) : 1;
+    const openEyeHeight = 10 * eyeSize * pathEyeHeight * tiredEyeScale * weatherEyeScale * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
     const eyeH = isSleeping || blink.isBlinking ? 1 : openEyeHeight;
     ctx.fillStyle = isSleeping ? '#4a4035' : '#2a2018';
     
@@ -329,7 +375,9 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    if (state.emotionalState === 'happy' || state.emotionalState === 'excited') {
+    if (heatStrength > 0.42 && !isSleeping) {
+      ctx.ellipse(0, 6, 4.5, 3 + Math.abs(Math.sin(time * 0.008)) * 1.5, 0, 0, Math.PI * 2);
+    } else if (state.emotionalState === 'happy' || state.emotionalState === 'excited') {
       ctx.arc(0, 4, 6, 0.1, Math.PI - 0.1);
     } else if (state.emotionalState === 'sad' || state.emotionalState === 'concerned') {
       ctx.arc(0, 10, 6, Math.PI + 0.1, -0.1);
@@ -341,6 +389,13 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.quadraticCurveTo(0, 6, 4, 4);
     }
     ctx.stroke();
+
+    if (!isSleeping && dominantNeed === 'hydration' && needStrength >= 0.65) {
+      ctx.fillStyle = 'rgba(164, 102, 104, 0.75)';
+      ctx.beginPath();
+      ctx.ellipse(1, 7, 2.2, 3.5, 0.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Path marks deliberately layer when two lives cross. A Gymbro/Gamer
     // keeps both the headband and headset; a Stoner/Monk can grow a beanie
@@ -509,7 +564,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       });
       ctx.restore();
     }
-  }, [state]);
+  }, [environmentalStimulus, state]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

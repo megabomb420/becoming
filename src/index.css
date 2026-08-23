@@ -713,3 +713,70 @@
     transition-duration: .01ms !important;
   }
 }
+
+@keyframes weather-rain-fall {
+  from { transform: translate3d(-5px, -24px, 0) rotate(10deg); }
+  to { transform: translate3d(8px, 190px, 0) rotate(10deg); }
+}
+
+@keyframes weather-snow-fall {
+  0% { transform: translate3d(-4px, -10px, 0); }
+  50% { transform: translate3d(10px, 82px, 0); }
+  100% { transform: translate3d(-2px, 176px, 0); }
+}
+
+@keyframes weather-cloud-drift {
+  from { transform: translate3d(-12%, 0, 0); }
+  to { transform: translate3d(42%, 2px, 0); }
+}
+
+@keyframes weather-fog-drift {
+  0%, 100% { transform: translate3d(-16%, 0, 0); }
+  50% { transform: translate3d(18%, 1px, 0); }
+}
+
+@keyframes weather-lightning {
+  0%, 72%, 75%, 78%, 100% { opacity: 0; }
+  73% { opacity: .16; }
+  76% { opacity: .08; }
+}
+
+@keyframes weather-heat-rise {
+  0%, 100% { transform: translate3d(-2px, 2px, 0) skewX(-1deg); }
+  50% { transform: translate3d(3px, -3px, 0) skewX(1deg); }
+}
+
+@keyframes weather-wind-cross {
+  from { transform: translate3d(0, 0, 0); opacity: 0; }
+  35% { opacity: 1; }
+  to { transform: translate3d(520%, -7px, 0); opacity: 0; }
+}
+
+@keyframes weather-curtain-sway {
+  0%, 100% { transform: rotate(-1deg) scaleX(.9); }
+  50% { transform: rotate(4deg) scaleX(1.12); }
+}
+
+.weather-rain { animation: weather-rain-fall 1s linear infinite; }
+.weather-snow { animation: weather-snow-fall 6s linear infinite; }
+.weather-cloud { animation: weather-cloud-drift 18s ease-in-out infinite alternate; }
+.weather-fog { animation: weather-fog-drift 9s ease-in-out infinite; }
+.weather-lightning { animation: weather-lightning 8.5s linear infinite; }
+.weather-heat { animation: weather-heat-rise 3.8s ease-in-out infinite; }
+.weather-wind-line { animation: weather-wind-cross 2.4s linear infinite; }
+.weather-curtain { animation: weather-curtain-sway var(--weather-wind, 1.2s) ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .weather-rain,
+  .weather-snow,
+  .weather-cloud,
+  .weather-fog,
+  .weather-lightning,
+  .weather-heat,
+  .weather-wind-line,
+  .weather-curtain {
+    animation: none !important;
+  }
+  .weather-rain { transform: translate3d(4px, 90px, 0) rotate(10deg); }
+  .weather-snow { transform: translate3d(0, 70px, 0); }
+}

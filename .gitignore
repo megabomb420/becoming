@@ -1,3 +1,11 @@
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Local configuration and secrets
 .env
 .env.*
 !.env.example
@@ -6,3 +14,8 @@ worker/.dev.vars
 .wrangler/
 .npm-cache/
 
+# Logs and operating-system files
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

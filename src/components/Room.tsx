@@ -7,9 +7,23 @@ import GlyphIcon from './GlyphIcon';
 import MemoryBookView from './MemoryBookView';
 import BecomingView from './BecomingView';
 import CareMark from './CareMark';
+import WeatherControls from './WeatherControls';
+import WeatherLayer from './WeatherLayer';
 import {
+  NEED_COPY,
+  NEED_ORDER,
+  applyNeedDelta,
   cleanRoomMess,
+  drinkCreature,
   feedCreature,
+  getDominantNeed,
+  getNeedAction,
+  getNeedLabel,
+  getNeedName,
+  getNeedUrgency,
+  getNaturalNeedCue,
+  getSleepBlocker,
+  getVisibleNeedSignals,
   putToSleep,
   touchCreature,
   useToilet,
@@ -69,6 +83,20 @@ import { parseImportedGameState, serializeGameState } from '../systems/persisten
 import { formatLearnedBehaviour, formatStoredMemory, getFactKindLabel, getOpenLoopKindLabel, uiLanguage, uiText } from '../systems/uiLanguage';
 import { evaluateTouchBoundary } from '../systems/boundarySystem';
 import { getAdoptedSharedPhrases } from '../systems/sharedLanguageSystem';
+import { simulateOfflineTime } from '../systems/offlineSimulation';
+import {
+  formatLocalClock,
+  getCircadianDisposition,
+  getPhaseLabel,
+  getRoomLighting,
+  getTimeOfDay,
+} from '../systems/timeSystem';
+import {
+  chooseEnvironmentReaction,
+  getWeatherConditionLabel,
+  getWeatherIcon,
+  recordEnvironmentReaction,
+} from '../systems/environmentSystem';
 
 interface RoomProps {
   state: GameState;
@@ -79,6 +107,9 @@ interface RoomProps {
 
 const objectLabels: Record<ObjectType, string> = {
   food_bowl: 'bowl',
+  water_bowl: 'water bowl',
+  litter_box: 'litter box',
+  wash_basin: 'wash basin',
   apple: 'apple',
   broccoli: 'broccoli',
   ball: 'ball',
@@ -92,6 +123,9 @@ const objectLabels: Record<ObjectType, string> = {
 
 const objectLabelsPl: Record<ObjectType, string> = {
   food_bowl: 'miska',
+  water_bowl: 'miska z wodą',
+  litter_box: 'kuweta',
+  wash_basin: 'miska do mycia',
   apple: 'jabłko',
   broccoli: 'brokuł',
   ball: 'piłka',
@@ -109,9 +143,12 @@ function objectLabel(type: ObjectType, polish: boolean) {
 
 function reactionLabel(id: string, type: ObjectType, fallback: string, polish: boolean) {
   if (!polish) return fallback;
+  if (type === 'water_bowl') return id.includes('drink') ? 'pije powoli i wyraźnie się rozluźnia' : 'bierze mały łyk wody';
+  if (type === 'litter_box') return id.includes('use') ? 'korzysta z kuwety i starannie po sobie zakrywa' : 'sprawdza kuwetę, ale jeszcze jej nie potrzebuje';
+  if (type === 'wash_basin') return id.includes('clean') ? 'zmywa plamki, łapka po łapce' : 'moczy jedną łapkę i uznaje, że wystarczy';
   if (id.includes('save')) return `wącha ${objectLabel(type, true)} i odkłada na później`;
   if (type === 'apple' || type === 'broccoli') return `siada i je: ${objectLabel(type, true)}`;
-  if (type === 'ball') return id.includes('tired') ? 'patrzy, jak piłka się toczy' : 'rzuca się za piłką i rozpoczyna zabawę';
+  if (type === 'ball') return id.includes('care-first') ? 'rusza do piłki, ale zatrzymuje się — najpierw potrzebuje opieki' : id.includes('tired') ? 'patrzy, jak piłka się toczy' : 'rzuca się za piłką i rozpoczyna zabawę';
   if (type === 'blanket') return id.includes('not-now') ? 'dotyka koca, ale zostaje obok' : 'układa sobie małe gniazdo z koca';
   if (type === 'paper' || type === 'pencil') {
     if (id.includes('message')) return 'powoli pisze coś i zasłania łapką do samego końca';
@@ -126,6 +163,9 @@ function reactionLabel(id: string, type: ObjectType, fallback: string, polish: b
 }
 
 const INVENTORY_ORDER: ObjectType[] = [
+  'water_bowl',
+  'litter_box',
+  'wash_basin',
   'apple',
   'broccoli',
   'ball',
@@ -143,7 +183,7 @@ const INVENTORY_GROUPS: Array<{
   polish: string;
   items: ObjectType[];
 }> = [
-  { id: 'care', english: 'Care', polish: 'Opieka', items: ['apple', 'broccoli', 'blanket'] },
+  { id: 'care', english: 'Care', polish: 'Opieka', items: ['water_bowl', 'litter_box', 'wash_basin', 'apple', 'broccoli', 'blanket'] },
   { id: 'play', english: 'Play', polish: 'Zabawa', items: ['ball', 'box'] },
   { id: 'make', english: 'Make', polish: 'Tworzenie', items: ['paper', 'pencil'] },
   { id: 'curious', english: 'Curiosities', polish: 'Ciekawostki', items: ['stone', 'mirror'] },
@@ -213,6 +253,23 @@ interface CreatureCue {
   tone: CueTone;
 }
 
+function urgencyLabel(urgency: ReturnType<typeof getNeedUrgency>, polish: boolean) {
+  const labels = {
+    settled: polish ? 'w normie' : 'settled',
+    notice: polish ? 'sygnał' : 'notice',
+    attention: polish ? 'wymaga uwagi' : 'attention',
+    urgent: polish ? 'pilna' : 'urgent',
+  };
+  return labels[urgency];
+}
+
+function urgencyColor(urgency: ReturnType<typeof getNeedUrgency>) {
+  if (urgency === 'urgent') return '#e39a82';
+  if (urgency === 'attention') return '#d6b276';
+  if (urgency === 'notice') return '#b9b394';
+  return '#8fa695';
+}
+
 const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) => {
   const ui = uiLanguage(state.conversation.language);
   const polish = ui === 'pl';
@@ -223,6 +280,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [showBecoming, setShowBecoming] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showCare, setShowCare] = useState(false);
+  const [showNeeds, setShowNeeds] = useState(false);
   const [inventoryGroupId, setInventoryGroupId] = useState('care');
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
@@ -235,6 +293,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [momentResult, setMomentResult] = useState<string | null>(null);
   const [firstMoment, setFirstMoment] = useState<MeaningfulFirst | null>(null);
   const [careEffect, setCareEffect] = useState<CareRitualEffect>(null);
+  const [clockNow, setClockNow] = useState(() => Date.now());
 
   // Drag state
   const [draggingType, setDraggingType] = useState<ObjectType | null>(null);
@@ -281,6 +340,19 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   useEffect(() => {
     if (!emotionTimerRef.current) setCreatureEmotion(state.emotionalState);
   }, [state.emotionalState]);
+
+  useEffect(() => {
+    const updateClock = () => setClockNow(Date.now());
+    const interval = setInterval(updateClock, 30_000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') updateClock();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     const greeting = state.presence.pendingGreeting;
@@ -355,7 +427,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     if (!file) return;
     try {
       if (file.size > 2_000_000) throw new Error(polish ? 'Ten backup jest za duży.' : 'This backup is too large.');
-      const imported = parseImportedGameState(await file.text());
+      const parsed = parseImportedGameState(await file.text());
+      const now = Date.now();
+      const awayMs = Math.max(0, now - parsed.lastSaved);
+      const imported = awayMs >= 60_000
+        ? simulateOfflineTime(parsed, awayMs, now).state
+        : { ...parsed, needsUpdatedAt: now, lastSaved: now };
       const name = imported.identity.name || (polish ? 'ten stworek' : 'this creature');
       if (!window.confirm(polish ? `Zastąpić obecnego stworka na tym urządzeniu stworkiem ${name}?` : `Replace the creature on this device with ${name}?`)) return;
       onStateChange(imported);
@@ -432,21 +509,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
     onStateChange(prev => {
       const facing = target.x > prev.position.x ? 'right' : target.x < prev.position.x ? 'left' : prev.facing;
-      let next: GameState = {
+      let next: GameState = applyNeedDelta({
         ...prev,
         position: target,
         facing,
         creatureBehavior: reaction.behavior,
         currentActivity: localizedReaction,
-        needs: {
-          ...prev.needs,
-          hunger: Math.max(0, Math.min(100, prev.needs.hunger + (reaction.needDelta.hunger ?? 0))),
-          energy: Math.max(0, Math.min(100, prev.needs.energy + (reaction.needDelta.energy ?? 0))),
-          comfort: Math.max(0, Math.min(100, prev.needs.comfort + (reaction.needDelta.comfort ?? 0))),
-          stimulation: Math.max(0, Math.min(100, prev.needs.stimulation + (reaction.needDelta.stimulation ?? 0))),
-          social: Math.max(0, Math.min(100, prev.needs.social + (reaction.needDelta.social ?? 0))),
-        },
-      };
+      }, reaction.needDelta);
 
       if ((type === 'apple' || type === 'broccoli') && reaction.consumes) {
         next = feedCreature(next, type);
@@ -456,6 +525,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           inventory: next.inventory.includes(type) ? next.inventory : [...next.inventory, type],
         };
       } else {
+        if (type === 'water_bowl') {
+          next = reaction.id.includes('drink')
+            ? drinkCreature(next)
+            : applyNeedDelta(next, { hydration: 4, bladder: -2 });
+        }
+        if (type === 'litter_box' && reaction.outcome !== 'avoid') next = useToilet(next).state;
+        if (type === 'wash_basin' && reaction.id.includes('clean')) next = washCreature(next).state;
         next = {
           ...next,
           roomObjects: next.roomObjects.map(obj => {
@@ -610,6 +686,46 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const startAmbientMoment = useCallback(() => {
     const currentState = stateRef.current;
     if (activeObjectRef.current || currentState.sleepState === 'sleeping' || behaviorRef.current !== 'idle') return;
+    const now = Date.now();
+    const needSignal = getVisibleNeedSignals(currentState, 1)[0];
+    const needMoment = needSignal && (needSignal.urgency === 'urgent' || needSignal.urgency === 'attention') ? {
+      icon: needSignal.icon,
+      label: getNaturalNeedCue(currentState, polish, needSignal.key),
+      tone: 'notice' as const,
+      behavior: (needSignal.key === 'stimulation' ? 'investigating' : needSignal.key === 'hunger' || needSignal.key === 'hydration' ? 'observing' : 'reacting') as CreatureBehavior,
+      emotion: needSignal.urgency === 'urgent' ? 'uncertain' : 'neutral',
+      duration: needSignal.urgency === 'urgent' ? 3400 : 2800,
+    } : null;
+    const weatherReaction = needMoment ? null : chooseEnvironmentReaction(currentState, ui, now);
+    const environmentMoment = weatherReaction ? {
+      icon: weatherReaction.icon,
+      label: weatherReaction.label,
+      tone: 'ambient' as const,
+      behavior: weatherReaction.behavior,
+      emotion: weatherReaction.emotion,
+      duration: weatherReaction.duration,
+    } : null;
+    const worldMoment = needMoment ?? environmentMoment;
+    if (worldMoment) {
+      behaviorRef.current = worldMoment.behavior;
+      setTemporaryEmotion(worldMoment.emotion, worldMoment.duration);
+      showCreatureCue(worldMoment, worldMoment.duration);
+      onStateChange(prev => {
+        let next: GameState = { ...prev, creatureBehavior: worldMoment.behavior, currentActivity: worldMoment.label };
+        if (weatherReaction && worldMoment === environmentMoment) {
+          next = applyNeedDelta(next, weatherReaction.needDelta, now);
+          next = recordEnvironmentReaction(next, weatherReaction, now);
+        }
+        return next;
+      });
+      ambientTimerRef.current = setTimeout(() => {
+        if (behaviorRef.current !== worldMoment.behavior) return;
+        behaviorRef.current = 'idle';
+        onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
+      }, worldMoment.duration);
+      return;
+    }
+
     const moment = chooseAutonomousMoment(currentState);
     if (!moment) return;
     const label = polish ? moment.labelPl : moment.labelEn;
@@ -654,7 +770,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       behaviorRef.current = 'idle';
       onStateChange(prev => ({ ...prev, creatureBehavior: 'idle', currentActivity: null }));
     }, moment.duration);
-  }, [beginObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue, triggerSpeech, walkToIdlePosition]);
+  }, [beginObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue, triggerSpeech, ui, walkToIdlePosition]);
 
   // Intentional autonomous behaviour. The interval only chooses a new goal
   // while the creature is idle; user-selected objects always take priority.
@@ -726,9 +842,35 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       };
 
       let goal: RoomObject | null = null;
-      if (currentState.needs.hunger < 60) goal = closestOfType(['apple', 'broccoli']);
-      if (!goal && currentState.needs.energy < 32) goal = closestOfType(['blanket']);
-      if (!goal && currentState.needs.stimulation < 48) goal = closestOfType(['ball']);
+      if (currentState.needs.hydration < 48) goal = closestOfType(['water_bowl']);
+      if (!goal && (currentState.needs.bladder < 48 || currentState.needs.bowel < 48)) goal = closestOfType(['litter_box']);
+      if (!goal && currentState.needs.hunger < 48) goal = closestOfType(['apple', 'broccoli']);
+      if (!goal && currentState.needs.hygiene < 48) goal = closestOfType(['wash_basin']);
+      const disposition = getCircadianDisposition(getTimeOfDay(Date.now(), currentState.world), currentState.needs.energy, false);
+      if (!goal && (currentState.needs.energy < 40 || disposition === 'ready_to_sleep')) goal = closestOfType(['blanket']);
+      if (!goal && currentState.needs.comfort < 48) goal = closestOfType(['blanket']);
+      if (!goal && currentState.needs.stimulation < 48 && (disposition === 'active' || currentState.needs.stimulation < 25)) goal = closestOfType(['ball']);
+
+      // Weather first suggests a place in the room; only after arriving can
+      // the normal ambient loop show the individual reaction. This keeps the
+      // chain visible: outside stimulus → choice of place → body language.
+      if (!goal) {
+        const environmentReaction = chooseEnvironmentReaction(currentState, ui, Date.now());
+        if (environmentReaction?.positionHint) {
+          const blanket = currentState.roomObjects.find(object => object.type === 'blanket');
+          const environmentTarget = environmentReaction.positionHint === 'window'
+            ? { x: 50, y: 50 }
+            : environmentReaction.positionHint === 'shelter'
+              ? { x: 24, y: 65 }
+              : environmentReaction.positionHint === 'warm'
+                ? blanket ? { x: blanket.x + (blanket.x < 50 ? 9 : -9), y: blanket.y } : { x: 34, y: 69 }
+                : { x: 73, y: 71 };
+          if (dist(currentPos, environmentTarget) > 8) {
+            walkToIdlePosition(environmentTarget);
+            return;
+          }
+        }
+      }
 
       if (goal) {
         beginObjectInteraction(goal, false);
@@ -743,7 +885,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       clearTimeout(kickoff);
       clearInterval(behaviorTimerRef.current);
     };
-  }, [beginObjectInteraction, clearActionTimers, onStateChange, polish, setTemporaryEmotion, showCare, showChat, showCreatureCue, showInventory, startAmbientMoment, state.sleepState, walkToIdlePosition]);
+  }, [beginObjectInteraction, clearActionTimers, onStateChange, polish, setTemporaryEmotion, showCare, showChat, showCreatureCue, showInventory, startAmbientMoment, state.sleepState, ui, walkToIdlePosition]);
 
   useEffect(() => () => {
     clearActionTimers();
@@ -816,60 +958,57 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
   const handleTapCreature = useCallback(() => {
     emitCue('touch');
-    onStateChange(prev => {
-      const boundary = evaluateTouchBoundary(prev, 'tap');
-      if (!boundary.accepted) {
-        showCreatureCue({ icon: '·', label: boundary.label || t('needs a moment', 'potrzebuje chwili'), tone: 'notice' }, 2600);
-        setTemporaryEmotion('uncertain', 2800);
-        return boundary.state;
-      }
-      showCreatureCue({ icon: '?', label: t('notices your touch', 'zauważa twój dotyk'), tone: 'notice' }, 1600);
-      const updated = recordBondEvent(touchCreature(boundary.state, 'tap'), 'tap');
-      setTemporaryEmotion('curious', 2000);
-      if (shouldSpeak(updated)) {
-        const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'curious' });
-        if (text) triggerSpeech(text);
-      }
-      return updated;
-    });
+    const boundary = evaluateTouchBoundary(stateRef.current, 'tap');
+    if (!boundary.accepted) {
+      showCreatureCue({ icon: '·', label: boundary.label || t('needs a moment', 'potrzebuje chwili'), tone: 'notice' }, 2600);
+      setTemporaryEmotion('uncertain', 2800);
+      onStateChange(boundary.state);
+      return;
+    }
+    showCreatureCue({ icon: '?', label: t('notices your touch', 'zauważa twój dotyk'), tone: 'notice' }, 1600);
+    const updated = recordBondEvent(touchCreature(boundary.state, 'tap'), 'tap');
+    setTemporaryEmotion('curious', 2000);
+    if (shouldSpeak(updated)) {
+      const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'curious' });
+      if (text) triggerSpeech(text);
+    }
+    onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
 
   const handleStrokeCreature = useCallback(() => {
     emitCue('comfort');
-    onStateChange(prev => {
-      const boundary = evaluateTouchBoundary(prev, 'stroke');
-      if (!boundary.accepted) {
-        showCreatureCue({ icon: '·', label: boundary.label || t('needs a moment', 'potrzebuje chwili'), tone: 'notice' }, 2600);
-        setTemporaryEmotion('uncertain', 2800);
-        return boundary.state;
-      }
-      showCreatureCue({ icon: '♡', label: t('leans into your hand', 'przysuwa się do twojej dłoni'), tone: 'reaction' }, 2400);
-      const updated = recordBondEvent(touchCreature(boundary.state, 'stroke'), 'stroke');
-      setTemporaryEmotion('happy', 3000);
-      if (shouldSpeak(updated)) {
-        const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'happy' });
-        if (text) triggerSpeech(text);
-      }
-      return updated;
-    });
+    const boundary = evaluateTouchBoundary(stateRef.current, 'stroke');
+    if (!boundary.accepted) {
+      showCreatureCue({ icon: '·', label: boundary.label || t('needs a moment', 'potrzebuje chwili'), tone: 'notice' }, 2600);
+      setTemporaryEmotion('uncertain', 2800);
+      onStateChange(boundary.state);
+      return;
+    }
+    showCreatureCue({ icon: '♡', label: t('leans into your hand', 'przysuwa się do twojej dłoni'), tone: 'reaction' }, 2400);
+    const updated = recordBondEvent(touchCreature(boundary.state, 'stroke'), 'stroke');
+    setTemporaryEmotion('happy', 3000);
+    if (shouldSpeak(updated)) {
+      const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'happy' });
+      if (text) triggerSpeech(text);
+    }
+    onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
 
   const handleHoldStart = useCallback(() => {}, []);
 
   const handleHoldEnd = useCallback(() => {
     emitCue('comfort');
-    onStateChange(prev => {
-      const boundary = evaluateTouchBoundary(prev, 'hold');
-      if (!boundary.accepted) {
-        showCreatureCue({ icon: '·', label: boundary.label || t('not yet', 'jeszcze nie'), tone: 'notice' }, 2800);
-        setTemporaryEmotion('uncertain', 3000);
-        return boundary.state;
-      }
-      showCreatureCue({ icon: '♡', label: t('settles close', 'układa się blisko'), tone: 'reaction' }, 2600);
-      const updated = recordBondEvent(touchCreature(boundary.state, 'hold'), 'hold');
-      setTemporaryEmotion('happy', 3000);
-      return updated;
-    });
+    const boundary = evaluateTouchBoundary(stateRef.current, 'hold');
+    if (!boundary.accepted) {
+      showCreatureCue({ icon: '·', label: boundary.label || t('not yet', 'jeszcze nie'), tone: 'notice' }, 2800);
+      setTemporaryEmotion('uncertain', 3000);
+      onStateChange(boundary.state);
+      return;
+    }
+    showCreatureCue({ icon: '♡', label: t('settles close', 'układa się blisko'), tone: 'reaction' }, 2600);
+    const updated = recordBondEvent(touchCreature(boundary.state, 'hold'), 'hold');
+    setTemporaryEmotion('happy', 3000);
+    onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t]);
 
   // ========== OBJECT INPUT ==========
@@ -1171,6 +1310,17 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     if (state.sleepState === 'sleeping') {
       onStateChange(prev => wakeUp(prev));
     } else {
+      const blocker = getSleepBlocker(state);
+      if (blocker) {
+        showCreatureCue({ icon: NEED_COPY[blocker].icon, label: getNaturalNeedCue(state, polish, blocker), tone: 'notice' }, 3400);
+        setTemporaryEmotion('uncertain', 3200);
+        return;
+      }
+      const disposition = getCircadianDisposition(getTimeOfDay(Date.now(), state.world), state.needs.energy, false);
+      if (disposition === 'active' && state.needs.energy > 72) {
+        showCreatureCue({ icon: '·', label: t('is not sleepy yet', 'jeszcze nie jest senny'), tone: 'notice' }, 2800);
+        return;
+      }
       onStateChange(prev => putToSleep(prev));
     }
   };
@@ -1229,6 +1379,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     .filter(({ preference }) => preference.interactions >= 2 && (preference.affinity >= 12 || preference.affinity <= -8))
     .sort((a, b) => Math.abs(b.preference.affinity) - Math.abs(a.preference.affinity))
     .slice(0, 3);
+  const learnedWeatherPreferences = (Object.keys(state.world.preferences) as Array<keyof typeof state.world.preferences>)
+    .map(condition => ({ condition, preference: state.world.preferences[condition] }))
+    .filter(({ preference }) => preference.exposures >= 2 && Math.abs(preference.affinity) >= 3)
+    .sort((a, b) => Math.abs(b.preference.affinity) - Math.abs(a.preference.affinity))
+    .slice(0, 3);
   const selectedObject = selectedObjectId
     ? state.roomObjects.find(object => object.id === selectedObjectId) ?? null
     : null;
@@ -1258,6 +1413,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             : state.needs.hygiene < 38
               ? t('Its fur has lost some of its soft sheen.', 'Futro straciło trochę swojego miękkiego blasku.')
               : t('Nothing is urgent. Ordinary care is enough.', 'Nic nie jest pilne. Wystarczy zwykła opieka.');
+  const timeOfDay = getTimeOfDay(clockNow, state.world);
+  const lighting = getRoomLighting(timeOfDay, state.world, clockNow);
+  const visibleNeedSignals = getVisibleNeedSignals(state, 3);
+  const dominantNeed = getDominantNeed(state, true);
+  const weatherActive = state.world.settings.mode === 'device' || state.world.settings.mode === 'city';
+  const weatherSummary = weatherActive && state.world.current
+    ? `${getWeatherConditionLabel(state.world.current.condition, ui)}, ${Math.round(state.world.current.temperatureC)}°`
+    : null;
 
   return (
     <div
@@ -1269,14 +1432,33 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       onPointerCancel={handlePointerCancel}
     >
       {/* Room background */}
-      <div className={`absolute inset-0 transition-all duration-1000 ${state.sleepState === 'sleeping' ? 'brightness-50' : 'brightness-100'}`}>
-        <div className="absolute inset-x-0 top-0 h-[67%]" style={{ background: 'linear-gradient(180deg, #1c2119 0%, #151812 68%, #11130f 100%)' }} />
-        <div className="absolute inset-x-0 bottom-0 h-[36%]" style={{ background: 'linear-gradient(180deg, #25291f 0%, #1a1d17 72%, #141611 100%)' }} />
-        <div className="absolute inset-x-0 top-[64.5%] h-px bg-[#080a07]/80 shadow-[0_-1px_0_rgba(216,210,191,.045)]" />
-        <div className="absolute inset-x-0 bottom-0 h-[35%] opacity-20" style={{ background: 'repeating-linear-gradient(103deg, transparent 0 54px, rgba(5,7,5,.58) 55px 57px)' }} />
-        <div className="absolute top-[12%] left-1/2 h-[370px] w-[370px] -translate-x-1/2 rounded-full opacity-50" style={{ background: 'radial-gradient(ellipse, rgba(191,177,132,.17) 0%, rgba(100,112,82,.055) 43%, transparent 70%)' }} />
-        <div className="absolute top-[9%] left-[7%] h-[44%] w-[38%] opacity-25" style={{ background: 'radial-gradient(ellipse at 0 0, rgba(126,145,105,.18), transparent 70%)' }} />
+      <div
+        className="absolute inset-0"
+        style={{
+          filter: `brightness(${lighting.brightness * (state.sleepState === 'sleeping' ? 0.82 : 1)})`,
+          transition: 'filter 1800ms ease',
+        }}
+      >
+        <div className="absolute top-0 left-0 right-0 h-[66%]" style={{ background: `linear-gradient(180deg, ${lighting.wallTop} 0%, ${lighting.wallBottom} 82%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear' }} />
+        <div
+          className="absolute inset-x-0 top-0 h-[58%] pointer-events-none"
+          style={{
+            opacity: lighting.starOpacity,
+            backgroundImage: 'radial-gradient(circle at 18% 24%, rgba(240,230,210,.65) 0 1px, transparent 1.5px), radial-gradient(circle at 68% 16%, rgba(215,226,238,.55) 0 1px, transparent 1.5px), radial-gradient(circle at 82% 38%, rgba(240,230,210,.5) 0 1px, transparent 1.5px)',
+            backgroundSize: '96px 84px, 128px 110px, 154px 132px',
+            transition: 'opacity 30s linear',
+          }}
+        />
+        <div className="absolute top-[11%] left-[13%] right-[13%] h-px bg-warm-200/5" />
+        <div className="absolute top-[11%] bottom-[34%] left-[13%] w-px bg-warm-200/5" />
+        <div className="absolute top-[11%] bottom-[34%] right-[13%] w-px bg-warm-200/5" />
+        <div className="absolute bottom-0 left-0 right-0 h-[35%]" style={{ background: `linear-gradient(180deg, ${lighting.floorTop} 0%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear' }} />
+        <div className="absolute top-[64.7%] left-0 right-0 h-[2px] bg-[#100f0d]/70 shadow-[0_-1px_0_rgba(224,203,176,0.05)]" />
+        <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)' }} />
+        <WeatherLayer world={state.world} lighting={lighting} time={timeOfDay} seed={state.identity.seed} now={clockNow} />
+        <div className="absolute top-[16%] left-[50%] w-[390px] h-[390px] -translate-x-1/2 rounded-full" style={{ background: `radial-gradient(circle, ${lighting.ambientGlow} 0%, transparent 70%)`, transition: 'background 30s linear' }} />
         <div className="absolute inset-0 transition-colors duration-[1800ms]" style={{ background: pathVisual.roomTint }} />
+        <div className="absolute inset-0" style={{ background: lighting.veil, transition: 'background 30s linear' }} />
       </div>
 
       {/* Vignette */}
@@ -1543,6 +1725,42 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       </div>
 
+      {/* The clock explains the light. Need signals stay compact and verbal;
+          the fuller care view appears only when the player asks for it. */}
+      <div className="absolute top-0 left-0 right-0 safe-top px-3 z-30 pointer-events-none">
+        <button
+          type="button"
+          onClick={() => setShowNeeds(true)}
+          aria-label={`${t('Open care and needs', 'Otwórz opiekę i potrzeby')}${weatherSummary ? ` · ${weatherSummary}` : ''}`}
+          className="pointer-events-auto mx-auto mt-12 flex min-h-9 max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border border-warm-200/10 bg-room-dark/68 px-3 py-1.5 text-left shadow-lg backdrop-blur-md transition-colors hover:bg-room-dark/82"
+        >
+          <span className="shrink-0 whitespace-nowrap text-[9px] font-serif uppercase tracking-[0.13em] text-warm-200/50">
+            {getPhaseLabel(timeOfDay.phase, ui)} · {formatLocalClock(timeOfDay)}
+          </span>
+          {weatherSummary && state.world.current && (
+            <span className={`shrink-0 whitespace-nowrap text-[9px] font-serif text-warm-200/48 ${state.world.status === 'stale' || state.world.lastError ? 'opacity-55' : ''}`} title={weatherSummary}>
+              <span aria-hidden="true">{getWeatherIcon(state.world.current.condition)}</span> {Math.round(state.world.current.temperatureC)}°
+            </span>
+          )}
+          <span className="h-3 w-px shrink-0 bg-warm-200/10" />
+          {visibleNeedSignals.length > 0 ? (
+            <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+              {visibleNeedSignals.map(signal => (
+                <span key={signal.key} className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[10px] font-serif" style={{ color: urgencyColor(signal.urgency) }}>
+                  <span aria-hidden="true">{signal.icon}</span>
+                  <span className="max-w-[5.7rem] truncate">{getNeedLabel(signal.key, polish)}</span>
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span className="truncate text-[10px] font-serif italic text-warm-200/45">
+              {t('all is calm', 'wszystko spokojne')}
+            </span>
+          )}
+          <span className="ml-auto shrink-0 text-[10px] text-warm-200/30" aria-hidden="true">⌄</span>
+        </button>
+      </div>
+
       {/* Daily moments are small dilemmas, not quests. Their choice changes
           the creature's path and becomes a remembered event. */}
       {state.lifePath.pendingMoment && !showChat && !showMemoryBook && !showBecoming && !showCare && state.sleepState !== 'sleeping' && (
@@ -1702,6 +1920,55 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               <button onClick={handleTidyRoom} className="text-[10px] font-serif text-warm-200/35 hover:text-warm-100">{t('Put everything away', 'Odłóż wszystko')}</button>
             </div>
           )}
+        </div>
+      )}
+
+      {showNeeds && (
+        <div className="absolute inset-0 z-[60] animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="care-title">
+          <button type="button" aria-label={t('Close care', 'Zamknij opiekę')} className="absolute inset-0 h-full w-full bg-[#100f0d]/72 backdrop-blur-sm" onClick={() => setShowNeeds(false)} />
+          <section className="safe-bottom absolute bottom-0 left-0 right-0 max-h-[82%] overflow-y-auto rounded-t-[1.75rem] border-t border-warm-200/12 bg-[#211e1a]/98 shadow-[0_-24px_70px_rgba(0,0,0,.55)]">
+            <div className="mx-auto max-w-md p-4 pb-1">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/50">{t('Care', 'Opieka')}</p>
+                  <h2 id="care-title" className="mt-0.5 text-lg font-serif text-warm-100">{t('How are they?', 'Jak się czuje?')}</h2>
+                  <p className="mt-1 max-w-xs text-[10px] leading-relaxed font-serif text-warm-200/45">
+                    {t('Every need reads the same way: settled → notice → attention → urgent.', 'Każda potrzeba narasta w ten sam sposób: w normie → sygnał → wymaga uwagi → pilna.')}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setShowNeeds(false)} className="min-h-11 -my-2 px-2 py-2 text-xs font-serif text-warm-200/60 hover:text-warm-100">{t('Close', 'Zamknij')}</button>
+              </div>
+
+              {dominantNeed && (
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-warm-300/12 bg-room-dark/35 px-3 py-2">
+                  <span className="text-sm" style={{ color: urgencyColor(getNeedUrgency(state.needs[dominantNeed])) }}>{NEED_COPY[dominantNeed].icon}</span>
+                  <p className="text-[11px] font-serif italic text-warm-100/72">
+                    {state.identity.name || t('The creature', 'Stworek')} {getNaturalNeedCue(state, polish, dominantNeed)}.
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-3 divide-y divide-warm-200/7">
+                {NEED_ORDER.map(key => {
+                  const urgency = getNeedUrgency(state.needs[key]);
+                  return (
+                    <div key={key} className="grid grid-cols-[1.7rem_minmax(0,1fr)_auto] items-start gap-2 py-2.5">
+                      <span className="mt-0.5 grid h-7 w-7 place-items-center rounded-full border border-warm-200/10 bg-room-dark/35 text-xs" style={{ color: urgencyColor(urgency) }} aria-hidden="true">
+                        {NEED_COPY[key].icon}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-serif text-warm-100/82">{getNeedName(key, polish)}</p>
+                        <p className="mt-0.5 text-[9px] leading-relaxed font-serif text-warm-200/38">{getNeedAction(key, polish)}</p>
+                      </div>
+                      <span className="mt-0.5 whitespace-nowrap rounded-full border px-2 py-1 text-[8px] font-serif uppercase tracking-[0.08em]" style={{ color: urgencyColor(urgency), borderColor: `${urgencyColor(urgency)}35`, backgroundColor: `${urgencyColor(urgency)}0d` }}>
+                        {urgencyLabel(urgency, polish)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
         </div>
       )}
 
@@ -1886,6 +2153,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                     ))}
                   </div>
                 )}
+                {learnedWeatherPreferences.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[9px] uppercase tracking-widest text-warm-300/35">{t('Weather becoming familiar', 'Oswajana pogoda')}</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {learnedWeatherPreferences.map(({ condition, preference }) => (
+                        <span key={condition} className="rounded-full border border-warm-200/10 bg-room-mid/70 px-2 py-1 text-[10px] font-serif text-warm-200/65">
+                          {getWeatherIcon(condition)} {getWeatherConditionLabel(condition, ui)} · {preference.affinity >= 6 ? t('drawn to it', 'lubi ją') : preference.affinity <= -3 ? t('wary', 'podchodzi ostrożnie') : t('learning', 'poznaje ją')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               {state.vocabulary.length > 0 && (
                 <div className="border-l-2 border-warm-300/30 pl-4">
@@ -2020,6 +2299,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </div>
       )}
 
+      {!state.world.settings.onboardingSeen && (
+        <WeatherControls state={state} language={ui} onStateChange={onStateChange} variant="onboarding" />
+      )}
+
       {/* Small local controls keep sensory feedback optional. No account or
           permission prompt is required; unsupported devices simply stay quiet. */}
       {showSettings && (
@@ -2049,6 +2332,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   ))}
                 </div>
               </div>
+              <WeatherControls state={state} language={ui} onStateChange={onStateChange} variant="settings" />
               <label className="ink-card flex items-center justify-between gap-5 p-4 cursor-pointer">
                 <span>
                   <span className="block text-warm-100/85 text-sm font-serif">{t('Quiet sounds', 'Ciche dźwięki')}</span>
@@ -2065,13 +2349,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               </label>
               <div className="ink-card p-4">
                 <div className="text-warm-100/85 text-sm font-serif">{t('Keep this creature', 'Zachowaj tego stworka')}</div>
-                <p className="text-warm-200/62 text-[10px] font-serif mt-1 leading-relaxed">{t('A private file can carry the whole life, memories, chats and creations to another device. Nothing is uploaded.', 'Prywatny plik przeniesie całe życie, wspomnienia, rozmowy i prace na inne urządzenie. Nic nie jest wysyłane.')}</p>
+                <p className="text-warm-200/62 text-[10px] font-serif mt-1 leading-relaxed">{t('A private file can carry the whole life, memories, chats, creations and chosen weather place to another device. Nothing is uploaded.', 'Prywatny plik przeniesie całe życie, wspomnienia, rozmowy, prace i wybrane miejsce pogody na inne urządzenie. Nic nie jest wysyłane.')}</p>
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <button onClick={exportCreature} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">{t('Save backup', 'Zapisz backup')}</button>
                   <button onClick={() => importInputRef.current?.click()} className="min-h-11 rounded-xl border border-warm-200/15 bg-room-dark/30 px-3 py-2 text-warm-100/75 text-xs font-serif active:scale-[0.98] transition-transform">{t('Open backup', 'Otwórz backup')}</button>
                 </div>
                 <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={event => void importCreature(event.target.files?.[0])} />
-                <p className="text-warm-200/62 text-[9px] font-serif mt-3">{t('The file contains personal conversations. Store it somewhere you trust.', 'Plik zawiera prywatne rozmowy. Przechowuj go w zaufanym miejscu.')}</p>
+                <p className="text-warm-200/62 text-[9px] font-serif mt-3">{t('The file contains personal conversations and the rounded weather location. Store it somewhere you trust.', 'Plik zawiera prywatne rozmowy i zaokrągloną lokalizację pogody. Przechowuj go w zaufanym miejscu.')}</p>
               </div>
               {onReset && (
                 <div className="rounded-2xl border border-red-200/10 bg-room-mid/25 p-4">

@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.9.27
+> **Version:** 0.11.1
 > **Last Updated:** 2026-08-23
 
 ---
@@ -21,15 +21,16 @@ The project is built as a **polished vertical slice** — playable from birth th
 |---|---|
 | Framework | React 18 + TypeScript |
 | Styling | Tailwind CSS 3 |
-| Build Tool | Vite 5 + vite-plugin-pwa |
+| Build Tool | Vite 8 + vite-plugin-pwa |
 | Persistence | IndexedDB via `idb` library |
 | Rendering | HTML5 Canvas (creature), DOM (UI) |
 | AI mind | DeepSeek V4 Flash behind a private Cloudflare Worker proxy |
 | Icons / art | Code-native SVG object and navigation icons plus four generated transparent editorial motifs |
 | Deployment | GitHub Pages via GitHub Actions |
 
-**Dev command:** `npm run dev` → `http://localhost:7100/`  
-**Live URL:** `https://megabomb420.github.io/becoming/`
+- **Dev command:** `npm run dev` → `http://localhost:7100/becoming/`
+- **Full verification:** `npm run check`
+- **Live URL:** `https://megabomb420.github.io/becoming/`
 
 ---
 
@@ -37,24 +38,47 @@ The project is built as a **polished vertical slice** — playable from birth th
 
 ```
 becoming/
-├── .github/workflows/deploy.yml # GitHub Pages deployment
+├── README.md                    # Project overview and contributor entry point
+├── HANDOFF.md                   # Detailed product and implementation state
+├── .github/workflows/deploy.yml # Verification and GitHub Pages deployment
 ├── public/
 │   ├── manifest.json           # PWA manifest
 │   ├── favicon.svg
 │   ├── art/                    # Memory, Dreams, Becoming, and Care motifs
 │   └── icon-{192,512,maskable}.png
+├── scripts/
+│   ├── run_system_checks.mjs    # Isolated TypeScript check runner
+│   ├── system_checks.ts         # Aggregates deterministic system suites
+│   ├── life_path_checks.ts      # Deterministic system smoke checks
+│   ├── needs_time_checks.ts     # Needs, offline, local-time, timezone, DST checks
+│   ├── weather_environment_checks.ts # Open-Meteo, cache, solar light, reaction checks
+│   └── gen_icons.py             # PWA icon generation
 ├── src/
 │   ├── types/index.ts          # Core type definitions
 │   ├── systems/
 │   │   ├── persistence.ts      # IndexedDB save/load + migration
 │   │   ├── creatureFactory.ts  # Birth/egg generation, seeded traits
-│   │   ├── needsSystem.ts      # Hidden hunger, energy, comfort, stimulation, social
+│   │   ├── needsSystem.ts      # Nine physical/emotional needs, urgency, care actions
+│   │   ├── timeSystem.ts       # Sunrise/sunset phases, timezone and smooth room lighting
+│   │   ├── weatherService.ts   # Rounded location, Open-Meteo fetch/geocoding and parsing
+│   │   ├── environmentSystem.ts # Cache state, stimuli, gameplay interpretation and preference
 │   │   ├── developmentSystem.ts # Stage progression, vocabulary acquisition
 │   │   ├── languageSystem.ts   # Stage-constrained speech generation
 │   │   ├── conversationSystem.ts # Persistent dialogue, user facts, growing mind
+│   │   ├── llmConversation.ts  # Bounded private-AI request construction
 │   │   ├── offlineSimulation.ts # Time-passed simulation when app closed
 │   │   ├── memoryBook.ts       # Emergent biography generation
-│   │   └── socialLearningSystem.ts  # SOCIAL LEARNING & IMITATION
+│   │   ├── lifePathSystem.ts    # Paths, hybrids, consequences, and recovery
+│   │   ├── innerLifeSystem.ts   # Interests, opinions, dreams, private thoughts
+│   │   ├── continuitySystem.ts  # Chapters, open loops, and check-ins
+│   │   ├── presenceSystem.ts    # Returns, absence episodes, and rituals
+│   │   ├── creationSystem.ts    # Persistent creature-made works
+│   │   ├── boundarySystem.ts    # Touch consent and overstimulation
+│   │   ├── sharedLanguageSystem.ts # Shared sayings
+│   │   ├── socialLearningSystem.ts # Observation and imitation
+│   │   ├── relationshipSystem.ts # Bond progression
+│   │   ├── sensorySystem.ts     # Optional local sound and haptics
+│   │   └── uiLanguage.ts        # Polish/English interface copy
 │   ├── components/
 │   │   ├── CreatureCanvas.tsx  # Canvas-based creature renderer
 │   │   ├── EggHatching.tsx     # Birth experience (tap egg, name creature)
@@ -62,10 +86,18 @@ becoming/
 │   │   ├── ChatInterface.tsx   # Conversation-as-presence UI
 │   │   ├── MemoryBookView.tsx  # Material keepsake / biography view
 │   │   ├── BecomingView.tsx    # Narrative identity view, no visible scores
-│   │   └── GlyphIcon.tsx       # Shared hand-drawn navigation icon language
+│   │   ├── GlyphIcon.tsx       # Shared hand-drawn navigation icon language
+│   │   ├── ObjectIcon.tsx      # Hand-drawn room-object icon system
+│   │   ├── WeatherLayer.tsx    # Window, clouds, rain, snow, fog, wind and heat atmosphere
+│   │   ├── WeatherControls.tsx # Consent onboarding, city search and weather settings
+│   │   └── PwaUpdateNotice.tsx # Explicit safe-update prompt
 │   ├── App.tsx                 # Main app flow, offline sync
 │   ├── main.tsx                # Entry point
 │   └── index.css               # Tailwind + custom safe-area utilities
+├── worker/
+│   ├── src/index.js            # Cloudflare AI gateway and role protection
+│   ├── test.mjs                # Worker/security checks
+│   └── wrangler.toml
 ├── vite.config.ts
 ├── tailwind.config.js
 └── package.json
@@ -82,21 +114,23 @@ becoming/
 | PWA installability | ✅ | Manifest, service worker, offline shell, icons |
 | Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` flag prevents regression |
 | Creature rendering | ✅ | Canvas-based with breathing, blinking, expressive eyes/ears/tail, and distinct walking, observing, investigating, eating, playing, and settling body language |
-| Hidden needs system | ✅ | 8 internal needs decay over time; no visible stats |
+| Readable needs system | ✅ | 9 consistently directed needs (100 settled → 0 urgent), compact room signals, optional descriptive care sheet, body-language cues, and no raw percentages or permanent bars |
 | Hidden personality | ✅ | Seeded traits that now evolve through care, play, touch, exploration, and conversation |
 | Bond development | ✅ | Persistent tentative → familiar → close → bonded relationship arc with milestone memories, bond-aware idle behavior, and later-stage speech |
 | Development stages | ✅ | `egg → newborn → animal → communicating → first_words → combining → sentences → mature`; stage regression prevented once hatched |
-| Language development | ✅ | Stage-constrained vocabulary; proto-sounds → words → combinations → sentences |
-| Object system | ✅ | Inventory tray (📦) with 9 object types; tap to place, drag to position, tap a placed object to call the creature, and `Tidy room` to reset the space |
+| Language development | ✅ | Natural speech is available from birth; age and development progressively increase complexity, memory, and opinion while room and chat use the same ladder |
+| Object system | ✅ | Grouped shelf with 12 placeable objects, including water, litter, and washing care tools; tap or drag to place, select for explicit `Use` / `Put away`, reposition, or clear the room |
 | Object preferences | ✅ | Individual seeded tastes that evolve through experience; favorites, uncertainty, refusals, learned play, drawing, box hiding, and mirror recognition |
-| Feeding | ✅ | Food placement calls the creature immediately; food is consumed and returned to the tray for repeated use |
+| Feeding | ✅ | Explicitly using placed food calls the creature; consumed food returns to the shelf for repeated use |
 | Creature movement | ✅ | Goal-driven state machine: idle → notice → look → approach → react; bounded shared floor coordinates and refresh-rate-independent canvas movement |
 | Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
-| Sleep / wake cycle | ✅ | Room dims; "z z z" animation; energy restored on wake via `sleepStartTimestamp` |
-| Offline simulation | ✅ | Calculates what happened while app was closed; respects sleep state; models night spans |
-| Persistent state | ✅ | IndexedDB survives refresh, restart, reopening; migration layer repairs old saves |
+| Living world weather | ✅ | Opt-in Open-Meteo weather, rounded device coordinates or manual city search, 45-minute IndexedDB cache, last-known offline fallback, atmospheric room rendering, and personality/memory-shaped reactions |
+| Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
+| Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
+| Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
+| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; migration repairs old saves and retains weather consent, rounded place, cache, stimuli and learned preferences |
 | Memory Book | ✅ | Emergent biography from significant memories |
-| Mobile-first UX | ✅ | Tested at 390×844 and 320×568; safe-area offsets, 44 px primary targets, scrollable sheets, and non-overlapping controls |
+| Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
 | Creature-initiated chat | ✅ | Creature can start conversations based on observations |
 | Chat interface | ✅ | Full-screen conversation with constrained responses |
@@ -124,6 +158,7 @@ becoming/
 | Touch boundaries | ✅ | Caution, independence, bond, and rapid-touch pressure decide when the creature accepts holding or asks for space |
 | Shared sayings | ✅ | Safe short phrases repeated two or three times can become persistent inside language visible in Memory Book and available to chat |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
+| Automated verification | ✅ | Deterministic gameplay, weather/privacy/cache/solar, Worker and production-build checks run before every GitHub Pages deployment |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 | Nocturnal Terrarium UI | ✅ | Intimate dark room, material Memory Book, voice-led Chat, narrative Becoming, restrained functional settings |
 | Visible personality signatures | ✅ | Seeded trait combinations alter early hesitations, approaches, rest choices, object initiative, imitation, and conversation presence |
@@ -145,9 +180,9 @@ becoming/
 - Multi-creature comparison / sharing
 - Automatic cloud sync
 - Voiced creature vocalizations
-- True time-based developmental milestones (currently uses interaction-driven progression)
+- Complete long-form, time-based 30-day milestone arc (real-age development floors already exist)
 - Music creation by creature
-- Object discovery stages (e.g. paper → scribble → draw → write)
+- Broader object mastery beyond the existing paper-and-pencil creation arc
 - Lying / deception system
 
 ---
@@ -416,7 +451,31 @@ Care actions now briefly change the room itself. Washing sends restrained water 
 
 The final browser pass covers the rendered sheet at 390×844 and 320×568, including the generated asset, the active washing scene, page width, text contrast, and every visible button. There is no horizontal page overflow and no control smaller than 44 px. The new decorative asset is a real alpha PNG rather than a baked checkerboard, resized for the mobile bundle.
 
-### v0.9.27 — Evidence, Not Echoes
+### v0.10.0 — A Body in Real Time
+
+The old five-need model decayed at minute-scale rates, was updated by interval counts instead of elapsed timestamps, and was then processed by a second, incompatible offline formula. It had no water, toilet, bowel, or hygiene state, and the main-room rule hid every value and most of its consequences. Players could see a creature act oddly without knowing whether the cause was hunger, tiredness, boredom, or a timer bug.
+
+Every need now uses one direction: `100 = settled`, `0 = urgent`. Hunger, hydration, energy, bladder, bowel, hygiene, comfort, stimulation, and contact advance from `needsUpdatedAt`, independently of the debounced persistence timestamp. Food, water, litter, washing, touch, sleep, blankets, and play produce concrete trade-offs. A compact signal beside the local clock shows only needs worth noticing; the optional care sheet explains all nine with descriptive urgency and the relevant action, never percentages. The creature also yawns, slumps, fidgets, looks for the player, searches for care objects, shows dirt, and may postpone play or sleep when a physical need is urgent.
+
+Time is no longer an inferred night toggle. `timeSystem.ts` follows the user's ordinary local 24-hour clock with explicit dawn (05:00–08:00), day (08:00–18:00), dusk (18:00–21:00), and night (21:00–05:00) phases. Palette anchors interpolate continuously, the room always states the phase and local time, and evening/night behaviour becomes quieter without forcing an unexplained sleep. Offline rest is sampled in local 15-minute slices so midnight, date changes, timezone changes, and DST are handled coherently.
+
+Offline needs now reuse the same model with a strongly diminishing absence curve: the first eight hours count partially, the next sixteen much less, and longer gaps add only a logarithmic tail. Existing saves keep healthy old values, receive a one-time non-urgent floor for values zeroed by the former over-fast model, gain new physical needs in a settled state, restore the three care objects, and continue from the last saved need timestamp. Automated checks cover rates, actions, urgency boundaries, legacy repair, migration, long absence, phase thresholds, smooth lighting boundaries, date rollover, timezone differences, DST, and daytime return after a night away. Browser QA at iPhone dimensions covered calm and urgent care states, sleep blocking, care-object recovery, IndexedDB reload, shelf layout, and both day and night rooms.
+
+That browser pass also exposed a React purity warning in touch handling: tap, stroke, and hold callbacks were changing Room UI state from inside App's functional state updater. Boundary evaluation and feedback now happen before the committed game-state update, removing the cross-component render update while preserving touch consent and rapid-touch protection.
+
+### v0.11.0 — The World Outside
+
+Weather is now an optional source for the world rather than a widget. On first entry to the room, the player can allow the device's current area, choose a city, or keep weather outside. `navigator.geolocation` is requested only from the explicit current-area action with high accuracy disabled; latitude and longitude are rounded to two decimal places before they enter the Open-Meteo request or the save. Permission denial, timeout, or unavailable geolocation keeps the same onboarding open directly on manual city search. Settings can switch among current area, a geocoded city, and disabled influence at any time.
+
+`weatherService.ts` owns request construction and response validation for the keyless Open-Meteo Forecast and Geocoding APIs. It stores temperature, apparent temperature, precipitation, WMO code and interpreted condition, cloud cover, wind, `is_day`, sunrise, sunset, daily minimum/maximum, and the nearest available precipitation probability. `App.tsx` is the only refresh controller: a persisted deadline makes the normal interval a cheap cache check, successful data remains fresh for 45 minutes, failed refreshes back off for 15 minutes, and the previous snapshot stays active in a softened form when offline. The service never touches needs, mood, personality, memories, or behaviour.
+
+`WorldEnvironment` is the shared, migrated gameplay state. `environmentSystem.ts` converts a weather snapshot into thermal, precipitation, cloud, wind, novelty and cozy stimuli. The needs system reads bounded environmental multipliers — for example, heat raises thirst pressure and cold makes comfort harder to maintain — rather than accepting direct stat mutations from weather. Ambient decisions combine those stimuli with current needs, temperament, learned weather affinity and emotional weather memories. A curious creature may count lightning, a cautious one may find shelter, a calm creature may settle to night rain, and first snow or a formative storm can become a durable memory. Repeated reactions slowly create preferences shown only after they become meaningful.
+
+The old hard-coded day phases are gone. `timeSystem.ts` uses the selected place's IANA timezone and today's Open-Meteo sunrise/sunset, with a date/latitude/longitude solar calculation when those values are missing or weather is disabled. Light now moves through night, dawn, day, golden hour, dusk and night with smooth solar factors. `is_day` is only a low-weight fresh-data sanity signal; cloud, fog, precipitation, snow and storm subtly alter brightness, sky, stars and veil without causing a switch. Natural offline rest follows solar midnight in a capped nine-hour nightly window and retains timezone/DST sampling.
+
+The room gained a restrained window layer with drifting cloud, rain, snow, fog, wind, heat shimmer and rare storm light. Creature rendering adds cold shivers, heat panting, wind movement and personality-shaped storm/snow attention. A compact icon and temperature can accompany the phase label, while full location/cache controls stay in Settings. Manual browser QA covered first-run consent, failed geolocation to city fallback, real Dublin and Tokyo data, selected-place time, 390×844 and 320×568 layouts, disabled influence, persistence after reload, and a forced network failure retaining the labelled last-known weather. Deterministic checks cover request privacy, API parsing, caching/backoff, offline softening, WMO mapping, geocoding, migration, solar phases, seasonal differences, lighting continuity, timezones, DST, needs pressure, personality divergence, emotional memory and preference growth.
+
+### v0.11.1 — Evidence, Not Echoes
 
 Interests, life paths, and strong personality labels now require repeated creature-owned choices, behaviour, or stated preferences. User mentions have very little weight, curiosity is tracked separately, and explicit dislike or refusal is counter-evidence. Stable labels require several consistent signals spread over time (or an even larger body of evidence), while older saves without source-aware evidence are conservatively recalibrated instead of preserving fast, unsupported identities.
 
@@ -427,32 +486,33 @@ Player-facing Polish and English now use localized path, interest, development, 
 ## 6. Known Remaining Issues
 
 ### Build / TypeScript
-- **None currently.** Build passes cleanly (`npm run build` → 0 errors).
+- **None currently.** `npm run check` passes the deterministic system checks, Worker/security checks, TypeScript compilation, and production PWA build.
 
 ### Logic / UX
 - **Sound is intentionally minimal:** Current cues are short interaction tones rather than voiced creature vocalizations.
-- **Needs decay may feel too slow or too fast:** Tuned for 1-minute intervals. Real-world testing on mobile is needed.
 - **Object drag on mobile:** Pointer events should work on most mobile browsers, but long-press vs drag detection could conflict with browser gestures on some devices.
 - **Offline simulation is intentionally bounded:** It applies one visible, state-backed return trace rather than simulating long chains of unseen actions.
+- **Needs balance needs longitudinal play data:** The model is deterministic and protected against punishment, but exact day-to-day rates should be revisited after multi-day physical-device sessions.
+- **Weather preference balance needs real seasons:** Reaction cadence and affinity growth are bounded and deterministic, but multi-week saves across heat, snow and storms should guide later tuning.
 
 ### Architecture
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the conversation automatically falls back to the smaller local mind.
 - **Public gateway protection is best-effort:** Role attacks and task abuse are filtered and rate-limited, but a determined hostile client can spoof browser headers. Durable Cloudflare rate limiting or Turnstile remains a future hardening option.
-- **Coverage is targeted, not comprehensive:** Life-path, hybrid, daily-choice, recovery, worker, and TypeScript smoke checks exist; older systems still need broader automated coverage.
+- **Coverage is targeted, not comprehensive:** Needs, care, weather parsing/privacy/cache, solar time, migration, offline time, dates, timezones, DST, and day phases are covered; older conversation, social-learning, age-floor, and drag-gesture cases still need broader unit coverage.
 
 ---
 
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Balance paths on real saves** — tune signal speed, hybrid frequency, chapter cadence, daily moments, and return greetings after multi-day mobile play.
+1. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
 2. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
 3. **Object mastery** — extend the new creation arc to music, boxes, keepsakes, and collaborative play.
 
 ### Priority: Medium
-4. **Physical-device polish pass** — verify vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
+4. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
 5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
-6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and needs decay.
+6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
 
 ### Priority: Low / Future
 7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
@@ -463,10 +523,13 @@ Player-facing Polish and English now use localized path, interest, development, 
 
 ## 8. Architecture Decisions
 
-- **No visible stats, ever.** All creature state is communicated through body language, expressions, movement, sounds, and eventually language. This is a non-negotiable design principle.
-- **Local-first.** All core systems run in the browser. AI is reserved only for higher-level cognition and the app works fully offline.
+- **No permanent raw-stat dashboard.** Body language remains the first signal. A compact room cue and optional descriptive care sheet may expose playable urgency and the helpful action, but never raw percentages, optimisation-heavy meters, personality scores, or life-path scores.
+- **A real sky, never an accelerated clock.** With weather enabled, the selected place's real local time and sunrise/sunset define the sky. With weather disabled, a seasonal solar fallback follows device-local time. The game never accelerates the sun or invents an unexplained night toggle.
+- **Weather is interpreted, not scored.** Open-Meteo supplies observations only. `WorldEnvironment` translates them into bounded stimuli, and gameplay combines those with needs, personality, preferences and memories before a reaction. No rule maps a condition directly to happiness loss.
+- **Location minimisation.** Geolocation is opt-in, high accuracy is disabled, coordinates are rounded to two decimals before requests or persistence, manual city selection remains available, and disabling weather stops forecast refreshes.
+- **Local-first with one optional observation source.** All core systems and the last successful weather state run from IndexedDB. Open-Meteo enriches the world when enabled; AI remains reserved for higher-level cognition and both weather and conversation degrade gracefully offline.
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
-- **Language constrains the LLM.** When an LLM is added, the speech generation pipeline must pass through a vocabulary whitelist and sentence-complexity gate.
+- **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
 - **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
 - **No death from neglect.** Long absences change the creature (more independent, different trust level) but never punish the player.
 - **Nocturnal Terrarium art direction.** Room is a quiet habitat, Chat is a voice-led presence, Memory Book is a material keepsake, Becoming is a narrative portrait, and Settings is a functional sheet. Decorative assets support these roles but never define the creature.
@@ -478,7 +541,7 @@ Player-facing Polish and English now use localized path, interest, development, 
 
 ## 9. How to Reset / Start Fresh
 
-In the app, tap the small **"Reset"** text in the top-right corner. This clears IndexedDB and reloads the page.
+In the app, open **Settings**, scroll to **Begin another life / Zacznij inne życie**, and choose **Start over / Zacznij od nowa**. Save a private backup first if the creature may be needed later. Reset clears IndexedDB and reloads the page.
 
 To manually clear from console:
 ```js
@@ -495,6 +558,9 @@ location.reload();
 | The creature's data model | `src/types/index.ts` |
 | How the creature is born | `src/systems/creatureFactory.ts` |
 | How needs work | `src/systems/needsSystem.ts` |
+| How Open-Meteo requests, rounding and response parsing work | `src/systems/weatherService.ts` |
+| How weather becomes stimuli, needs pressure, reactions and preferences | `src/systems/environmentSystem.ts` |
+| How sunrise, sunset, local time, lighting and offline rest work | `src/systems/timeSystem.ts` |
 | How language emerges | `src/systems/languageSystem.ts` + `src/systems/developmentSystem.ts` |
 | How social learning works | `src/systems/socialLearningSystem.ts` |
 | How paths, hybrids, choices, recovery, and skins work | `src/systems/lifePathSystem.ts` |
@@ -504,10 +570,29 @@ location.reload();
 | How optional tones and haptics work | `src/systems/sensorySystem.ts` |
 | How the two-language shell chooses copy | `src/systems/uiLanguage.ts` |
 | How paper-and-pencil creations evolve | `src/systems/creationSystem.ts` |
+| How touch boundaries work | `src/systems/boundarySystem.ts` |
+| How shared sayings are adopted | `src/systems/sharedLanguageSystem.ts` |
+| How bounded AI requests are created | `src/systems/llmConversation.ts` |
+| How the private AI boundary is enforced | `worker/src/index.js` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
+| How the weather window and settings are drawn | `src/components/WeatherLayer.tsx` + `src/components/WeatherControls.tsx` |
+| How room objects are drawn | `src/components/ObjectIcon.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |
 | Personality signatures and autonomy weighting | `src/systems/relationshipSystem.ts` |
 | Meaningful firsts and development experience history | `src/systems/developmentSystem.ts` |
 | Material Memory Book and narrative Becoming UI | `src/components/MemoryBookView.tsx` + `src/components/BecomingView.tsx` |
 | Persistence | `src/systems/persistence.ts` |
 | Offline time | `src/systems/offlineSimulation.ts` |
+
+---
+
+## 11. Validation and Deployment
+
+```bash
+npm ci
+npm test       # deterministic systems + Worker/security checks
+npm run build  # TypeScript + production PWA build
+npm run check  # complete local and CI verification
+```
+
+The GitHub Pages workflow runs `npm run check` before uploading the production artifact. A failed system check, Worker check, TypeScript compilation, or Vite build prevents deployment.

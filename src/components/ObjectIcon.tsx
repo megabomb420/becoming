@@ -33,6 +33,44 @@ const ObjectIcon: React.FC<ObjectIconProps> = ({ type, size = 48, status, classN
     );
   }
 
+  if (type === 'water_bowl') {
+    return (
+      <svg {...common}>
+        <ellipse cx="32" cy="49" rx="23" ry="6" fill="#171614" opacity=".3" />
+        <path d="M10 27h44l-5 18c-1 5-6 8-11 8H26c-5 0-10-3-11-8l-5-18Z" fill="#708792" stroke={ink} strokeWidth="3" strokeLinejoin="round" />
+        <ellipse cx="32" cy="27" rx="22" ry="7" fill="#a6c4c9" stroke={ink} strokeWidth="3" />
+        <path d="M17 27c7 3 23 3 30 0" stroke="#d9eef0" strokeWidth="2.5" strokeLinecap="round" opacity=".8" />
+        <path d="M32 11c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11Z" fill="#8ec1cf" stroke={ink} strokeWidth="2.5" />
+      </svg>
+    );
+  }
+
+  if (type === 'litter_box') {
+    return (
+      <svg {...common}>
+        <ellipse cx="32" cy="54" rx="25" ry="5" fill="#171614" opacity=".3" />
+        <path d="M8 24h48l-4 27H12L8 24Z" fill="#8b7666" stroke={ink} strokeWidth="3" strokeLinejoin="round" />
+        <ellipse cx="32" cy="25" rx="23" ry="7" fill="#c7b18e" stroke={ink} strokeWidth="3" />
+        <path d="M16 26c8-4 25-4 33 0-9 4-24 4-33 0Z" fill="#8c7358" opacity=".75" />
+        <path d="m22 22 3 3m14-4 3 3m-11-2 2 3" stroke="#ead7b5" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (type === 'wash_basin') {
+    return (
+      <svg {...common}>
+        <ellipse cx="32" cy="53" rx="23" ry="5" fill="#171614" opacity=".3" />
+        <path d="M10 29h44l-5 17c-2 5-6 7-11 7H26c-5 0-9-2-11-7l-5-17Z" fill="#a99582" stroke={ink} strokeWidth="3" strokeLinejoin="round" />
+        <ellipse cx="32" cy="29" rx="22" ry="7" fill="#cbbca7" stroke={ink} strokeWidth="3" />
+        <ellipse cx="32" cy="29" rx="15" ry="3.5" fill="#7e9ea6" />
+        <circle cx="20" cy="16" r="5" fill="#dce9e7" stroke={ink} strokeWidth="2" />
+        <circle cx="32" cy="11" r="4" fill="#dce9e7" stroke={ink} strokeWidth="2" />
+        <circle cx="42" cy="18" r="3" fill="#dce9e7" stroke={ink} strokeWidth="2" />
+      </svg>
+    );
+  }
+
   if (type === 'apple') {
     return (
       <svg {...common}>

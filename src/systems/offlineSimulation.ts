@@ -1,10 +1,14 @@
 import { GameState, Memory, ObjectType, OfflineActivity, ReturnTrace, ReturnTraceKind, RoomObject } from '../types';
 import { generateDreamAfterSleep } from './innerLifeSystem';
-import { advanceNeeds } from './needsSystem';
+import { advanceNeeds, applyNeedDelta } from './needsSystem';
+import { estimateNightRestMs, getTimeOfDay, shouldBeDrowsy } from './timeSystem';
 
 const TRACE_MINIMUM_MS = 10 * 60_000;
 
 const traceObjectNames: Record<ObjectType, { en: string; pl: string }> = {
+  water_bowl: { en: 'water bowl', pl: 'miska z wodą' },
+  litter_box: { en: 'litter box', pl: 'kuweta' },
+  wash_basin: { en: 'wash basin', pl: 'miska do mycia' },
   food_bowl: { en: 'bowl', pl: 'miska' },
   apple: { en: 'apple', pl: 'jabłko' },
   broccoli: { en: 'broccoli', pl: 'brokuł' },
@@ -111,105 +115,51 @@ function applyReturnTrace(state: GameState, awayMs: number, now: number): { stat
   };
 }
 
-export function simulateOfflineTime(state: GameState, awayMs: number): { state: GameState; activities: OfflineActivity[] } {
+export type TimezoneOffsetAt = (timestamp: number) => number;
+
+export function simulateOfflineTime(
+  state: GameState,
+  awayMs: number,
+  now = Date.now(),
+  timezoneOffsetAt: TimezoneOffsetAt = timestamp => new Date(timestamp).getTimezoneOffset(),
+): { state: GameState; activities: OfflineActivity[] } {
   const activities: OfflineActivity[] = [];
-  let currentState = { ...state };
-  const awayMinutes = awayMs / 60000;
+  const safeAwayMs = Math.max(0, awayMs);
+  const awayMinutes = safeAwayMs / 60_000;
+  const leftAt = now - safeAwayMs;
+  const needsFrom = Number.isFinite(state.needsUpdatedAt) ? state.needsUpdatedAt : leftAt;
 
-  if (awayMinutes < 2) {
-    return { state: currentState, activities };
-  }
+  if (awayMinutes < 1) return { state, activities };
 
-  const now = Date.now();
-  const leftAt = now - awayMs;
-
-  // If creature was sleeping when user left, model continued sleep
+  const naturalNightRestMs = estimateNightRestMs(needsFrom, now, timezoneOffsetAt, state.world);
   const wasSleeping = state.sleepState === 'sleeping';
   const sleepStart = state.sleepStartTimestamp ?? leftAt;
-  const sleepDuration = wasSleeping ? Math.min(awayMs, now - sleepStart) : 0;
+  const manualSleepMs = wasSleeping ? Math.min(Math.max(0, now - sleepStart), 8 * 60 * 60_000) : 0;
+  const totalNeedWindow = Math.max(0, now - needsFrom);
+  const sleepMs = Math.min(totalNeedWindow, Math.max(naturalNightRestMs, manualSleepMs));
 
-  if (wasSleeping && sleepDuration > 0) {
-    // Creature slept for part or all of the absence
-    const sleptMinutes = sleepDuration / 60000;
-    const wakeThreshold = 480; // 8 hours of sleep is plenty
-    if (sleptMinutes >= wakeThreshold) {
-      currentState = {
-        ...currentState,
-        sleepState: 'awake',
-        currentActivity: null,
-        sleepStartTimestamp: undefined,
-        needs: {
-          ...currentState.needs,
-          energy: Math.min(100, currentState.needs.energy + 60),
-        },
-      };
-      currentState = generateDreamAfterSleep(currentState, sleepDuration, now);
-      activities.push({ type: 'slept', duration: sleptMinutes, timestamp: now - sleepDuration / 2 });
-    } else {
-      // Still sleeping or just woke up
-      currentState = {
-        ...currentState,
-        needs: {
-          ...currentState.needs,
-          energy: Math.min(100, currentState.needs.energy + sleptMinutes * 0.5),
-        },
-      };
-      if (awayMinutes > wakeThreshold) {
-        currentState.sleepState = 'awake';
-        currentState.currentActivity = null;
-        currentState.sleepStartTimestamp = undefined;
-      }
-      activities.push({ type: 'slept', duration: sleptMinutes, timestamp: now - sleepDuration / 2 });
-    }
+  let currentState = advanceNeeds(state, now, 'offline', sleepMs / 60_000);
+
+  if (sleepMs >= 60 * 60_000) {
+    activities.push({ type: 'slept', duration: sleepMs / 60_000, timestamp: now - sleepMs / 2 });
+    currentState = generateDreamAfterSleep(currentState, sleepMs, now);
   }
 
-  // Check if absence spanned night hours (22:00 - 06:00) and creature wasn't already sleeping
-  if (!wasSleeping && awayMinutes > 60) {
-    const leftHour = new Date(leftAt).getHours();
-    const returnHour = new Date(now).getHours();
-    const spannedNight = (leftHour >= 22 || leftHour <= 6) || (returnHour >= 22 || returnHour <= 6) || awayMinutes > 480;
-
-    if (spannedNight) {
-      currentState = {
-        ...currentState,
-        sleepState: 'awake',
-        currentActivity: null,
-        sleepStartTimestamp: undefined,
-        needs: {
-          ...currentState.needs,
-          energy: Math.min(100, currentState.needs.energy + 40),
-        },
-      };
-      currentState = generateDreamAfterSleep(currentState, awayMs * 0.6, now);
-      activities.push({ type: 'slept', duration: awayMinutes * 0.6, timestamp: now - awayMs / 2 });
-    }
+  // Independent activity makes absence feel lived-in without using randomness
+  // that would make the same restored save produce different outcomes.
+  const explores = awayMinutes > 30
+    && currentState.personality.curiosity * currentState.personality.independence > 2_400;
+  if (explores) {
+    const discoveries = ['looked at objects', 'moved something', 'sat quietly', 'explored room'];
+    const index = Math.abs(Math.floor((currentState.identity.seed + leftAt / 60_000) % discoveries.length));
+    activities.push({
+      type: discoveries[index],
+      duration: Math.min(90, awayMinutes * 0.18),
+      timestamp: leftAt + safeAwayMs * 0.58,
+    });
+    currentState = applyNeedDelta(currentState, { stimulation: 8, energy: -3 }, now);
   }
 
-  // Independent exploration based on personality (only if awake)
-  if (currentState.sleepState === 'awake') {
-    const exploreChance = currentState.personality.curiosity / 100;
-    const independence = currentState.personality.independence / 100;
-
-    if (awayMinutes > 30 && Math.random() < exploreChance * independence) {
-      const discoveries = ['looked at objects', 'moved something', 'sat quietly', 'explored room'];
-      activities.push({
-        type: discoveries[Math.floor(Math.random() * discoveries.length)],
-        duration: awayMinutes * 0.3,
-        timestamp: now - awayMs * 0.3,
-      });
-
-      currentState = {
-        ...currentState,
-        needs: {
-          ...currentState.needs,
-          stimulation: Math.min(100, currentState.needs.stimulation + 10),
-          hunger: Math.max(0, currentState.needs.hunger - awayMinutes * 0.5),
-        },
-      };
-    }
-  }
-
-  // Emotional response to absence
   if (awayMinutes > 120) {
     const memory: Memory = {
       id: `mem-absence-${now}`,
@@ -222,7 +172,7 @@ export function simulateOfflineTime(state: GameState, awayMs: number): { state: 
       understood: currentState.development.cognitiveLevel > 30,
       compressed: false,
     };
-    currentState.memories = [...currentState.memories, memory].slice(-200);
+    currentState = { ...currentState, memories: [...currentState.memories, memory].slice(-200) };
   }
 
   // Leave one physical, state-backed trace before any return dialogue. The
@@ -232,18 +182,25 @@ export function simulateOfflineTime(state: GameState, awayMs: number): { state: 
   currentState = traced.state;
   if (traced.activity) activities.push(traced.activity);
 
-  // The same hidden need model continues while away at gentler rates. The
-  // care cycle is deliberately bounded to one trace of each kind per return.
-  currentState = advanceNeeds(currentState, awayMinutes, now, 'offline').state;
+  const localOffset = timezoneOffsetAt(now);
+  const time = getTimeOfDay(now, currentState.world, localOffset);
+  const shortUnfinishedSleep = wasSleeping && manualSleepMs > 0 && manualSleepMs < 8 * 60 * 60_000;
+  const sleepState: GameState['sleepState'] = shortUnfinishedSleep
+    ? 'sleeping'
+    : shouldBeDrowsy(time, currentState.needs.energy) ? 'drowsy' : 'awake';
 
-  // Age progresses
   currentState = {
     ...currentState,
     development: {
       ...currentState.development,
-      chronologicalAge: currentState.development.chronologicalAge + awayMs,
+      chronologicalAge: currentState.development.chronologicalAge + safeAwayMs,
     },
+    sleepState,
+    currentActivity: sleepState === 'sleeping' ? 'sleeping' : null,
+    sleepStartTimestamp: sleepState === 'sleeping' ? sleepStart : undefined,
+    creatureBehavior: sleepState === 'sleeping' ? 'sleeping' : 'idle',
     lastSaved: now,
+    needsUpdatedAt: now,
   };
 
   return { state: currentState, activities };
