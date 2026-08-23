@@ -13,6 +13,16 @@ import {
   recordBondEvent,
   recordObjectExperience,
 } from '../systems/relationshipSystem';
+import {
+  ensureDailyMoment,
+  evolveLifePathFromObject,
+  getLifePathClues,
+  getLifePathDescription,
+  getLifePathTitle,
+  getLifePathVisual,
+  getRankedLifePaths,
+  resolveDailyMoment,
+} from '../systems/lifePathSystem';
 
 interface RoomProps {
   state: GameState;
@@ -131,11 +141,13 @@ interface CreatureCue {
 const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const [speech, setSpeech] = useState<string | null>(null);
   const [showMemoryBook, setShowMemoryBook] = useState(false);
+  const [showBecoming, setShowBecoming] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [creatureEmotion, setCreatureEmotion] = useState(state.emotionalState);
   const [initiatedTopic, setInitiatedTopic] = useState<string | null>(null);
   const [creatureCue, setCreatureCue] = useState<CreatureCue | null>(null);
+  const [momentResult, setMomentResult] = useState<string | null>(null);
 
   // Drag state
   const [draggingType, setDraggingType] = useState<ObjectType | null>(null);
@@ -162,6 +174,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   const speechTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const initiateTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const activityTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const momentResultTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const activeObjectRef = useRef<string | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
   const roomRef = useRef<HTMLDivElement>(null);
@@ -171,6 +184,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
   useEffect(() => { creatureEmotionRef.current = creatureEmotion; }, [creatureEmotion]);
   useEffect(() => { creaturePosRef.current = creaturePos; }, [creaturePos]);
   useEffect(() => { behaviorRef.current = state.creatureBehavior; }, [state.creatureBehavior]);
+
+  // One authored situation per creature-day gives the player something to
+  // react to even when they do not know what to say in chat. The generator is
+  // deterministic and idempotent, so StrictMode cannot duplicate a moment.
+  useEffect(() => {
+    if (!state.development.hatched || state.development.cognitiveLevel < 12) return;
+    onStateChange(prev => ensureDailyMoment(prev));
+  }, [onStateChange, state.development.hatched, state.development.cognitiveLevel, state.development.chronologicalAge]);
 
   const triggerSpeech = useCallback((text: string) => {
     setSpeech(text);
@@ -271,7 +292,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       if (type === 'apple' || type === 'broccoli') {
         next = learnWord(next, type, 'food');
       }
-      return recordObjectExperience(next, type, reaction, initiatedByUser);
+      const experienced = recordObjectExperience(next, type, reaction, initiatedByUser);
+      return evolveLifePathFromObject(experienced, type, reaction.outcome);
     });
 
     behaviorRef.current = reaction.behavior;
@@ -499,6 +521,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     clearTimeout(emotionTimerRef.current);
     clearTimeout(speechTimeoutRef.current);
     clearTimeout(cueTimerRef.current);
+    clearTimeout(momentResultTimerRef.current);
   }, [clearActionTimers]);
 
   // External state changes (load/offline simulation) can update the stored
@@ -758,9 +781,21 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
     setInitiatedTopic(null);
   };
 
+  const handleMomentChoice = (choiceId: string, result: string) => {
+    onStateChange(prev => resolveDailyMoment(prev, choiceId));
+    clearTimeout(momentResultTimerRef.current);
+    setMomentResult(result);
+    momentResultTimerRef.current = setTimeout(() => setMomentResult(null), 4500);
+  };
+
   const ageDays = Math.floor(state.development.chronologicalAge / (24 * 60 * 60 * 1000));
   const developmentLabel = getDevelopmentLabel(state.development.stage);
   const emergingTraits = getEmergingTraitLabels(state.personality);
+  const lifePathTitle = getLifePathTitle(state);
+  const lifePathDescription = getLifePathDescription(state);
+  const lifePathClues = getLifePathClues(state);
+  const rankedLifePaths = getRankedLifePaths(state);
+  const pathVisual = getLifePathVisual(state);
   const discoveredPreferences = INVENTORY_ORDER
     .map(type => ({ type, preference: state.objectPreferences[type] }))
     .filter(({ preference }) => preference.interactions >= 2 && (preference.affinity >= 12 || preference.affinity <= -8))
@@ -781,6 +816,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
         <div className="absolute bottom-0 left-0 right-0 h-[35%] bg-room-mid" />
         <div className="absolute top-0 left-0 right-0 h-[65%]" style={{ background: 'linear-gradient(180deg, #1e1b16 0%, #1a1814 100%)' }} />
         <div className="absolute top-[20%] left-[50%] w-[300px] h-[300px] -translate-x-1/2 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, rgba(200,170,120,0.3) 0%, transparent 70%)' }} />
+        <div className="absolute inset-0 transition-colors duration-[1800ms]" style={{ background: pathVisual.roomTint }} />
       </div>
 
       {/* Vignette */}
@@ -914,14 +950,59 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
       )}
 
       {/* Top bar */}
-      <div className="absolute top-0 left-0 right-0 safe-top px-4 py-3 flex justify-between items-center z-30">
-        <div className="text-warm-200/60 text-xs font-serif tracking-wider">
-          {state.identity.name || 'New'} · {developmentLabel}
-        </div>
-        <button onClick={() => setShowMemoryBook(true)} className="text-warm-200/60 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
-          Memories
+      <div className="absolute top-0 left-0 right-0 safe-top px-4 py-3 flex justify-between items-start z-30">
+        <button onClick={() => setShowBecoming(true)} className="text-left group">
+          <div className="text-warm-200/60 text-xs font-serif tracking-wider group-hover:text-warm-100 transition-colors">
+            {state.identity.name || 'New'} · {developmentLabel}
+          </div>
+          <div className="text-[9px] font-serif uppercase tracking-[0.16em] mt-0.5 transition-colors" style={{ color: pathVisual.accent }}>
+            {lifePathTitle}
+          </div>
         </button>
+        <div className="flex gap-3">
+          <button onClick={() => setShowBecoming(true)} className="text-warm-200/45 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
+            Becoming
+          </button>
+          <button onClick={() => setShowMemoryBook(true)} className="text-warm-200/60 hover:text-warm-100 text-xs font-serif tracking-wider transition-colors">
+            Memories
+          </button>
+        </div>
       </div>
+
+      {/* Daily moments are small dilemmas, not quests. Their choice changes
+          the creature's path and becomes a remembered event. */}
+      {state.lifePath.pendingMoment && !showChat && !showMemoryBook && !showBecoming && state.sleepState !== 'sleeping' && (
+        <div className="absolute left-4 right-4 bottom-24 z-40 animate-slide-up">
+          <div className="max-w-md mx-auto rounded-2xl border border-warm-300/20 bg-room-dark/94 backdrop-blur-xl p-4 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/55">A moment · Day {state.lifePath.pendingMoment.day}</p>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: pathVisual.accent }} />
+            </div>
+            <h2 className="text-warm-100 text-base font-serif mt-1">{state.lifePath.pendingMoment.title}</h2>
+            <p className="text-warm-200/65 text-xs leading-relaxed font-serif mt-1.5">{state.lifePath.pendingMoment.prompt}</p>
+            <div className="grid gap-2 mt-3">
+              {state.lifePath.pendingMoment.choices.map(choice => (
+                <button
+                  key={choice.id}
+                  onClick={() => handleMomentChoice(choice.id, choice.result)}
+                  className="rounded-xl border border-warm-200/10 bg-room-mid/70 px-3 py-2 text-left text-xs font-serif text-warm-100 hover:border-warm-300/30 active:scale-[0.99] transition-all"
+                >
+                  {choice.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {momentResult && !showChat && !showMemoryBook && !showBecoming && (
+        <div className="absolute left-5 right-5 bottom-24 z-40 pointer-events-none animate-cue-pop">
+          <div className="max-w-sm mx-auto rounded-2xl border border-warm-300/20 bg-room-mid/94 backdrop-blur-xl px-4 py-3 text-center shadow-2xl">
+            <p className="text-[9px] uppercase tracking-[0.2em] text-warm-300/45">This became a memory</p>
+            <p className="text-warm-100/85 text-xs font-serif leading-relaxed mt-1">{momentResult}</p>
+          </div>
+        </div>
+      )}
 
       {/* Conversation is the primary way this creature grows. */}
       {state.conversation.totalUserMessages === 0 && !showInventory && state.sleepState !== 'sleeping' && (
@@ -1083,6 +1164,72 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, version }) => {
                 <p className="text-warm-200/20 text-[10px] font-serif">Becoming v{version}</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Becoming Overlay */}
+      {showBecoming && (
+        <div className="absolute inset-0 bg-room-dark/97 backdrop-blur-xl z-50 animate-fade-in safe-top safe-bottom safe-x overflow-auto">
+          <div className="max-w-md mx-auto p-6">
+            <div className="flex justify-between items-start gap-4 mb-7">
+              <div>
+                <p className="text-warm-300/45 text-[9px] uppercase tracking-[0.22em]">What I am becoming</p>
+                <h2 className="text-warm-100 text-2xl font-serif mt-1">{lifePathTitle}</h2>
+                <p className="text-[10px] uppercase tracking-widest mt-1" style={{ color: pathVisual.accent }}>{state.lifePath.phase}</p>
+                <p className="text-warm-200/30 text-[9px] font-serif mt-1">
+                  Skin · {state.lifePath.phase === 'embodied' ? 'full form' : state.lifePath.secondary ? 'hybrid signs' : state.lifePath.phase === 'committed' ? 'settling in' : state.lifePath.phase === 'recovering' ? 'changing again' : 'first signs'}
+                </p>
+              </div>
+              <button onClick={() => setShowBecoming(false)} className="text-warm-200/60 hover:text-warm-100 text-sm">Close</button>
+            </div>
+
+            <div className="rounded-2xl border border-warm-200/10 bg-room-mid/45 p-4 shadow-xl" style={{ boxShadow: `0 18px 70px ${pathVisual.aura}` }}>
+              <p className="text-warm-100/85 text-sm font-serif leading-relaxed">{lifePathDescription}</p>
+              {state.lifePath.recovery >= 18 && (
+                <div className="mt-3">
+                  <div className="flex justify-between text-[9px] uppercase tracking-widest text-warm-200/35"><span>breaking old patterns</span><span>{Math.round(state.lifePath.recovery)}%</span></div>
+                  <div className="h-1 bg-room-dark/60 rounded-full mt-1 overflow-hidden"><div className="h-full bg-warm-300/55" style={{ width: `${state.lifePath.recovery}%` }} /></div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6">
+              <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Visible tendencies</h3>
+              <div className="space-y-2 mt-3">
+                {lifePathClues.length > 0 ? lifePathClues.map(clue => (
+                  <div key={clue} className="border-l border-warm-300/30 pl-3 text-warm-100/75 text-xs font-serif leading-relaxed">{clue}</div>
+                )) : <p className="text-warm-200/35 text-xs font-serif italic">Still too young to have hardened into a type.</p>}
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Pull of possible lives</h3>
+              <div className="space-y-2.5 mt-3">
+                {rankedLifePaths.map(path => (
+                  <div key={path.id}>
+                    <div className="flex justify-between text-[10px] font-serif text-warm-200/55"><span>{path.label}</span><span>{Math.round(path.score)}</span></div>
+                    <div className="h-1 bg-room-mid rounded-full mt-1 overflow-hidden"><div className="h-full transition-all duration-700" style={{ width: `${path.score}%`, background: pathVisual.accent, opacity: path.id === state.lifePath.primary ? 0.9 : 0.35 }} /></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {state.lifePath.history.length > 0 && (
+              <div className="mt-7">
+                <h3 className="text-warm-200/45 text-[10px] uppercase tracking-[0.18em]">Turns in the road</h3>
+                <div className="space-y-3 mt-3">
+                  {[...state.lifePath.history].reverse().slice(0, 6).map(item => (
+                    <div key={item.id} className="border-l-2 border-warm-300/20 pl-3">
+                      <div className="text-warm-100/80 text-xs font-serif">{item.title}</div>
+                      <div className="text-warm-200/40 text-[10px] font-serif mt-0.5">{item.detail}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="mt-8 text-center text-warm-200/20 text-[9px] font-serif">No path is permanent. Repetition strengthens it; consequences and choices can bend it.</p>
           </div>
         </div>
       )}

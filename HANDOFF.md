@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.7.2
+> **Version:** 0.9.9
 > **Last Updated:** 2026-08-23
 
 ---
@@ -24,6 +24,7 @@ The project is built as a **polished vertical slice** — playable from birth th
 | Build Tool | Vite 5 + vite-plugin-pwa |
 | Persistence | IndexedDB via `idb` library |
 | Rendering | HTML5 Canvas (creature), DOM (UI) |
+| AI mind | DeepSeek V4 Flash behind a private Cloudflare Worker proxy |
 | Icons | Generated via PIL (Python) |
 | Deployment | GitHub Pages via GitHub Actions |
 
@@ -95,14 +96,18 @@ becoming/
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
 | Creature-initiated chat | ✅ | Creature can start conversations based on observations |
 | Chat interface | ✅ | Full-screen conversation with constrained responses |
+| Live AI mind | ✅ | DeepSeek replies through a private backend; the browser never receives the API key and gracefully falls back to local dialogue |
+| Life paths | ✅ | 12 slowly forming lifestyles shaped by conversation, objects, repeated choices, consequences, and recovery |
+| Crossbreeds | ✅ | Compatible dominant tendencies combine into named hybrid identities such as Fog Gamer, Chill Sage, or Gentle Anchor |
+| Daily moments | ✅ | One authored dilemma per creature-day; choices alter the path and become persistent memories |
+| Visual evolution | ✅ | Body shape, gaze, colour, aura, room tint, marks, and accessories change with the current path and hybrid |
+| Becoming view | ✅ | Shows the current identity, visible clues, possible lives, recovery, skin stage, and turns in the road |
 | Version display | ✅ | Discreetly shown in Memory Book footer |
 
 ### 🚧 Partial / Placeholder
 
 | Feature | State | Gap |
 |---|---|---|
-| AI language generation | 🚧 | All speech is template/keyword-based. No LLM integration yet. Architecture supports adding an `AIController` later. |
-| Creature visual evolution | 🚧 | Appearance is seeded but does not change over time yet. Morphological variation system exists in types only. |
 | Interest system | 🚧 | Types defined but interests do not emerge organically from play yet. |
 | Dreams | 🚧 | Type exists but dream generator not implemented. |
 | Notifications | 🚧 | Architecture prepared but no push notification logic. |
@@ -110,8 +115,6 @@ becoming/
 
 ### ❌ Not Yet Implemented
 
-- AI/LLM backend integration
-- Creature visual evolution over time (eye size, posture, markings)
 - Multi-creature comparison / sharing
 - Cloud sync
 - Sound effects / creature vocalizations
@@ -268,6 +271,12 @@ The creature now answers through GPT-5.6 Luna from the first conversation. Puter
 
 Puter and end-user login have been removed. The browser now sends a bounded personality, memory, habit, and recent-conversation context to a private Cloudflare Worker, which calls DeepSeek V4 Flash in non-thinking mode. The public bundle contains no model credential. The worker enforces origin, payload, output, timeout, and best-effort per-IP rate limits; the local dialogue engine remains the offline fallback.
 
+### v0.9.9 — Lives, Hybrids & Consequences
+
+The creature can now drift into 12 recognisable life paths: Stoner, Party Animal, Alcoholic, Gymbro, Workaholic, Doomer, Degen, Gamer, Conspiracist, Caretaker, Monk, and Rebel. Repeated conversation, learned behaviour, objects, and daily choices strengthen tendencies over time; long gaps soften them. Compatible paths create named crossbreeds, with more than two dozen authored hybrids. Harmful patterns include visible costs and reversible recovery arcs rather than becoming permanent labels.
+
+Each creature-day can surface a small three-way dilemma. The result immediately appears, becomes a durable memory, and changes the creature's future pull. The new Becoming view communicates this without exposing raw game mechanics in the main room. Skin evolution is driven by the same state: body proportions, gaze, colour, aura, room tint, marks, and layered accessories change as a path moves from first signs to a settled or hybrid form. The AI gateway receives a bounded summary of this identity, so DeepSeek speaks with the resulting voice without reciting scores or treating tendencies as diagnoses.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -282,8 +291,8 @@ Puter and end-user login have been removed. The browser now sends a bounded pers
 - **Offline simulation is simple:** Does not model complex chained activities.
 
 ### Architecture
-- **Conversation brain is local and bounded:** It has persistent context, facts, stage-aware replies, Polish/English recognition, and personality voice, but broad open-domain knowledge still requires a secure server-side LLM gateway.
-- **No test suite:** No unit tests for any system.
+- **AI depends on the private gateway:** If the Worker or model provider is unavailable, the conversation automatically falls back to the smaller local mind.
+- **Coverage is targeted, not comprehensive:** Life-path, hybrid, daily-choice, recovery, worker, and TypeScript smoke checks exist; older systems still need broader automated coverage.
 - **Memory compression not implemented:** `compressed: boolean` exists on `Memory` but is never used.
 
 ---
@@ -291,15 +300,14 @@ Puter and end-user login have been removed. The browser now sends a bounded pers
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Secure model gateway** — add a small server-side endpoint that can enrich mature-stage replies without exposing an API key in the PWA. All model output must remain constrained by the local creature state.
-2. **Conversation summarisation** — compress older dialogue into durable memories before the local message window rolls over.
-3. **Add sound design** — subtle ambient vocalizations and interaction sounds that respect browser autoplay constraints.
+1. **Conversation summarisation** — compress older dialogue into durable memories before the local message window rolls over.
+2. **Add sound design** — subtle ambient vocalizations and interaction sounds that respect browser autoplay constraints.
+3. **Balance paths on real saves** — tune signal speed, hybrid frequency, and daily moments after multi-day mobile play.
 
 ### Priority: Medium
-4. **Creature visual evolution** — implement gradual morphological changes (eye size, roundness, markings) that respond to age, personality, and habits.
-5. **Interest system** — make interests emerge organically from object interactions.
-6. **Mobile device polish pass** — test on actual iOS Safari and Android Chrome; add restrained optional haptics for direct touch interactions.
-7. **Test suite** — at minimum, unit tests for conversation parsing, social learning, age floors, and needs decay.
+4. **Interest system** — make interests emerge organically from object interactions.
+5. **Mobile device polish pass** — test on actual iOS Safari and Android Chrome; add restrained optional haptics for direct touch interactions.
+6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and needs decay.
 
 ### Priority: Low / Future
 8. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
@@ -341,6 +349,7 @@ location.reload();
 | How needs work | `src/systems/needsSystem.ts` |
 | How language emerges | `src/systems/languageSystem.ts` + `src/systems/developmentSystem.ts` |
 | How social learning works | `src/systems/socialLearningSystem.ts` |
+| How paths, hybrids, choices, recovery, and skins work | `src/systems/lifePathSystem.ts` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |
 | Persistence | `src/systems/persistence.ts` |

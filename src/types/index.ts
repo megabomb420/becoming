@@ -38,6 +38,64 @@ export interface PersonalityTraits {
   sociability: number;
 }
 
+export type LifePathId =
+  | 'stoner'
+  | 'party_animal'
+  | 'alcoholic'
+  | 'gymbro'
+  | 'workaholic'
+  | 'doomer'
+  | 'degen'
+  | 'gamer'
+  | 'conspiracist'
+  | 'caretaker'
+  | 'monk'
+  | 'rebel';
+
+export type LifePathPhase = 'unformed' | 'leaning' | 'committed' | 'embodied' | 'recovering';
+
+export interface LifePathMilestone {
+  id: string;
+  timestamp: number;
+  title: string;
+  detail: string;
+  primary: LifePathId | null;
+  secondary: LifePathId | null;
+  phase: LifePathPhase;
+}
+
+export interface DailyMomentChoice {
+  id: string;
+  label: string;
+  result: string;
+  pathEffects: Partial<Record<LifePathId, number>>;
+  recoveryEffect?: number;
+  bondEffect?: number;
+}
+
+export interface DailyMoment {
+  id: string;
+  day: number;
+  title: string;
+  prompt: string;
+  choices: DailyMomentChoice[];
+}
+
+export interface LifePathState {
+  scores: Record<LifePathId, number>;
+  primary: LifePathId | null;
+  secondary: LifePathId | null;
+  phase: LifePathPhase;
+  crossbreed: string | null;
+  recovery: number;
+  stability: number;
+  lastUpdated: number;
+  history: LifePathMilestone[];
+  lastDailyMomentDay: number;
+  pendingMoment: DailyMoment | null;
+  resolvedMomentIds: string[];
+}
+
 export interface DevelopmentState {
   chronologicalAge: number;    // in milliseconds since birth
   cognitiveLevel: number;      // 0-100
@@ -291,6 +349,7 @@ export interface GameState {
   identity: CreatureIdentity;
   needs: Needs;
   personality: PersonalityTraits;
+  lifePath: LifePathState;
   development: DevelopmentState;
   memories: Memory[];
   vocabulary: VocabularyEntry[];

@@ -1,4 +1,5 @@
 import { ChatMessage, GameState } from '../types';
+import { getLifePathTitle, getRankedLifePaths } from './lifePathSystem';
 
 const API_URL = (import.meta.env.VITE_BECOMING_API_URL || '').replace(/\/$/, '');
 const MAX_CONTEXT_MESSAGES = 14;
@@ -63,6 +64,15 @@ function requestBody(state: GameState) {
       language: state.conversation.language,
       traits: strongestTraits(state),
     },
+    lifePath: {
+      title: getLifePathTitle(state),
+      primary: state.lifePath.primary,
+      secondary: state.lifePath.secondary,
+      phase: state.lifePath.phase,
+      recovery: Math.round(state.lifePath.recovery),
+      tendencies: getRankedLifePaths(state, 4).map(path => ({ id: path.id, score: Math.round(path.score) })),
+      recentTurns: state.lifePath.history.slice(-4).map(item => ({ title: item.title, detail: item.detail })),
+    },
     facts: compactFacts(state),
     habits: compactHabits(state),
     messages: toModelHistory(state.conversation.messages),
@@ -94,4 +104,3 @@ export async function requestCreatureReply(state: GameState): Promise<string> {
     window.clearTimeout(timeout);
   }
 }
-

@@ -8,6 +8,7 @@ import {
 } from '../systems/conversationSystem';
 import { getDevelopmentDescription } from '../systems/developmentSystem';
 import { isLlmAvailable, requestCreatureReply } from '../systems/llmConversation';
+import { getLifePathTitle, getLifePathVisual } from '../systems/lifePathSystem';
 
 interface ChatInterfaceProps {
   state: GameState;
@@ -26,6 +27,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
   const mountedRef = useRef(true);
   const messages = state.conversation.messages;
   const isPolish = state.conversation.language === 'pl';
+  const pathVisual = getLifePathVisual(state);
+  const lifePathTitle = getLifePathTitle(state);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -97,7 +100,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <div
             className="relative w-11 h-11 rounded-full border border-warm-200/20 shadow-lg flex items-center justify-center shrink-0"
-            style={{ background: `hsl(${state.identity.appearance.baseHue} 25% 45% / 0.75)` }}
+            style={{
+              background: `hsl(${(state.identity.appearance.baseHue + pathVisual.hueShift * pathVisual.strength + 360) % 360} ${pathVisual.saturation}% ${pathVisual.lightness}% / 0.78)`,
+              boxShadow: `0 0 24px ${pathVisual.aura}`,
+            }}
             aria-hidden="true"
           >
             <div className="flex gap-1">
@@ -109,7 +115,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               <h1 className="text-warm-100 text-base font-serif truncate">{state.identity.name || 'The creature'}</h1>
-              <span className="text-warm-300/55 text-[10px] uppercase tracking-widest">growing</span>
+              <span className="text-[10px] uppercase tracking-widest" style={{ color: pathVisual.accent }}>{lifePathTitle}</span>
             </div>
             <p className="text-warm-200/45 text-[11px] font-serif">
               {getMindStatus(state)} · {mindState === 'connecting' ? 'connecting mind…' : mindState === 'online' ? 'AI mind online' : mindState === 'instinct' ? 'local instinct' : isLlmAvailable() ? 'AI mind ready' : 'local instinct'}

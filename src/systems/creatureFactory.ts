@@ -1,5 +1,6 @@
 import { CreatureIdentity, CreatureAppearance, GameState, DevelopmentState, Needs, PersonalityTraits, RelationshipModel, SocialLearningState, ConversationState, ObjectType } from '../types';
 import { createBondState, createObjectPreferences } from './relationshipSystem';
+import { createLifePathState } from './lifePathSystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -102,6 +103,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
     identity,
     needs,
     personality,
+    lifePath: createLifePathState(personality, birthTime),
     development,
     memories: [],
     vocabulary: [],

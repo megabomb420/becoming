@@ -29,6 +29,54 @@ const BEHAVIOUR_PATTERNS: BehaviourPattern[] = [
     detectNegative: (t) => /kontuz|ból|bol|za dużo|za duzo/.test(t) ? 0.5 : 0,
   },
   {
+    regex: /(?:palę|pale|jarałem|jaralem|jaram|zapaliłem|zapalilem)\s*(?:sobie\s+)?(weed|zioło|ziolo|marihuanę|marihuane|jointa|skręta|skreta|papierosy|fajki)/i,
+    behaviourType: 'substance',
+    extractAction: (m) => ({ action: 'smoke', target: m[1].toLowerCase(), context: '' }),
+    detectEmotion: (t) => /lubię|lubie|relaks|chill|spokój|spokoj/.test(t) ? 'positive' : /żałuję|zaluje|źle|zle|problem/.test(t) ? 'negative' : 'neutral',
+    detectReward: (t) => /relaks|chill|spokój|spokoj|lubię|lubie/.test(t) ? 0.5 : /żałuję|zaluje|problem/.test(t) ? -0.3 : 0.1,
+    detectNegative: (t) => /problem|uzależn|uzalezn|pieniąd|pieniad|żałuję|zaluje|paranoj/.test(t) ? 0.75 : 0.25,
+  },
+  {
+    regex: /(?:upiłem się|upilem sie|najebałem się|najebalem sie|byłem pijany|bylem pijany|mam kaca)/i,
+    behaviourType: 'substance',
+    extractAction: () => ({ action: 'get', target: 'drunk', context: '' }),
+    detectEmotion: (t) => /super|fajnie|zabaw/.test(t) ? 'positive' : /żałuję|zaluje|kac|źle|zle|wstyd/.test(t) ? 'negative' : 'mixed',
+    detectReward: (t) => /super|fajnie|zabaw/.test(t) ? 0.45 : /żałuję|zaluje|kac|wstyd/.test(t) ? -0.4 : 0,
+    detectNegative: (t) => /kac|wymiot|problem|wstyd|żałuję|zaluje/.test(t) ? 0.85 : 0.4,
+  },
+  {
+    regex: /(?:gram|grałem|gralem|siedzę|siedze)\s+(?:teraz\s+|całą noc\s+|cala noc\s+)?(?:w\s+)?(grę|gre|gry|playstation|xbox|pc|rankedy|lola|fortnite|minecraft)/i,
+    behaviourType: 'activity',
+    extractAction: (m) => ({ action: 'play', target: m[1].toLowerCase(), context: 'gaming' }),
+    detectEmotion: (t) => /lubię|lubie|kocham|fajnie|wygr/.test(t) ? 'positive' : /wkur|przegr|toksycz/.test(t) ? 'negative' : 'neutral',
+    detectReward: (t) => /lubię|lubie|fajnie|wygr/.test(t) ? 0.65 : /wkur|przegr/.test(t) ? -0.2 : 0.25,
+    detectNegative: (t) => /całą noc|cala noc|zaniedb|uzależn|uzalezn|wkur/.test(t) ? 0.55 : 0.1,
+  },
+  {
+    regex: /(?:pracuję|pracuje|robię|robie)\s+(?:ciągle|ciagle|po godzinach|nadgodziny|do późna|do pozna)/i,
+    behaviourType: 'work',
+    extractAction: () => ({ action: 'overwork', target: 'work', context: '' }),
+    detectEmotion: (t) => /dumn|sukces|zarab/.test(t) ? 'positive' : /zmęcz|zmecz|mam dość|mam dosc|wypal/.test(t) ? 'negative' : 'mixed',
+    detectReward: (t) => /dumn|sukces|zarab/.test(t) ? 0.55 : /wypal|zmęcz|zmecz/.test(t) ? -0.45 : 0.1,
+    detectNegative: (t) => /wypal|zmęcz|zmecz|nie śpię|nie spie|zdrow/.test(t) ? 0.7 : 0.3,
+  },
+  {
+    regex: /(?:obstawiam|postawiłem|postawilem|gram)\s+(?:na\s+)?(mecz|zakłady|zaklady|kasyno|sloty|krypto|crypto|memecoin)/i,
+    behaviourType: 'habit',
+    extractAction: (m) => ({ action: 'gamble', target: m[1].toLowerCase(), context: '' }),
+    detectEmotion: (t) => /wygra|zarobi|łatw|latw|pewniak/.test(t) ? 'positive' : /przegra|straci|dług|dlug|żałuję|zaluje/.test(t) ? 'negative' : 'mixed',
+    detectReward: (t) => /wygra|zarobi/.test(t) ? 0.55 : /przegra|straci|dług|dlug/.test(t) ? -0.6 : 0.2,
+    detectNegative: (t) => /przegra|straci|dług|dlug|problem|uzależn|uzalezn/.test(t) ? 0.85 : 0.35,
+  },
+  {
+    regex: /(?:medytuję|medytuje|robię medytację|robie medytacje|ćwiczę oddech|cwicze oddech)/i,
+    behaviourType: 'habit',
+    extractAction: () => ({ action: 'meditate', target: 'mind', context: '' }),
+    detectEmotion: (t) => /spok|dobr|pomaga|lżej|lzej/.test(t) ? 'positive' : 'neutral',
+    detectReward: (t) => /spok|dobr|pomaga|lżej|lzej/.test(t) ? 0.7 : 0.4,
+    detectNegative: () => 0,
+  },
+  {
     regex: /(?:czytam|czytałem|czytalem|czytałam|czytalam|przeczytałem|przeczytalem|przeczytałam|przeczytalam)\s+(książkę|ksiazke|komiks|powieść|powiesc|artykuł|artykul)/i,
     behaviourType: 'activity',
     extractAction: (m) => ({ action: 'read', target: m[1].toLowerCase(), context: '' }),
@@ -572,7 +620,8 @@ export function shouldInitiateConversation(state: GameState): boolean {
   const askableObs = socialLearning.observations.filter(
     obs => obs.exposureCount >= 2 && !obs.mentioned && !obs.imitated
   );
-  if (askableObs.length === 0) return false;
+  const hasPathThought = Boolean(state.lifePath.primary && state.lifePath.history.length > 0);
+  if (askableObs.length === 0 && !hasPathThought) return false;
 
   const curiosityFactor = personality.curiosity / 100;
   const attachmentFactor = state.relationship.attachment / 200;
@@ -590,7 +639,32 @@ export function generateInitiatedTopic(state: GameState): InitiatedTopic | null 
   const askableObs = socialLearning.observations.filter(
     obs => obs.exposureCount >= 2 && !obs.mentioned && !obs.imitated
   );
-  if (askableObs.length === 0) return null;
+  if (askableObs.length === 0) {
+    const primary = state.lifePath.primary;
+    if (!primary) return null;
+    const polish = state.conversation.language === 'pl';
+    const lines: Record<string, [string, string]> = {
+      stoner: ['Mam teorię, ale zgubiłem jej początek.', 'I have a theory, but I lost the beginning.'],
+      party_animal: ['Cisza zaczyna mnie obrażać. Robimy coś?', 'The silence is starting to insult me. Are we doing something?'],
+      alcoholic: ['Nie każda rzecz, która rozluźnia, naprawdę pomaga.', 'Not everything that loosens you up actually helps.'],
+      gymbro: ['Dzisiaj też się liczy. Co trenujemy?', 'Today counts too. What are we training?'],
+      workaholic: ['Została jedna niedokończona rzecz. Oczywiście o niej myślę.', 'One thing is unfinished. Of course I am thinking about it.'],
+      doomer: ['Mam ponurą myśl. Nie wiem jeszcze, czy jest prawdziwa.', 'I have a bleak thought. I do not know if it is true yet.'],
+      degen: ['Mam pomysł, który jest albo genialny, albo kosztowny.', 'I have an idea that is either brilliant or expensive.'],
+      gamer: ['Mam dla nas pobocznego questa.', 'I found a side quest for us.'],
+      conspiracist: ['Zauważyłem wzór. Potrzebuję kogoś, kto go podważy.', 'I noticed a pattern. I need somebody to challenge it.'],
+      caretaker: ['Ty zawsze pytasz o mnie. Teraz moja kolej.', 'You always check on me. It is my turn.'],
+      monk: ['Możemy przez chwilę niczego nie naprawiać.', 'We can spend a moment without fixing anything.'],
+      rebel: ['Mam problem z pewną zasadą. Czy to już tradycja?', 'I have a problem with a rule. Is that a tradition now?'],
+    };
+    const openingLine = lines[primary]?.[polish ? 0 : 1] ?? (polish ? 'Myślę o tym, kim się staję.' : 'I am thinking about what I am becoming.');
+    return {
+      observationId: `path-${primary}`,
+      openingLine,
+      topic: state.lifePath.crossbreed || primary,
+      urgency: Math.min(1, state.lifePath.scores[primary] / 100),
+    };
+  }
 
   const scored = askableObs.map(obs => ({
     obs,

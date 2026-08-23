@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { GameState } from '../types';
+import { getLifePathVisual } from '../systems/lifePathSystem';
 
 interface CreatureCanvasProps {
   state: GameState;
@@ -73,7 +74,11 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     const breathAmount = isSleeping ? 0.035 : 0.02;
     const breath = Math.sin(time * breathSpeed) * breathAmount + 1;
     const { eyeSize, roundness } = app;
-    const hue = app.baseHue;
+    const pathVisual = getLifePathVisual(state);
+    const hue = (app.baseHue + pathVisual.hueShift * pathVisual.strength + 360) % 360;
+    const saturation = 20 + (pathVisual.saturation - 20) * pathVisual.strength;
+    const lightness = 52 + (pathVisual.lightness - 52) * pathVisual.strength;
+    const hasPath = (id: typeof pathVisual.paths[number]) => pathVisual.paths.includes(id);
 
     // Each state has its own body language. The movement is deliberately
     // small: it should make the creature readable without turning it into a
@@ -133,7 +138,21 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.translate(x, y + motionY);
     ctx.scale(state.facing === 'left' ? -1 : 1, 1);
     ctx.rotate(motionRotation);
-    ctx.scale(breath * motionScaleX, breath * motionScaleY);
+    ctx.scale(breath * motionScaleX * pathVisual.width, breath * motionScaleY * pathVisual.height);
+
+    // The skin is a consequence of the creature's life, not a wardrobe. Its
+    // aura begins faint and becomes readable as a path stabilises.
+    if (pathVisual.paths.length > 0) {
+      const aura = ctx.createRadialGradient(0, 0, 24, 0, 0, 62);
+      aura.addColorStop(0, pathVisual.aura);
+      aura.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = aura;
+      ctx.globalAlpha = 0.35 + pathVisual.strength * 0.65;
+      ctx.beginPath();
+      ctx.arc(0, 0, 62, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
     // Body shadow
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
@@ -147,7 +166,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       const tailWag = Math.sin(time * (excited ? 0.014 : 0.005)) * (excited ? 0.55 : 0.28);
       ctx.save();
       ctx.rotate(tailWag - 0.2);
-      ctx.fillStyle = `hsl(${hue}, 25%, 55%)`;
+      ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness + 3}%)`;
       ctx.beginPath();
       ctx.ellipse(-35 * roundness, 10, 18 * app.tailLength, 8, -0.5, 0, Math.PI * 2);
       ctx.fill();
@@ -156,8 +175,8 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
 
     // Main body
     const bodyGrad = ctx.createRadialGradient(-10, -15, 5, 0, 5, 45);
-    bodyGrad.addColorStop(0, `hsl(${hue}, 20%, 65%)`);
-    bodyGrad.addColorStop(1, `hsl(${hue}, 25%, 45%)`);
+    bodyGrad.addColorStop(0, `hsl(${hue}, ${Math.max(12, saturation - 4)}%, ${Math.min(72, lightness + 14)}%)`);
+    bodyGrad.addColorStop(1, `hsl(${hue}, ${saturation}%, ${Math.max(30, lightness - 7)}%)`);
     ctx.fillStyle = bodyGrad;
     ctx.beginPath();
     ctx.ellipse(0, 5, 38 * roundness, 35, 0, 0, Math.PI * 2);
@@ -165,7 +184,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
 
     // Ears
     if (app.earShape !== 'none') {
-      ctx.fillStyle = `hsl(${hue}, 25%, 48%)`;
+      ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${Math.max(32, lightness - 4)}%)`;
       const earW = app.earShape === 'pointy' ? 12 : 16;
       const perk = behavior === 'observing' || behavior === 'investigating' ? 4 : 0;
       const earH = (app.earShape === 'pointy' ? 22 : 18) + perk;
@@ -180,7 +199,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     }
 
     // Face area (slightly lighter)
-    ctx.fillStyle = `hsl(${hue}, 18%, 68%)`;
+    ctx.fillStyle = `hsl(${hue}, ${Math.max(10, saturation - 7)}%, ${Math.min(76, lightness + 16)}%)`;
     ctx.beginPath();
     ctx.ellipse(0, -8, 28, 22, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -188,7 +207,8 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     // Eyes
     const attentive = behavior === 'observing' || behavior === 'investigating';
     const eyeW = 10 * eyeSize * (attentive ? 1.08 : 1);
-    const openEyeHeight = 10 * eyeSize * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
+    const pathEyeHeight = 1 - pathVisual.eyeDroop * pathVisual.strength;
+    const openEyeHeight = 10 * eyeSize * pathEyeHeight * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
     const eyeH = isSleeping || blink.isBlinking ? 1 : openEyeHeight;
     ctx.fillStyle = isSleeping ? '#4a4035' : '#2a2018';
     
@@ -243,6 +263,151 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.quadraticCurveTo(0, 6, 4, 4);
     }
     ctx.stroke();
+
+    // Path marks deliberately layer when two lives cross. A Gymbro/Gamer
+    // keeps both the headband and headset; a Stoner/Monk can grow a beanie
+    // under a quiet halo. Crossbreeds therefore look authored, not recoloured.
+    ctx.save();
+    ctx.globalAlpha = 0.28 + pathVisual.strength * 0.72;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (hasPath('doomer')) {
+      ctx.strokeStyle = 'rgba(32, 31, 45, 0.9)';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.arc(0, -8, 31, Math.PI * 1.08, Math.PI * 1.92);
+      ctx.stroke();
+    }
+    if (hasPath('stoner')) {
+      ctx.fillStyle = pathVisual.accent;
+      ctx.beginPath();
+      ctx.arc(0, -29, 23, Math.PI, Math.PI * 2);
+      ctx.lineTo(23, -25);
+      ctx.lineTo(-23, -25);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(40, 46, 36, 0.75)';
+      ctx.fillRect(-24, -28, 48, 5);
+    }
+    if (hasPath('gymbro')) {
+      ctx.strokeStyle = pathVisual.accent;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-25, -24);
+      ctx.quadraticCurveTo(0, -19, 25, -24);
+      ctx.stroke();
+    }
+    if (hasPath('gamer')) {
+      ctx.strokeStyle = pathVisual.accent;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, -10, 32, Math.PI * 1.08, Math.PI * 1.92);
+      ctx.stroke();
+      ctx.fillStyle = pathVisual.accent;
+      ctx.fillRect(-34, -16, 6, 17);
+      ctx.fillRect(28, -16, 6, 17);
+    }
+    if (hasPath('conspiracist')) {
+      ctx.fillStyle = 'rgba(205, 208, 198, 0.92)';
+      ctx.strokeStyle = 'rgba(90, 93, 84, 0.72)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-18, -29);
+      ctx.lineTo(2, -48);
+      ctx.lineTo(19, -28);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-8, -34);
+      ctx.lineTo(9, -30);
+      ctx.moveTo(1, -45);
+      ctx.lineTo(4, -31);
+      ctx.stroke();
+    }
+    if (hasPath('workaholic')) {
+      ctx.fillStyle = pathVisual.accent;
+      ctx.beginPath();
+      ctx.moveTo(0, 8);
+      ctx.lineTo(6, 15);
+      ctx.lineTo(2, 31);
+      ctx.lineTo(-2, 31);
+      ctx.lineTo(-6, 15);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(55, 55, 58, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(-12, -5, 9, 0.12, Math.PI - 0.12);
+      ctx.arc(12, -5, 9, 0.12, Math.PI - 0.12);
+      ctx.stroke();
+    }
+    if (hasPath('alcoholic')) {
+      ctx.fillStyle = 'rgba(174, 70, 58, 0.22)';
+      ctx.beginPath();
+      ctx.ellipse(-19, 0, 8, 5, -0.1, 0, Math.PI * 2);
+      ctx.ellipse(19, 0, 8, 5, 0.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(74, 48, 46, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(-12, -6, 8, 0.1, Math.PI - 0.1);
+      ctx.arc(12, -6, 8, 0.1, Math.PI - 0.1);
+      ctx.stroke();
+    }
+    if (hasPath('degen')) {
+      ctx.fillStyle = pathVisual.accent;
+      ctx.beginPath();
+      ctx.arc(30, 18, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(22, 58, 34, 0.9)';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('$', 30, 21.5);
+    }
+    if (hasPath('party_animal')) {
+      ctx.fillStyle = pathVisual.accent;
+      [[-31, -2], [31, -1], [-27, 20], [27, 24]].forEach(([sx, sy], index) => {
+        const twinkle = 2.2 + ((Math.sin(time * 0.006 + index) + 1) * 1.2);
+        ctx.beginPath();
+        ctx.arc(sx, sy, twinkle, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+    if (hasPath('caretaker')) {
+      ctx.fillStyle = pathVisual.accent;
+      ctx.beginPath();
+      ctx.moveTo(-19, 13);
+      ctx.bezierCurveTo(-27, 5, -34, 16, -19, 27);
+      ctx.bezierCurveTo(-4, 16, -11, 5, -19, 13);
+      ctx.fill();
+    }
+    if (hasPath('monk')) {
+      ctx.strokeStyle = pathVisual.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, -39, 25, 6, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = pathVisual.accent;
+      ctx.beginPath();
+      ctx.arc(0, -17, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (hasPath('rebel')) {
+      ctx.strokeStyle = pathVisual.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(17, -20);
+      ctx.lineTo(9, -12);
+      ctx.lineTo(17, -8);
+      ctx.stroke();
+      ctx.fillStyle = pathVisual.accent;
+      ctx.beginPath();
+      ctx.arc(25, -16, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
 
     ctx.restore();
 

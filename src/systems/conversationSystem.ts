@@ -11,6 +11,7 @@ import {
 import { advanceDevelopmentFromConversation, getDevelopmentLabel, syncDevelopmentWithAge } from './developmentSystem';
 import { attemptImitation, findExistingObservation, parseUserStatement, recordObservation } from './socialLearningSystem';
 import { recordBondEvent } from './relationshipSystem';
+import { evolveLifePath, getLifePathTitle } from './lifePathSystem';
 
 const MAX_MESSAGES = 120;
 const MAX_FACTS = 32;
@@ -177,6 +178,21 @@ function choose<T>(items: T[], state: GameState, salt = 0): T {
 }
 
 function dominantVoice(state: GameState): 'curious' | 'warm' | 'careful' | 'independent' | 'playful' | 'calm' {
+  const pathVoice = state.lifePath.primary ? {
+    stoner: 'calm',
+    party_animal: 'playful',
+    alcoholic: 'warm',
+    gymbro: 'independent',
+    workaholic: 'careful',
+    doomer: 'careful',
+    degen: 'playful',
+    gamer: 'playful',
+    conspiracist: 'curious',
+    caretaker: 'warm',
+    monk: 'calm',
+    rebel: 'independent',
+  }[state.lifePath.primary] as ReturnType<typeof dominantVoice> : null;
+  if (pathVoice && state.lifePath.scores[state.lifePath.primary!] >= 35) return pathVoice;
   const scored = [
     ['curious', state.personality.curiosity] as const,
     ['warm', (state.personality.affection + state.personality.sociability) / 2] as const,
@@ -404,6 +420,7 @@ export function beginConversationTurn(state: GameState, text: string, now = Date
       updated = attemptImitation(updated, observation.id);
     }
   }
+  updated = evolveLifePath(updated, text, now);
   updated = advanceDevelopmentFromConversation(updated, now);
   const merged = mergeFact(updated, extractUserFact(text), now);
   updated = recordBondEvent(merged.state, 'conversation');
@@ -445,5 +462,6 @@ export function getConversationOpening(state: GameState): string {
 export function getMindStatus(state: GameState): string {
   const label = getDevelopmentLabel(state.development.stage);
   const exchanges = state.conversation.totalUserMessages;
-  return `${label} · ${exchanges} ${exchanges === 1 ? 'exchange' : 'exchanges'}`;
+  const path = getLifePathTitle(state);
+  return `${label} · ${path} · ${exchanges} ${exchanges === 1 ? 'exchange' : 'exchanges'}`;
 }
