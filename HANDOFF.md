@@ -2,8 +2,8 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.7.1
-> **Last Updated:** 2026-08-22
+> **Version:** 0.7.2
+> **Last Updated:** 2026-08-23
 
 ---
 
@@ -263,6 +263,10 @@ becoming/
 ### v0.7.1 — Live AI Mind
 
 The creature now answers through GPT-5.6 Luna from the first conversation. Puter provides browser-safe, user-funded access without placing an API key in the public GitHub Pages bundle. Age changes vocabulary, depth, and confidence rather than disabling speech. The existing local dialogue engine remains only as an offline fallback, while facts, conversation growth, bonding, and social-habit learning still persist on-device.
+
+### v0.7.2 — Private DeepSeek Mind
+
+Puter and end-user login have been removed. The browser now sends a bounded personality, memory, habit, and recent-conversation context to a private Cloudflare Worker, which calls DeepSeek V4 Flash in non-thinking mode. The public bundle contains no model credential. The worker enforces origin, payload, output, timeout, and best-effort per-IP rate limits; the local dialogue engine remains the offline fallback.
 
 ---
 

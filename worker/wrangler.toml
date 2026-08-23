@@ -1,0 +1,8 @@
+name = "becoming-mind"
+main = "src/index.js"
+compatibility_date = "2026-08-23"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "https://megabomb420.github.io,http://127.0.0.1:7100,http://localhost:7100"
+

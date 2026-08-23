@@ -193,8 +193,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ state, onStateChange, onC
           </div>
           <p className="text-warm-200/20 text-[9px] mt-2 text-center font-serif">
               {isPolish
-                ? 'Pamięć zostaje na tym urządzeniu. Ostatnie wiadomości są wysyłane do AI przez Puter.'
-                : 'Memory stays on this device. Recent messages are sent to AI through Puter.'}
+                ? 'Pamięć zostaje na tym urządzeniu. Ostatnie wiadomości trafiają do prywatnego mózgu Becoming.'
+                : 'Memory stays on this device. Recent messages are sent to Becoming’s private mind.'}
             </p>
         </div>
       </footer>

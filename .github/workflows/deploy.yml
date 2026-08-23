@@ -28,6 +28,8 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+        env:
+          VITE_BECOMING_API_URL: ${{ vars.BECOMING_API_URL }}
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
