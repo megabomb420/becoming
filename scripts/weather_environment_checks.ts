@@ -1,19 +1,24 @@
 import assert from 'node:assert/strict';
 import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
 import {
+  beginOutdoorVisit,
   beginWeatherRefresh,
   chooseEnvironmentReaction,
   classifyWeatherCode,
   createWorldEnvironment,
   deriveEnvironmentalStimulus,
   disableWeather,
+  endOutdoorVisit,
   failWeatherRefresh,
   getEffectiveStimulus,
   markWeatherPermissionFailure,
+  outdoorVisitBlocked,
   receiveWeatherSnapshot,
   recordEnvironmentReaction,
   setWeatherLocation,
+  shouldEndOutdoorVisit,
   shouldRefreshWeather,
+  wantsOutdoors,
   WEATHER_REFRESH_MS,
 } from '../src/systems/environmentSystem';
 import {
@@ -295,5 +300,53 @@ delete (legacy as Partial<GameState>).world;
 const migrated = migrateGameState(legacy);
 assert.equal(migrated.world.settings.mode, 'unconfigured');
 assert.equal(migrated.world.settings.onboardingSeen, false);
+assert.equal(migrated.world.place, 'indoor');
+
+const indoorBase: GameState = {
+  ...needsStart,
+  world: {
+    ...worldWith(snapshot({ weatherCode: 0, condition: 'clear' })),
+    preferences: {
+      ...createWorldEnvironment().preferences,
+      clear: { affinity: 12, exposures: 3, positiveResponses: 3, waryResponses: 0, lastExperiencedAt: now },
+    },
+  },
+};
+assert.equal(indoorBase.world.place ?? 'indoor', 'indoor');
+assert.equal(wantsOutdoors(indoorBase), true);
+assert.equal(outdoorVisitBlocked(indoorBase), null);
+
+const noWeather = outdoorVisitBlocked(needsStart);
+assert.equal(noWeather, 'unavailable');
+
+const waryStormOut: GameState = {
+  ...needsStart,
+  world: worldWith(snapshot({ weatherCode: 95, condition: 'storm', cloudCover: 100, precipitationMm: 5, windSpeedKph: 52 })),
+  personality: { ...needsStart.personality, curiosity: 0, caution: 100, confidence: 10 },
+};
+assert.equal(outdoorVisitBlocked(waryStormOut), 'wary');
+
+const hungryOut: GameState = {
+  ...indoorBase,
+  needs: { ...indoorBase.needs, hunger: 8 },
+};
+assert.equal(outdoorVisitBlocked(hungryOut), 'need');
+
+const steppedOut = beginOutdoorVisit(indoorBase, now + MINUTE);
+assert.equal(steppedOut.world.place, 'outdoors');
+assert.equal(steppedOut.lifePath.primary, indoorBase.lifePath.primary, 'going outside must not assign a life path');
+assert.deepEqual(steppedOut.personality, indoorBase.personality);
+assert.ok(steppedOut.memories.some(memory => memory.tags.includes('outdoors')));
+assert.equal(shouldEndOutdoorVisit(steppedOut, now + MINUTE + 5_000), false);
+assert.equal(shouldEndOutdoorVisit(steppedOut, now + MINUTE + 30_000), true);
+const cameIn = endOutdoorVisit(steppedOut, now + MINUTE + 30_000);
+assert.equal(cameIn.world.place, 'indoor');
+assert.equal(wantsOutdoors({
+  ...indoorBase,
+  world: { ...indoorBase.world, preferences: createWorldEnvironment().preferences },
+}), false, 'unearned weather affinity must not want out');
+
+const disabledWhileOut = disableWeather(steppedOut.world);
+assert.equal(disabledWhileOut.place, 'indoor');
 
 console.log('Weather privacy, Open-Meteo parsing, cache/offline, solar phases, lighting, needs, personality, memory, and migration checks passed.');

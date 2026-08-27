@@ -11,6 +11,7 @@ import {
 import { getRankedInterests } from './innerLifeSystem';
 import { getAbsenceSummary } from './presenceSystem';
 import { getAdoptedSharedPhrases } from './sharedLanguageSystem';
+import { wantsOutdoors } from './environmentSystem';
 
 const API_URL = String((import.meta as { env?: { VITE_BECOMING_API_URL?: string } }).env?.VITE_BECOMING_API_URL ?? '').replace(/\/$/, '');
 const MAX_CONTEXT_MESSAGES = 14;
@@ -67,6 +68,7 @@ export interface CreatureMindRequest {
     condition: string;
     affinity?: 'likes' | 'dislikes';
     wantOut?: boolean;
+    place?: 'outdoors';
   };
 }
 
@@ -289,18 +291,6 @@ function buildContinuityOverlay(state: GameState) {
   return overlay;
 }
 
-function wantsOutdoors(state: GameState) {
-  const current = state.world.current;
-  const mode = state.world.settings.mode;
-  if (!current || mode === 'disabled' || mode === 'unconfigured') return false;
-  const preference = state.world.preferences[current.condition];
-  if (!preference || preference.exposures < 2 || preference.affinity < 8) return false;
-  return current.condition === 'clear'
-    || current.condition === 'partly_cloudy'
-    || current.condition === 'snow'
-    || preference.affinity >= 12;
-}
-
 function weatherAffinity(state: GameState) {
   const current = state.world.current;
   const mode = state.world.settings.mode;
@@ -314,10 +304,12 @@ function buildWeatherOverlay(state: GameState) {
   const current = state.world.current;
   const affinity = weatherAffinity(state);
   const wantOut = wantsOutdoors(state);
-  if (!current || (!affinity && !wantOut)) return undefined;
+  const outdoors = state.world.place === 'outdoors';
+  if (!current || (!affinity && !wantOut && !outdoors)) return undefined;
   const overlay: NonNullable<CreatureMindRequest['weather']> = { condition: current.condition };
   if (affinity) overlay.affinity = affinity;
-  if (wantOut) overlay.wantOut = true;
+  if (wantOut && !outdoors) overlay.wantOut = true;
+  if (outdoors) overlay.place = 'outdoors';
   return overlay;
 }
 

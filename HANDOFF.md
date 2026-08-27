@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.1
+> **Version:** 0.12.2
 > **Last Updated:** 2026-08-27
 
 ---
@@ -125,7 +125,7 @@ becoming/
 | Feeding | ✅ | Explicitly using placed food calls the creature; consumed food returns to the shelf for repeated use |
 | Creature movement | ✅ | Goal-driven state machine: idle → notice → look → approach → react; bounded shared floor coordinates and refresh-rate-independent canvas movement |
 | Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
-| Living world weather | ✅ | Opt-in Open-Meteo weather, rounded device coordinates or manual city search, 45-minute IndexedDB cache, last-known offline fallback, atmospheric room rendering, and personality/memory-shaped reactions |
+| Living world weather | ✅ | Opt-in Open-Meteo weather, rounded device coordinates or manual city search, 45-minute IndexedDB cache, last-known offline fallback, atmospheric room rendering, personality/memory-shaped reactions, and short outdoor visits |
 | Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
 | Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
@@ -496,7 +496,11 @@ Life-path overlays use the existing evidence functions. A user invitation such a
 
 Room idle chatter is gone. Worker failure no longer invents a local line. Rare self-speak still uses `/chat` on the existing room cadence when hungry, bathroom, dirty, weather-affinity, or wanting out, with a cooldown. World commands still execute locally and still do not rewrite path; if the mind later speaks, the grounded fact is already in the transcript.
 
-Weather-outdoors remains next. Notifications, music, and splitting Room.tsx were not part of this slice.
+### v0.12.2 — Outdoor weather visits
+
+Want-out and earned weather affinity can now become a real, short outdoor beat. The existing Room cadence walks to the window, steps outside, then comes back; there is no second clock. The window widens into the sky while the creature is out. World commands `go outside` / `chodźmy na dwór` and `come inside` / `wróć do pokoju` still execute locally and still do not rewrite path. A cautious creature can refuse a storm. Urgent hunger, bathroom, dirt, sleep, or disabled weather bring it back in. The mind overlay receives the real condition and `place: outdoors` so it cannot invent a walk that did not happen.
+
+Notifications, music, and splitting Room.tsx were not part of this slice.
 
 ---
 
@@ -522,20 +526,19 @@ Weather-outdoors remains next. Notifications, music, and splitting Room.tsx were
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Weather-outdoors** — let a want-out / weather-affinity line become a real outdoor beat without adding a second clock or turning weather into a dashboard.
-2. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
-3. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
+1. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
+2. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
+3. **Object mastery** — extend the creation arc to music, boxes, keepsakes, and collaborative play.
 
 ### Priority: Medium
-4. **Object mastery** — extend the creation arc to music, boxes, keepsakes, and collaborative play.
-5. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
-6. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
-7. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
+4. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
+5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
+6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
 
 ### Priority: Low / Future
-8. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
-9. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
-10. **Notifications** — gentle, non-manipulative PWA notifications.
+7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
+8. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
+9. **Notifications** — gentle, non-manipulative PWA notifications.
 
 ---
 
@@ -552,7 +555,7 @@ Weather-outdoors remains next. Notifications, music, and splitting Room.tsx were
 - **No death from neglect.** Long absences change the creature (more independent, different trust level) but never punish the player.
 - **Nocturnal Terrarium art direction.** Room is a quiet habitat, Chat is a voice-led presence, Memory Book is a material keepsake, Becoming is a narrative portrait, and Settings is a functional sheet. Decorative assets support these roles but never define the creature.
 - **Visible development is staged, not scored.** Meaningful firsts, small gestures, object initiative, and physical return traces communicate growth. The stored numeric model remains hidden.
-- **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak reuses that cadence and `/chat`; it does not add a second timer.
+- **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak and short outdoor visits reuse that cadence; they do not add a second timer.
 - **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
 - **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, and accidents advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, death, sickness pressure, or manipulative absence mechanics.
 
@@ -578,7 +581,7 @@ location.reload();
 | How the creature is born | `src/systems/creatureFactory.ts` |
 | How needs work | `src/systems/needsSystem.ts` |
 | How Open-Meteo requests, rounding and response parsing work | `src/systems/weatherService.ts` |
-| How weather becomes stimuli, needs pressure, reactions and preferences | `src/systems/environmentSystem.ts` |
+| How weather becomes stimuli, needs pressure, reactions, preferences and outdoor visits | `src/systems/environmentSystem.ts` |
 | How sunrise, sunset, local time, lighting and offline rest work | `src/systems/timeSystem.ts` |
 | How language emerges | `src/systems/languageSystem.ts` + `src/systems/developmentSystem.ts` |
 | How social learning works | `src/systems/socialLearningSystem.ts` |

@@ -252,6 +252,21 @@ assert.equal(selfPayload.promptKind, 'self');
 assert.equal(selfPayload.care.hunger, 'hungry');
 assert.match(systemPrompt(selfPayload), /No user just spoke/);
 
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Sky', stage: 'sentences', language: 'en' },
+    weather: { condition: 'rain', place: 'outdoors', wantOut: false },
+    messages: [{ role: 'user', content: 'How is it out there?' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+assert.match(providerBody.messages[0].content, /WEATHER is the actual condition/);
+assert.match(providerBody.messages[0].content, /"place":"outdoors"/);
+assert.match(providerBody.messages[0].content, /"condition":"rain"/);
+assert.doesNotMatch(providerBody.messages[0].content, /invented walk|wet grass/i);
+
 globalThis.fetch = originalFetch;
 
 console.log('Worker checks passed.');

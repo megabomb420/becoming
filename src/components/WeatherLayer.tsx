@@ -9,6 +9,7 @@ interface WeatherLayerProps {
   time: TimeOfDay;
   seed: number;
   now: number;
+  expanded?: boolean;
 }
 
 function seededValues(seed: number, count: number) {
@@ -22,7 +23,7 @@ function seededValues(seed: number, count: number) {
   });
 }
 
-const WeatherLayer: React.FC<WeatherLayerProps> = ({ world, lighting, time, seed, now }) => {
+const WeatherLayer: React.FC<WeatherLayerProps> = ({ world, lighting, time, seed, now, expanded = false }) => {
   const stimulus = getEffectiveStimulus(world, now);
   const rainDrops = useMemo(() => seededValues(seed + 311, 18), [seed]);
   const snowflakes = useMemo(() => seededValues(seed + 719, 20), [seed]);
@@ -38,7 +39,11 @@ const WeatherLayer: React.FC<WeatherLayerProps> = ({ world, lighting, time, seed
       {/* A real window gives weather a place in the room. It remains behind
           the creature and controls, so weather is experienced rather than
           promoted into a dashboard. */}
-      <div className="absolute left-1/2 top-[17%] h-[22%] w-[clamp(8rem,42vw,11.5rem)] -translate-x-1/2 overflow-hidden rounded-[1.15rem] border border-warm-200/10 bg-[#14171c] shadow-[inset_0_0_24px_rgba(5,7,10,.52),0_12px_36px_rgba(0,0,0,.16)]">
+      <div className={`absolute left-1/2 -translate-x-1/2 overflow-hidden border border-warm-200/10 bg-[#14171c] transition-all duration-700 ${
+        expanded
+          ? 'top-[6%] h-[58%] w-[min(92vw,24rem)] rounded-[1.6rem] shadow-[inset_0_0_36px_rgba(5,7,10,.28),0_18px_48px_rgba(0,0,0,.22)]'
+          : 'top-[17%] h-[22%] w-[clamp(8rem,42vw,11.5rem)] rounded-[1.15rem] shadow-[inset_0_0_24px_rgba(5,7,10,.52),0_12px_36px_rgba(0,0,0,.16)]'
+      }`}>
         <div className="absolute inset-0 transition-colors duration-[30000ms]" style={{ background: `linear-gradient(180deg, ${lighting.skyTop}, ${lighting.skyBottom})` }} />
         <div
           className="absolute inset-0 transition-opacity duration-[30000ms]"
@@ -83,9 +88,9 @@ const WeatherLayer: React.FC<WeatherLayerProps> = ({ world, lighting, time, seed
         {stimulus.condition === 'fog' && <div className="weather-fog absolute -inset-x-1/2 inset-y-0 bg-[linear-gradient(90deg,transparent,rgba(225,224,215,.52),transparent)] blur-[6px]" style={{ opacity: lighting.fogOpacity + 0.22 }} />}
         {stimulus.condition === 'storm' && <div className="weather-lightning absolute inset-0 bg-[#e8eef3] mix-blend-screen" style={{ opacity: 0 }} />}
 
-        <div className="absolute inset-y-0 left-1/2 w-px bg-[#171714]/55" />
-        <div className="absolute inset-x-0 top-1/2 h-px bg-[#171714]/45" />
-        <div className="absolute inset-0 rounded-[1.05rem] shadow-[inset_0_0_0_4px_rgba(29,26,22,.42)]" />
+        <div className="absolute inset-y-0 left-1/2 w-px bg-[#171714]/55 transition-opacity duration-700" style={{ opacity: expanded ? 0.12 : 1 }} />
+        <div className="absolute inset-x-0 top-1/2 h-px bg-[#171714]/45 transition-opacity duration-700" style={{ opacity: expanded ? 0.12 : 1 }} />
+        <div className="absolute inset-0 rounded-[1.05rem] shadow-[inset_0_0_0_4px_rgba(29,26,22,.42)] transition-opacity duration-700" style={{ opacity: expanded ? 0.35 : 1 }} />
       </div>
 
       <div className="absolute top-[16%] h-[24%] w-3 origin-top rounded-full bg-warm-200/5 blur-[1px] weather-curtain" style={{ ...style, left: 'calc(50% - 5.9rem)', opacity: stimulus.wind * 0.44 }} />

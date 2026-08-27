@@ -2,6 +2,7 @@ import { GameState, Memory, ObjectType, OfflineActivity, ReturnTrace, ReturnTrac
 import { generateDreamAfterSleep } from './innerLifeSystem';
 import { advanceNeeds, applyNeedDelta } from './needsSystem';
 import { estimateNightRestMs, getTimeOfDay, shouldBeDrowsy } from './timeSystem';
+import { endOutdoorVisit } from './environmentSystem';
 
 const TRACE_MINIMUM_MS = 10 * 60_000;
 
@@ -130,6 +131,10 @@ export function simulateOfflineTime(
   const needsFrom = Number.isFinite(state.needsUpdatedAt) ? state.needsUpdatedAt : leftAt;
 
   if (awayMinutes < 1) return { state, activities };
+
+  if (state.world.place === 'outdoors') {
+    state = endOutdoorVisit(state, now);
+  }
 
   const naturalNightRestMs = estimateNightRestMs(needsFrom, now, timezoneOffsetAt, state.world);
   const wasSleeping = state.sleepState === 'sleeping';

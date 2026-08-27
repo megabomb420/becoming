@@ -82,10 +82,19 @@ import {
   getTimeOfDay,
 } from '../systems/timeSystem';
 import {
+  beginOutdoorVisit,
   chooseEnvironmentReaction,
+  endOutdoorVisit,
   getWeatherConditionLabel,
   getWeatherIcon,
+  INDOOR_RETURN_PLACE,
+  OUTDOOR_COOLDOWN_MS,
+  OUTDOOR_PLACE,
+  outdoorVisitBlocked,
   recordEnvironmentReaction,
+  shouldEndOutdoorVisit,
+  wantsOutdoors,
+  WINDOW_PLACE,
 } from '../systems/environmentSystem';
 import { appendCreatureMessage, beginConversationTurn } from '../systems/conversationSystem';
 import { isLlmAvailable, requestCreatureReply, shouldCreatureSelfSpeak } from '../systems/llmConversation';
@@ -591,6 +600,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   ) => {
     const currentState = stateRef.current;
     if (currentState.sleepState === 'sleeping') return;
+    if (currentState.world.place === 'outdoors') {
+      const ended = endOutdoorVisit(currentState);
+      stateRef.current = ended;
+      onStateChange(ended);
+    }
 
     if (!initiatedByUser) {
       const momentId = autonomousMomentId
@@ -653,11 +667,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     }, noticeDelay);
   }, [clearActionTimers, finishObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue]);
 
-  const walkToIdlePosition = useCallback((targetInput: { x: number; y: number }) => {
+  const walkToIdlePosition = useCallback((targetInput: { x: number; y: number }, options?: { outdoors?: boolean }) => {
     if (activeObjectRef.current || stateRef.current.sleepState === 'sleeping') return;
     clearTimeout(movementTimerRef.current);
     const currentPos = creaturePosRef.current;
-    const target = clampToWalkable(targetInput);
+    const target = options?.outdoors
+      ? { x: Math.max(12, Math.min(88, targetInput.x)), y: Math.max(36, Math.min(78, targetInput.y)) }
+      : clampToWalkable(targetInput);
     const travelTime = Math.max(800, Math.min(2200, 600 + dist(currentPos, target) * 24));
 
     targetPosRef.current = target;
@@ -789,6 +805,16 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       const currentState = stateRef.current;
       if (showChat || showCare || showInventory || activeObjectRef.current || behaviorRef.current !== 'idle') return;
 
+      if (currentState.world.place === 'outdoors') {
+        if (shouldEndOutdoorVisit(currentState, Date.now())) {
+          const ended = endOutdoorVisit(currentState, Date.now());
+          stateRef.current = ended;
+          onStateChange(ended);
+          walkToIdlePosition(INDOOR_RETURN_PLACE);
+        }
+        return;
+      }
+
       const hasFoodReady = currentState.roomObjects.some(object => object.type === 'apple' || object.type === 'broccoli');
       const careSignal = currentState.roomMess.length > 0
         ? { icon: '◇', en: 'steps carefully around a messy patch', pl: 'ostrożnie omija zabrudzone miejsce' }
@@ -863,6 +889,17 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             walkToIdlePosition(environmentTarget);
             return;
           }
+        }
+        if (wantsOutdoors(currentState) && !outdoorVisitBlocked(currentState) && Date.now() - (currentState.world.lastOutdoorAt || 0) > OUTDOOR_COOLDOWN_MS) {
+          if (dist(currentPos, WINDOW_PLACE) > 8) {
+            walkToIdlePosition(WINDOW_PLACE);
+            return;
+          }
+          const visit = beginOutdoorVisit(currentState, Date.now());
+          stateRef.current = visit;
+          onStateChange(visit);
+          walkToIdlePosition(OUTDOOR_PLACE, { outdoors: true });
+          return;
         }
       }
 
@@ -1359,6 +1396,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         completeWorldAction({ intent, status: 'blocked', reason: 'sleeping' });
         return;
       }
+      if (stateRef.current.world.place === 'outdoors') {
+        const ended = endOutdoorVisit(stateRef.current);
+        stateRef.current = ended;
+        onStateChange(ended);
+      }
       const target = clampToWalkable({ x: 50, y: 74 });
       walkToIdlePosition(target);
       window.setTimeout(() => completeWorldAction({ intent, status: 'success' }), 1100);
@@ -1368,6 +1410,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const execution = performImmediateWorldAction(stateRef.current, intent);
     stateRef.current = execution.state;
     onStateChange(execution.state);
+
+    if (execution.result.status === 'success' && intent.kind === 'go_outside') {
+      walkToIdlePosition(OUTDOOR_PLACE, { outdoors: true });
+    }
+    if (execution.result.status === 'success' && intent.kind === 'come_inside') {
+      walkToIdlePosition(INDOOR_RETURN_PLACE);
+    }
 
     if (execution.result.status === 'success') {
       if (intent.kind === 'toilet') {
@@ -1512,6 +1561,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             : state.needs.hygiene < 38
               ? t('Its fur has lost some of its soft sheen.', 'Futro straciło trochę swojego miękkiego blasku.')
               : t('Nothing is urgent. Ordinary care is enough.', 'Nic nie jest pilne. Wystarczy zwykła opieka.');
+  const outdoors = state.world.place === 'outdoors';
   const timeOfDay = getTimeOfDay(clockNow, state.world);
   const lighting = getRoomLighting(timeOfDay, state.world, clockNow);
   const visibleNeedSignals = getVisibleNeedSignals(state, 3);
@@ -1536,10 +1586,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         className="absolute inset-0"
         style={{
           filter: `brightness(${lighting.brightness * (state.sleepState === 'sleeping' ? 0.82 : 1)})`,
-          transition: 'filter 1800ms ease',
+          transition: 'filter 1800ms ease, opacity 900ms ease',
         }}
       >
-        <div className="absolute top-0 left-0 right-0 h-[66%]" style={{ background: `linear-gradient(180deg, ${lighting.wallTop} 0%, ${lighting.wallBottom} 82%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear' }} />
+        <div className="absolute top-0 left-0 right-0 h-[66%] transition-opacity duration-700" style={{ background: `linear-gradient(180deg, ${lighting.wallTop} 0%, ${lighting.wallBottom} 82%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear, opacity 900ms ease', opacity: outdoors ? 0.28 : 1 }} />
         <div
           className="absolute inset-x-0 top-0 h-[58%] pointer-events-none"
           style={{
@@ -1552,10 +1602,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <div className="absolute top-[11%] left-[13%] right-[13%] h-px bg-warm-200/5" />
         <div className="absolute top-[11%] bottom-[34%] left-[13%] w-px bg-warm-200/5" />
         <div className="absolute top-[11%] bottom-[34%] right-[13%] w-px bg-warm-200/5" />
-        <div className="absolute bottom-0 left-0 right-0 h-[35%]" style={{ background: `linear-gradient(180deg, ${lighting.floorTop} 0%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear' }} />
-        <div className="absolute top-[64.7%] left-0 right-0 h-[2px] bg-[#100f0d]/70 shadow-[0_-1px_0_rgba(224,203,176,0.05)]" />
-        <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)' }} />
-        <WeatherLayer world={state.world} lighting={lighting} time={timeOfDay} seed={state.identity.seed} now={clockNow} />
+        <div className="absolute bottom-0 left-0 right-0 h-[35%] transition-opacity duration-700" style={{ background: `linear-gradient(180deg, ${lighting.floorTop} 0%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear, opacity 900ms ease', opacity: outdoors ? 0.22 : 1 }} />
+        <div className="absolute top-[64.7%] left-0 right-0 h-[2px] bg-[#100f0d]/70 shadow-[0_-1px_0_rgba(224,203,176,0.05)] transition-opacity duration-700" style={{ opacity: outdoors ? 0.15 : 1 }} />
+        <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)', opacity: outdoors ? 0.06 : 0.25 }} />
+        <WeatherLayer world={state.world} lighting={lighting} time={timeOfDay} seed={state.identity.seed} now={clockNow} expanded={outdoors} />
         <div className="absolute top-[16%] left-[50%] w-[390px] h-[390px] -translate-x-1/2 rounded-full" style={{ background: `radial-gradient(circle, ${lighting.ambientGlow} 0%, transparent 70%)`, transition: 'background 30s linear' }} />
         <div className="absolute inset-0 transition-colors duration-[1800ms]" style={{ background: pathVisual.roomTint }} />
         <div className="absolute inset-0" style={{ background: lighting.veil, transition: 'background 30s linear' }} />
@@ -1599,14 +1649,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             ? (polish ? `Odłóż: ${objectLabel(obj.type, true)}` : `Put away ${objectLabel(obj.type, false)}`)
             : (polish ? `Opcje: ${objectLabel(obj.type, true)}` : `Options for ${objectLabel(obj.type, false)}`)}
           title={showInventory ? t('Put away', 'Odłóż') : t('Use or put away', 'Użyj lub odłóż')}
-          className="absolute z-20 select-none p-3 -m-3 bg-transparent border-0"
+          className="absolute z-20 select-none p-3 -m-3 bg-transparent border-0 transition-opacity duration-700"
           style={{
             left: `${obj.x}%`,
             top: `${obj.y}%`,
             transform: 'translate(-50%, -50%)',
             cursor: 'grab',
             touchAction: 'none',
-            opacity: draggingObjectId === obj.id ? 0.25 : 1,
+            opacity: draggingObjectId === obj.id ? 0.25 : outdoors ? 0.28 : 1,
           }}
           onPointerDown={(e) => startPointerSession({ source: 'room', type: obj.type, objectId: obj.id }, e)}
           onClick={(e) => {

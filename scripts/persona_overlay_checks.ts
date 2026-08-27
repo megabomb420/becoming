@@ -124,6 +124,39 @@ const bathroom = {
 };
 assert.equal(shouldCreatureSelfSpeak(bathroom), true);
 
+const outdoors = {
+  ...comfortable,
+  world: {
+    ...comfortable.world,
+    settings: { ...comfortable.world.settings, mode: 'city' as const },
+    current: {
+      locationKey: '53.35,-6.26',
+      fetchedAt: NOW,
+      observedAt: NOW,
+      timezone: 'UTC',
+      utcOffsetSeconds: 0,
+      temperatureC: 12,
+      apparentTemperatureC: 11,
+      precipitationMm: 1.2,
+      precipitationProbability: 80,
+      weatherCode: 63,
+      condition: 'rain' as const,
+      cloudCover: 90,
+      windSpeedKph: 18,
+      isDay: true,
+      sunrise: '2026-08-27T06:20',
+      sunset: '2026-08-27T20:10',
+      dailyDate: '2026-08-27',
+      dailyMinC: 8,
+      dailyMaxC: 14,
+    },
+    place: 'outdoors' as const,
+  },
+};
+const outdoorBody = buildCreatureMindRequest(withMessage(outdoors, 'Co tam?'));
+assert.equal(outdoorBody.weather?.place, 'outdoors');
+assert.equal(outdoorBody.weather?.condition, 'rain');
+
 const spokenOffer = beginConversationTurn(comfortable, 'Masz, dam ci jabłko.', NOW + 50_000, { worldAction: true }).state;
 assert.deepEqual(spokenOffer.personality, comfortable.personality, 'a world command must not rewrite personality');
 assert.equal(spokenOffer.lifePath.primary, comfortable.lifePath.primary);

@@ -78,8 +78,17 @@ export function createWorldEnvironment(): WorldEnvironment {
     lastError: null,
     lastReactionAt: 0,
     recentReactionKeys: [],
+    place: 'indoor',
+    lastOutdoorAt: 0,
+    outdoorUntil: 0,
   };
 }
+
+export const OUTDOOR_VISIT_MS = 24_000;
+export const OUTDOOR_COOLDOWN_MS = 8 * 60_000;
+export const WINDOW_PLACE = { x: 50, y: 50 };
+export const OUTDOOR_PLACE = { x: 50, y: 40 };
+export const INDOOR_RETURN_PLACE = { x: 50, y: 64 };
 
 export function classifyWeatherCode(code: number): WeatherCondition {
   if (code === 0) return 'clear';
@@ -252,6 +261,9 @@ export function migrateWorldEnvironment(value: unknown): WorldEnvironment {
     recentReactionKeys: Array.isArray(source.recentReactionKeys)
       ? source.recentReactionKeys.filter(key => typeof key === 'string').slice(-8)
       : [],
+    place: source.place === 'outdoors' && mode !== 'disabled' ? 'outdoors' : 'indoor',
+    lastOutdoorAt: Math.max(0, finite(source.lastOutdoorAt, 0)),
+    outdoorUntil: Math.max(0, finite(source.outdoorUntil, 0)),
   };
 }
 
@@ -287,6 +299,8 @@ export function disableWeather(world: WorldEnvironment): WorldEnvironment {
     status: 'disabled',
     nextRefreshAt: 0,
     lastError: null,
+    place: 'indoor',
+    outdoorUntil: 0,
   };
 }
 
@@ -659,4 +673,84 @@ export function getWeatherIcon(condition: WeatherCondition) {
     unknown: '·',
   };
   return icons[condition];
+}
+
+export function wantsOutdoors(state: GameState) {
+  const current = state.world.current;
+  const mode = state.world.settings.mode;
+  if (!current || (mode !== 'device' && mode !== 'city')) return false;
+  const preference = state.world.preferences[current.condition];
+  if (!preference || preference.exposures < 2 || preference.affinity < 8) return false;
+  return current.condition === 'clear'
+    || current.condition === 'partly_cloudy'
+    || current.condition === 'snow'
+    || preference.affinity >= 12;
+}
+
+export function outdoorVisitBlocked(state: GameState): 'unavailable' | 'sleeping' | 'need' | 'wary' | null {
+  const mode = state.world.settings.mode;
+  if (state.sleepState === 'sleeping') return 'sleeping';
+  if (!state.world.current || (mode !== 'device' && mode !== 'city')) return 'unavailable';
+  if (state.needs.hunger < 24 || state.needs.bladder < 30 || state.needs.bowel < 24 || state.needs.hygiene < 24) return 'need';
+  if (state.world.current.condition === 'storm' && state.personality.caution > state.personality.curiosity + 12) return 'wary';
+  return null;
+}
+
+export function shouldEndOutdoorVisit(state: GameState, now = Date.now()) {
+  if (state.world.place !== 'outdoors') return false;
+  if (state.world.settings.mode === 'disabled' || state.world.settings.mode === 'unconfigured' || !state.world.current) return true;
+  if (now >= (state.world.outdoorUntil || 0)) return true;
+  if (state.needs.hunger < 24 || state.needs.bladder < 30 || state.needs.bowel < 24 || state.needs.hygiene < 24) return true;
+  return false;
+}
+
+function outdoorActivity(state: GameState) {
+  const language = state.conversation.language === 'pl' ? 'pl' : 'en';
+  const condition = state.world.current?.condition ?? 'unknown';
+  const label = getWeatherConditionLabel(condition, language);
+  return language === 'pl' ? `na dworze (${label})` : `outside (${label})`;
+}
+
+export function beginOutdoorVisit(state: GameState, now = Date.now()): GameState {
+  if (state.world.place === 'outdoors') return state;
+  const condition = state.world.current?.condition ?? 'unknown';
+  const alreadyRemembered = state.memories.some(memory => memory.tags.includes('outdoors'));
+  const memory: Memory = {
+    id: `mem-outdoors-${condition}-${now}`,
+    timestamp: now,
+    content: `stepped outside into ${condition.replace('_', ' ')}`,
+    importance: 5,
+    emotionalValence: condition === 'storm' ? -0.1 : 0.35,
+    tags: ['weather', `weather:${condition}`, 'outdoors'],
+    mentioned: false,
+    understood: state.development.cognitiveLevel > 18,
+    compressed: false,
+  };
+  return {
+    ...state,
+    currentActivity: outdoorActivity(state),
+    creatureBehavior: 'observing',
+    memories: alreadyRemembered ? state.memories : [...state.memories, memory].slice(-200),
+    world: {
+      ...state.world,
+      place: 'outdoors',
+      lastOutdoorAt: now,
+      outdoorUntil: now + OUTDOOR_VISIT_MS,
+    },
+  };
+}
+
+export function endOutdoorVisit(state: GameState, now = Date.now()): GameState {
+  if (state.world.place !== 'outdoors') return state;
+  return {
+    ...state,
+    currentActivity: null,
+    creatureBehavior: state.sleepState === 'sleeping' ? 'sleeping' : 'idle',
+    world: {
+      ...state.world,
+      place: 'indoor',
+      lastOutdoorAt: now,
+      outdoorUntil: 0,
+    },
+  };
 }

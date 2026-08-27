@@ -120,6 +120,9 @@ export interface WorldEnvironment {
   lastError: WeatherErrorCode | null;
   lastReactionAt: number;
   recentReactionKeys: string[];
+  place: 'indoor' | 'outdoors';
+  lastOutdoorAt: number;
+  outdoorUntil: number;
 }
 
 export interface PersonalityTraits {

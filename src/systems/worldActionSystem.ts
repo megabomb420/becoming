@@ -3,6 +3,7 @@ import {
   GameState,
   ObjectType,
   RoomObject,
+  WeatherCondition,
 } from '../types';
 import {
   applyNeedDelta,
@@ -21,6 +22,12 @@ import { ObjectReaction, recordBondEvent, recordObjectExperience } from './relat
 import { evolveLifePathFromObject } from './lifePathSystem';
 import { evolveInnerLifeFromObject } from './innerLifeSystem';
 import { evolveCreationFromObject } from './creationSystem';
+import {
+  beginOutdoorVisit,
+  endOutdoorVisit,
+  getWeatherConditionLabel,
+  outdoorVisitBlocked,
+} from './environmentSystem';
 
 export type WorldIntentKind =
   | 'offer_object'
@@ -31,7 +38,9 @@ export type WorldIntentKind =
   | 'come_here'
   | 'toilet'
   | 'wash'
-  | 'clean';
+  | 'clean'
+  | 'go_outside'
+  | 'come_inside';
 
 export interface WorldIntent {
   kind: WorldIntentKind;
@@ -93,7 +102,12 @@ export function normalizeWorldText(text: string): string {
 }
 
 function hasPhrase(text: string, phrases: string[]): boolean {
-  return phrases.some(phrase => text === phrase || text.startsWith(`${phrase} `) || text.includes(` ${phrase} `));
+  return phrases.some(phrase => (
+    text === phrase
+    || text.startsWith(`${phrase} `)
+    || text.endsWith(` ${phrase}`)
+    || text.includes(` ${phrase} `)
+  ));
 }
 
 export function findMentionedObject(text: string): ObjectType | undefined {
@@ -112,6 +126,8 @@ export function parseWorldIntent(text: string): WorldIntent | null {
 
   if (hasPhrase(normalized, ['obudz sie', 'obudz go', 'obudz ja', 'wake up', 'wake'])) return { kind: 'wake' };
   if (hasPhrase(normalized, ['idz spac', 'idź spać', 'poloz sie spac', 'spij', 'go to sleep', 'go sleep', 'sleep now'])) return { kind: 'sleep' };
+  if (hasPhrase(normalized, ['chodzmy na dwor', 'wyjdz na dwor', 'wyjdz na zewnatrz', 'go outside', 'come outside', 'step outside', 'lets go outside'])) return { kind: 'go_outside' };
+  if (hasPhrase(normalized, ['wroc do pokoju', 'wracaj do srodka', 'wroc do srodka', 'come back inside', 'come inside', 'go back inside'])) return { kind: 'come_inside' };
   if (hasPhrase(normalized, ['chodz tutaj', 'chodz tu', 'podejdz do mnie', 'come here', 'come to me'])) return { kind: 'come_here' };
   if (hasPhrase(normalized, ['napij sie', 'napij', 'pij wode', 'have a drink', 'drink some water', 'drink'])) return { kind: 'drink', objectType: 'water_bowl' };
   if (hasPhrase(normalized, ['idz do toalety', 'skorzystaj z toalety', 'skorzystaj z kuwety', 'toaleta', 'do toalety', 'use the toilet', 'go to the toilet'])) return { kind: 'toilet', objectType: 'litter_box' };
@@ -296,6 +312,21 @@ export function performImmediateWorldAction(
     };
   }
 
+  if (intent.kind === 'go_outside') {
+    if (state.world.place === 'outdoors') return { state, result: { intent, status: 'already_satisfied' } };
+    const blocked = outdoorVisitBlocked(state);
+    if (blocked === 'unavailable') return { state, result: { intent, status: 'unavailable', reason: 'no_weather' } };
+    if (blocked === 'sleeping' || blocked === 'need') return { state, result: { intent, status: 'blocked', reason: blocked } };
+    if (blocked === 'wary') return { state, result: { intent, status: 'refused', reason: 'wary' } };
+    const next = beginOutdoorVisit(state, now);
+    return { state: next, result: { intent, status: 'success', reason: next.world.current?.condition } };
+  }
+
+  if (intent.kind === 'come_inside') {
+    if (state.world.place !== 'outdoors') return { state, result: { intent, status: 'already_satisfied' } };
+    return { state: endOutdoorVisit(state, now), result: { intent, status: 'success' } };
+  }
+
   return { state, result: { intent, status: 'blocked' } };
 }
 
@@ -323,13 +354,18 @@ const LABELS: Record<ObjectType, { pl: string; en: string }> = {
 export function groundedWorldReply(result: WorldActionResult, language: 'pl' | 'en'): string {
   const polish = language === 'pl';
   const label = result.objectType ? LABELS[result.objectType][language] : '';
-  if (result.status === 'unavailable') return polish ? `Nie widzę tu ${label}.` : `I cannot find the ${label} here.`;
+  if (result.status === 'unavailable') {
+    if (result.intent.kind === 'go_outside') return polish ? 'Stąd jeszcze nie ma wyjścia.' : 'There is no outside from here yet.';
+    return polish ? `Nie widzę tu ${label}.` : `I cannot find the ${label} here.`;
+  }
   if (result.status === 'refused') {
     if (result.reason === 'not_tired') return polish ? 'Nie chcę jeszcze spać. Mam za dużo energii.' : 'I do not want to sleep yet. I have too much energy.';
+    if (result.reason === 'wary') return polish ? 'Nie przy tej pogodzie. Zostanę w środku.' : 'Not this weather. I will stay inside.';
     return polish ? `Nie chcę teraz ${label}. Zostawię to tutaj.` : `I do not want the ${label} now. I will leave it here.`;
   }
   if (result.status === 'blocked') {
     if (result.reason === 'sleeping') return polish ? 'Najpierw muszę się obudzić.' : 'I need to wake up first.';
+    if (result.reason === 'need') return polish ? 'Najpierw potrzebuję czegoś w pokoju.' : 'I need something in the room first.';
     if (result.intent.kind === 'sleep') return polish ? 'Nie zasnę, dopóki moje ciało czegoś pilnie potrzebuje.' : 'I cannot settle while my body urgently needs something.';
     return polish ? 'Teraz nie mogę tego zrobić.' : 'I cannot do that right now.';
   }
@@ -339,11 +375,20 @@ export function groundedWorldReply(result: WorldActionResult, language: 'pl' | '
       toilet: ['Teraz nie potrzebuję toalety.', 'I do not need the toilet right now.'],
       wash: ['Jestem już czysty.', 'I am already clean.'], clean: ['Tu już jest czysto.', 'The room is already clean.'],
       drink: ['Nie chce mi się teraz pić.', 'I am not thirsty right now.'],
+      go_outside: ['Już jestem na dworze.', 'I am already outside.'],
+      come_inside: ['Już jestem w pokoju.', 'I am already inside.'],
     };
     const reply = replies[result.intent.kind] ?? ['Na razie zostawię to w spokoju.', 'I will leave it alone for now.'];
     return polish ? reply[0] : reply[1];
   }
   if (result.intent.kind === 'come_here') return polish ? 'Jestem bliżej.' : 'I am closer now.';
+  if (result.intent.kind === 'go_outside') {
+    const conditions: WeatherCondition[] = ['clear', 'partly_cloudy', 'overcast', 'fog', 'drizzle', 'rain', 'snow', 'storm', 'unknown'];
+    const condition = conditions.includes(result.reason as WeatherCondition) ? result.reason as WeatherCondition : 'unknown';
+    const label = getWeatherConditionLabel(condition, language);
+    return polish ? `Wyszedłem. Jest ${condition === 'clear' ? 'jasno' : label}.` : `I stepped outside. It is ${label}.`;
+  }
+  if (result.intent.kind === 'come_inside') return polish ? 'Wróciłem do pokoju.' : 'I am back in the room.';
   if (result.intent.kind === 'sleep') return polish ? 'Dobrze. Układam się.' : 'All right. I am settling down.';
   if (result.intent.kind === 'wake') return polish ? 'Już jestem.' : 'I am here.';
   if (result.intent.kind === 'drink') return polish ? 'Napiłem się. Tego potrzebowałem.' : 'I drank. I needed that.';
