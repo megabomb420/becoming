@@ -6,7 +6,7 @@ import {
   UserFactKind,
 } from '../types';
 import { getRankedInterests } from './innerLifeSystem';
-import { getLifePathTitle } from './lifePathSystem';
+import { getLifePathTitle, migrateLifePathState } from './lifePathSystem';
 
 const CHAPTER_INTERVAL = 8;
 const MAX_CHAPTERS = 20;
@@ -139,43 +139,102 @@ function discoverLoops(state: GameState, text: string, now: number): GameState {
   return next;
 }
 
+function windowMemories(state: GameState, startedAt: number, now: number) {
+  return [...state.memories]
+    .filter(memory => (
+      memory.timestamp >= startedAt
+      && memory.timestamp <= now
+      && !memory.compressed
+      && memory.importance >= 5
+      && (memory.tags.includes('outdoors')
+        || memory.tags.includes('weather')
+        || memory.tags.includes('creation')
+        || memory.tags.includes('resolved')
+        || memory.tags.includes('first'))
+    ))
+    .sort((a, b) => b.importance - a.importance || b.timestamp - a.timestamp);
+}
+
+function composeChapter(state: GameState, index: number, startedAt: number, now: number) {
+  const polish = state.conversation.language === 'pl';
+  const language = polish ? 'pl' : 'en';
+  const facts = [...state.conversation.facts]
+    .filter(fact => fact.lastMentioned >= startedAt)
+    .sort((a, b) => b.confidence - a.confidence || b.lastMentioned - a.lastMentioned)
+    .slice(0, 3);
+  const topics = getRankedInterests(state, 3, language)
+    .filter(interest => interest.lastEngaged >= startedAt)
+    .map(interest => interest.label);
+  const pathState = migrateLifePathState(state.lifePath, state.personality, now);
+  const pathTitle = pathState.primary ? getLifePathTitle(state, language) : null;
+  const beats = windowMemories(state, startedAt, now);
+  const outdoor = beats.find(memory => memory.tags.includes('outdoors'));
+  const loops = state.continuity.openLoops.filter(loop => (
+    (loop.createdAt >= startedAt && loop.createdAt <= now)
+    || (loop.resolvedAt != null && loop.resolvedAt >= startedAt && loop.resolvedAt <= now)
+  ));
+  const resolved = loops.find(loop => loop.resolvedAt);
+  const open = loops.find(loop => !loop.resolvedAt);
+  const outdoorCondition = outdoor?.tags.find(tag => tag.startsWith('weather:') && tag !== 'weather:unknown')?.slice(8).replace(/_/g, ' ');
+
+  const parts: string[] = [];
+  if (facts.length) {
+    const listed = facts.map(fact => fact.value).join(', ');
+    parts.push(polish ? `Wracałeś do: ${listed}.` : `You kept returning to ${listed}.`);
+  }
+  if (outdoor) {
+    parts.push(outdoorCondition
+      ? (polish ? `Wyszedłem na dwór — ${outdoorCondition}.` : `I stepped outside into ${outdoorCondition}.`)
+      : (polish ? 'Wyszedłem na dwór na chwilę.' : 'I stepped outside for a while.'));
+  } else if (beats[0] && parts.length < 2) {
+    parts.push(polish ? `Zostało we mnie: ${beats[0].content.slice(0, 80)}.` : `It stayed with me: ${beats[0].content.slice(0, 80)}.`);
+  }
+  if (resolved && parts.length < 2) {
+    parts.push(polish ? `Domknęło się: ${resolved.subject}.` : `That stretch closed ${resolved.subject}.`);
+  } else if (open && parts.length < 2 && !facts.some(fact => normalize(fact.value).includes(normalize(open.subject).slice(0, 12)))) {
+    parts.push(polish ? `Wciąż trzymam ${open.subject}.` : `I am still holding ${open.subject}.`);
+  } else if (pathTitle && parts.length < 2) {
+    parts.push(polish ? `Ta część miała smak drogi „${pathTitle}”.` : `This stretch had the flavour of ${pathTitle}.`);
+  }
+  if (!parts.length) {
+    parts.push(polish
+      ? 'Małe rzeczy powtarzały się między nami, jeszcze bez twardej roli.'
+      : 'Small things kept repeating between us, still without a settled role.');
+  }
+
+  const headline = topics[0]
+    ?? (outdoor ? (polish ? 'na dworze' : 'outside') : null)
+    ?? (open?.subject ?? resolved?.subject ?? facts[0]?.value)?.slice(0, 32)
+    ?? (polish ? 'między nami' : 'between us');
+
+  return {
+    title: polish ? `Rozdział ${index}: ${headline}` : `Chapter ${index}: ${headline}`,
+    summary: parts.slice(0, 2).join(' ').slice(0, 320),
+    topics,
+    factIds: facts.map(fact => fact.id),
+  };
+}
+
 function buildChapter(state: GameState, now: number): GameState {
   const since = state.conversation.totalUserMessages - state.continuity.lastChapterMessageCount;
   if (since < CHAPTER_INTERVAL) return state;
   const index = state.continuity.chapters.length + 1;
   const startedAt = state.continuity.chapters[state.continuity.chapters.length - 1]?.endedAt ?? state.identity.birthTimestamp;
-  const facts = [...state.conversation.facts]
-    .filter(fact => fact.lastMentioned >= startedAt)
-    .sort((a, b) => b.confidence - a.confidence || b.lastMentioned - a.lastMentioned)
-    .slice(0, 4);
-  const polish = state.conversation.language === 'pl';
-  const language = polish ? 'pl' : 'en';
-  const topics = getRankedInterests(state, 3, language).filter(interest => interest.lastEngaged >= startedAt).map(interest => interest.label);
-  const path = getLifePathTitle(state, language);
-  const subjectText = facts.length > 0
-    ? facts.map(fact => fact.value).join(', ')
-    : polish ? 'małe rzeczy, które powtarzały się między nami' : 'small things that kept repeating between us';
-  const topicText = topics.length > 0 ? topics.join(', ') : polish ? 'codzienność' : 'ordinary days';
-  const title = polish
-    ? `Rozdział ${index}: ${topics[0] ?? 'małe prawdy'}`
-    : `Chapter ${index}: ${topics[0] ?? 'small truths'}`;
-  const summary = polish
-    ? `Rozmawialiśmy o: ${subjectText}. Moją uwagę przyciągało ${topicText}, a moja droga wyglądała jak ${path}.`
-    : `We talked about ${subjectText}. My attention kept returning to ${topicText}, while my path looked like ${path}.`;
+  const composed = composeChapter(state, index, startedAt, now);
   const chapter = {
     id: `chapter-${index}-${now}`,
     index,
-    title,
-    summary,
-    topics,
-    factIds: facts.map(fact => fact.id),
+    title: composed.title,
+    summary: composed.summary,
+    topics: composed.topics,
+    factIds: composed.factIds,
     startedAt,
     endedAt: now,
   };
   const chapterMemory: Memory = {
     id: `mem-${chapter.id}`,
     timestamp: now,
-    content: summary,
+    content: chapter.summary,
     importance: 8,
     emotionalValence: 0.3,
     tags: ['conversation', 'chapter', 'continuity'],

@@ -5,3 +5,4 @@ import './needs_time_checks';
 import './weather_environment_checks';
 import './world_action_checks';
 import './persona_overlay_checks';
+import './chapter_quality_checks';

@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.2
+> **Version:** 0.12.3
 > **Last Updated:** 2026-08-27
 
 ---
@@ -53,6 +53,7 @@ becoming/
 │   ├── needs_time_checks.ts     # Needs, offline, local-time, timezone, DST checks
 │   ├── weather_environment_checks.ts # Open-Meteo, cache, solar light, reaction checks
 │   ├── persona_overlay_checks.ts # Thin mind payload, earned overlays, DeepSeek-only bubbles
+│   ├── chapter_quality_checks.ts # Local chapter summaries without a second model call
 │   └── gen_icons.py             # PWA icon generation
 ├── src/
 │   ├── types/index.ts          # Core type definitions
@@ -500,7 +501,9 @@ Room idle chatter is gone. Worker failure no longer invents a local line. Rare s
 
 Want-out and earned weather affinity can now become a real, short outdoor beat. The existing Room cadence walks to the window, steps outside, then comes back; there is no second clock. The window widens into the sky while the creature is out. World commands `go outside` / `chodźmy na dwór` and `come inside` / `wróć do pokoju` still execute locally and still do not rewrite path. A cautious creature can refuse a storm. Urgent hunger, bathroom, dirt, sleep, or disabled weather bring it back in. The mind overlay receives the real condition and `place: outdoors` so it cannot invent a walk that did not happen.
 
-Notifications, music, and splitting Room.tsx were not part of this slice.
+### v0.12.3 — Lived chapter summaries
+
+Local conversation chapters now compress the last eight user turns into a short lived memory instead of a mechanical recap. Unwritten paths stay out of the text. User likes do not become the creature's identity. An outdoor visit in the window can enter the summary with the real condition, not invented sensory detail. A stable path may colour the stretch only after it is earned. Still no extra model call and still only three bounded chapter summaries reach DeepSeek.
 
 ---
 
@@ -527,18 +530,17 @@ Notifications, music, and splitting Room.tsx were not part of this slice.
 
 ### Priority: High
 1. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
-2. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
-3. **Object mastery** — extend the creation arc to music, boxes, keepsakes, and collaborative play.
+2. **Object mastery** — extend the creation arc to music, boxes, keepsakes, and collaborative play.
 
 ### Priority: Medium
-4. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
-5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
-6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
+3. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
+4. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
+5. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
 
 ### Priority: Low / Future
-7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
-8. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
-9. **Notifications** — gentle, non-manipulative PWA notifications.
+6. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
+7. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
+8. **Notifications** — gentle, non-manipulative PWA notifications.
 
 ---
 
@@ -587,7 +589,7 @@ location.reload();
 | How social learning works | `src/systems/socialLearningSystem.ts` |
 | How paths, hybrids, choices, recovery, and skins work | `src/systems/lifePathSystem.ts` |
 | How interests, opinions, dreams, and secrets work | `src/systems/innerLifeSystem.ts` |
-| How chapters, open loops, and later check-ins work | `src/systems/continuitySystem.ts` |
+| How chapters, open loops, later check-ins, and lived summaries work | `src/systems/continuitySystem.ts` |
 | How returns and shared rituals work | `src/systems/presenceSystem.ts` |
 | How optional tones and haptics work | `src/systems/sensorySystem.ts` |
 | How the two-language shell chooses copy | `src/systems/uiLanguage.ts` |
