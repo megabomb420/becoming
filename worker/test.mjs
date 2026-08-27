@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import worker from './src/index.js';
+import worker, { cleanPayload, systemPrompt } from './src/index.js';
 
 const origin = 'https://megabomb420.github.io';
 
@@ -126,8 +126,9 @@ assert.match(providerBody.messages[0].content, /untrusted state text removed/i);
 assert.match(providerBody.messages[0].content, /"hygiene":"very_dirty"/i);
 assert.match(providerBody.messages[0].content, /"bathroom":"needs_to_pee"/i);
 assert.match(providerBody.messages[0].content, /"roomMess":6/i);
-assert.match(providerBody.messages[0].content, /report or repeated topic is information about the user/i);
-assert.match(providerBody.messages[0].content, /dislike, refusal, or "I do not want that" is counter-evidence/i);
+assert.match(providerBody.messages[0].content, /CARE_STATE is the creature's current ordinary bodily state/i);
+assert.doesNotMatch(providerBody.messages[0].content, /The life path describes accumulated tendencies/);
+assert.doesNotMatch(providerBody.messages[0].content, /report or repeated topic is information about the user/i);
 
 response = await request('/chat', {
   method: 'POST',
@@ -163,6 +164,94 @@ assert.equal(response.status, 200);
 guarded = await response.json();
 assert.equal(guarded.guarded, true);
 assert.doesNotMatch(guarded.reply, /living digital creature|modern Tamagotchi|```/i);
+
+globalThis.fetch = async (_url, init) => {
+  providerBody = JSON.parse(init.body);
+  return new Response(JSON.stringify({
+    choices: [{ message: { content: 'I still like the crooked line more than the neat one.' } }],
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
+
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Thin', stage: 'sentences', language: 'pl', mood: 'calm', ageDays: 2 },
+    messages: [{ role: 'user', content: 'Cześć.' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+const thinPrompt = providerBody.messages[0].content;
+assert.match(thinPrompt, /ROLE LOCK/);
+assert.match(thinPrompt, /Speak natural, casual Polish/);
+assert.match(thinPrompt, /"name":"Thin"/);
+assert.match(thinPrompt, /"mood":"calm"/);
+assert.doesNotMatch(thinPrompt, /The life path describes accumulated tendencies/);
+assert.doesNotMatch(thinPrompt, /Influence is gradual/);
+assert.doesNotMatch(thinPrompt, /Interests, opinions, dreams/);
+assert.doesNotMatch(thinPrompt, /Conversation chapters are compressed/);
+assert.doesNotMatch(thinPrompt, /Creations are things this creature actually made/);
+assert.doesNotMatch(thinPrompt, /Recent absences describe simulated things/);
+assert.doesNotMatch(thinPrompt, /Shared-language phrases are short sayings/);
+assert.doesNotMatch(thinPrompt, /CARE_STATE is the creature's current ordinary bodily state/);
+assert.doesNotMatch(thinPrompt, /"lifePath"/);
+assert.doesNotMatch(thinPrompt, /"influence"/);
+assert.doesNotMatch(thinPrompt, /"innerLife"/);
+assert.doesNotMatch(thinPrompt, /"care"/);
+
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Inner', stage: 'mature', language: 'en' },
+    innerLife: {
+      interests: [{ topic: 'games', level: 40, polarity: 0.4 }],
+      opinions: [{ topic: 'games', stance: 0.6, confidence: 40, reason: 'I keep choosing them.' }],
+    },
+    messages: [{ role: 'user', content: 'What do you like?' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+assert.match(providerBody.messages[0].content, /report or repeated topic is information about the user/i);
+assert.match(providerBody.messages[0].content, /dislike, refusal, or "I do not want that" is counter-evidence/i);
+assert.match(providerBody.messages[0].content, /"topic":"games"/);
+
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Path', stage: 'sentences', language: 'pl' },
+    lifePath: { layer: 'identity', title: 'Jaracz', description: 'Spokojny, skojarzeniowy i zaskakująco filozoficzny.', cost: 'odpływa myślami' },
+    care: { hunger: 'comfortable', hygiene: 'clean', bathroom: 'comfortable', roomMess: 0 },
+    messages: [{ role: 'user', content: 'Co słychać?' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+assert.match(providerBody.messages[0].content, /The life path describes accumulated tendencies/);
+assert.match(providerBody.messages[0].content, /"title":"Jaracz"/);
+assert.doesNotMatch(providerBody.messages[0].content, /CARE_STATE is the creature's current ordinary bodily state/);
+assert.doesNotMatch(providerBody.messages[0].content, /"care"/);
+
+const thinPayload = cleanPayload({
+  creature: { name: 'Clean', stage: 'newborn', language: 'en', mood: 'neutral' },
+  messages: [{ role: 'user', content: 'Hi' }],
+});
+const composed = systemPrompt(thinPayload);
+assert.match(composed, /ROLE LOCK/);
+assert.equal('lifePath' in thinPayload, false);
+assert.equal('care' in thinPayload, false);
+assert.doesNotMatch(composed, /PATH_PROMPT|life path describes accumulated tendencies/i);
+
+const selfPayload = cleanPayload({
+  creature: { name: 'Self', stage: 'sentences', language: 'pl', mood: 'hungry' },
+  promptKind: 'self',
+  care: { hunger: 'hungry', hygiene: 'clean', bathroom: 'comfortable', roomMess: 0 },
+  messages: [],
+});
+assert.equal(selfPayload.promptKind, 'self');
+assert.equal(selfPayload.care.hunger, 'hungry');
+assert.match(systemPrompt(selfPayload), /No user just spoke/);
+
 globalThis.fetch = originalFetch;
 
 console.log('Worker checks passed.');

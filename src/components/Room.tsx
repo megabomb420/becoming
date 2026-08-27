@@ -88,7 +88,7 @@ import {
   recordEnvironmentReaction,
 } from '../systems/environmentSystem';
 import { appendCreatureMessage, beginConversationTurn } from '../systems/conversationSystem';
-import { requestCreatureReply } from '../systems/llmConversation';
+import { isLlmAvailable, requestCreatureReply, shouldCreatureSelfSpeak } from '../systems/llmConversation';
 import {
   applyWorldObjectReaction,
   applyConversationMicroReaction,
@@ -344,6 +344,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const careEffectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const lastCareSignalRef = useRef(0);
   const lastSpeechAtRef = useRef(0);
+  const lastSelfSpeakAtRef = useRef(0);
+  const selfSpeakInFlightRef = useRef(false);
   const firstInFlightRef = useRef<string | null>(null);
   const activeObjectRef = useRef<string | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
@@ -908,18 +910,29 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     return () => clearInterval(activityTimerRef.current);
   }, [onStateChange]);
 
-  // Random speech
+  // Rare DeepSeek self-speak on the existing room cadence. No extra heartbeat.
   useEffect(() => {
     const interval = setInterval(() => {
       const currentState = stateRef.current;
-      const currentEmotion = creatureEmotionRef.current;
-      if (!showChat && !activeObjectRef.current && Date.now() - lastSpeechAtRef.current > 12_000 && behaviorRef.current === 'idle' && shouldSpeak(currentState)) {
-        const text = generateCreatureSpeech(currentState, { trigger: 'idle', emotionalState: currentEmotion });
-        if (text) triggerSpeech(text, false);
-      }
+      if (showChat || showCare || activeObjectRef.current || currentState.sleepState === 'sleeping') return;
+      if (behaviorRef.current !== 'idle' || selfSpeakInFlightRef.current) return;
+      if (!isLlmAvailable()) return;
+      if (Date.now() - lastSpeechAtRef.current < 90_000) return;
+      if (Date.now() - lastSelfSpeakAtRef.current < 180_000) return;
+      if (!shouldCreatureSelfSpeak(currentState)) return;
+      selfSpeakInFlightRef.current = true;
+      lastSelfSpeakAtRef.current = Date.now();
+      void requestCreatureReply(currentState, { kind: 'self' })
+        .then(text => {
+          if (text.trim()) triggerSpeech(text);
+        })
+        .catch(() => {})
+        .finally(() => {
+          selfSpeakInFlightRef.current = false;
+        });
     }, 8000 + Math.random() * 10000);
     return () => clearInterval(interval);
-  }, [showChat, triggerSpeech]);
+  }, [showChat, showCare, triggerSpeech]);
 
   // Creature-initiated conversation check
   useEffect(() => {
@@ -1411,9 +1424,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       triggerSpeech(reply);
       setMindState('online');
     } catch (error) {
-      console.warn('AI reply unavailable; using the creature\'s local instincts.', error);
-      triggerSpeech(turn.reply);
-      setMindState('instinct');
+      console.warn('AI reply unavailable; no substitute line.', error);
+      setMindState('ready');
     } finally {
       setIsThinking(false);
     }

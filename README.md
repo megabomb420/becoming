@@ -15,7 +15,7 @@ The project is a polished vertical slice built around one principle: the player 
 - **The outside world is interpreted, not displayed.** Optional Open-Meteo weather becomes light, soundless atmosphere, need pressure, behaviour, preference, and memory instead of a forecast dashboard.
 - **One persistent individual.** Seeded temperament provides continuity while care and experience gradually change the creature.
 - **No death from neglect.** Time away affects the relationship without punishing the player or deleting progress.
-- **AI is optional infrastructure.** Higher-level conversation uses a private gateway; the game retains a local fallback.
+- **AI is optional infrastructure.** Higher-level conversation uses a private gateway. Room speech bubbles are DeepSeek text only; a failed call does not invent a local line.
 
 ## Stack
 

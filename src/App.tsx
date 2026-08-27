@@ -21,7 +21,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.0';
+const APP_VERSION = '0.12.1';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);

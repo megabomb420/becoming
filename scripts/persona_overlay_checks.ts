@@ -1,0 +1,137 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
+import { beginConversationTurn } from '../src/systems/conversationSystem';
+import {
+  buildCreatureMindRequest,
+  shouldCreatureSelfSpeak,
+} from '../src/systems/llmConversation';
+import {
+  evolveLifePath,
+  evolveLifePathFromCreatureStatement,
+  getLifePathTitle,
+} from '../src/systems/lifePathSystem';
+
+const NOW = 1_825_100_000_000;
+
+function hatched(name: string, seed: number) {
+  const creature = createHatchedCreature(createNewCreature(name, seed));
+  return {
+    ...creature,
+    conversation: { ...creature.conversation, language: 'pl' as const },
+    development: { ...creature.development, cognitiveLevel: 58, languageLevel: 52, stage: 'sentences' as const },
+  };
+}
+
+function withMessage(state: ReturnType<typeof hatched>, text: string) {
+  return beginConversationTurn(state, text, NOW, { worldAction: true }).state;
+}
+
+const unwritten = withMessage(hatched('Unwritten', 101), 'Cześć.');
+const unwrittenBody = buildCreatureMindRequest(unwritten);
+assert.equal(unwrittenBody.lifePath, undefined, 'unwritten creatures send a thin request');
+assert.equal(unwrittenBody.influence, undefined);
+assert.equal(unwrittenBody.innerLife, undefined);
+assert.equal(unwrittenBody.continuity, undefined);
+assert.equal(unwrittenBody.creations, undefined);
+assert.equal(unwrittenBody.presence, undefined);
+assert.equal(unwrittenBody.care, undefined);
+assert.equal(unwrittenBody.sharedLanguage, undefined);
+assert.equal(unwrittenBody.facts, undefined);
+assert.equal(unwrittenBody.habits, undefined);
+assert.equal(unwrittenBody.weather, undefined);
+assert.deepEqual(Object.keys(unwrittenBody.creature).sort(), ['ageDays', 'language', 'mood', 'name', 'stage']);
+assert.ok(unwrittenBody.messages.length >= 1);
+assert.equal(shouldCreatureSelfSpeak(unwritten), false);
+
+let mentioned = hatched('Mention', 202);
+mentioned = evolveLifePath(mentioned, 'zapalmy', NOW);
+const mentionedBody = buildCreatureMindRequest(withMessage(mentioned, 'zapalmy'));
+assert.equal(mentioned.lifePath.primary, null);
+assert.equal(mentioned.lifePath.evidence.stoner.creaturePreferences, 0);
+assert.equal(mentionedBody.lifePath, undefined, 'a user invitation must not attach a stoner overlay');
+assert.doesNotMatch(JSON.stringify(mentionedBody), /Jaracz|Stoner/);
+
+let curious = hatched('Curious', 303);
+curious = evolveLifePathFromCreatureStatement(curious, 'Ciekawi mnie jarać?', NOW);
+const curiousBody = buildCreatureMindRequest(withMessage(curious, 'Co myślisz?'));
+assert.equal(curiousBody.lifePath?.layer, 'curiosity');
+assert.equal(curiousBody.lifePath?.id, 'stoner');
+assert.equal(curiousBody.lifePath?.title, undefined, 'curiosity is one line, not a costume');
+assert.doesNotMatch(JSON.stringify(curiousBody.lifePath), /Jaracz/);
+
+let leaning = hatched('Leaning', 404);
+leaning = evolveLifePathFromCreatureStatement(leaning, 'Lubię jarać.', NOW);
+const leaningBody = buildCreatureMindRequest(withMessage(leaning, 'I co?'));
+assert.equal(leaningBody.lifePath?.layer, 'leaning', 'a creature preference leans without becoming Jaracz');
+assert.equal(leaningBody.lifePath?.id, 'stoner');
+assert.doesNotMatch(JSON.stringify(leaningBody.lifePath), /Jaracz/);
+assert.notEqual(getLifePathTitle(leaning, 'pl'), 'Jaracz');
+
+let jaracz = hatched('Stable', 505);
+for (let index = 0; index < 7; index += 1) {
+  jaracz = evolveLifePathFromCreatureStatement(
+    jaracz,
+    'Wybieram palić zioło. To moja decyzja.',
+    NOW + index * 2 * 60 * 60_000,
+  );
+}
+assert.equal(jaracz.lifePath.primary, 'stoner');
+assert.equal(getLifePathTitle(jaracz, 'pl'), 'Jaracz');
+const jaraczBody = buildCreatureMindRequest(withMessage(jaracz, 'Jak się czujesz?'));
+assert.equal(jaraczBody.lifePath?.layer, 'identity');
+assert.equal(jaraczBody.lifePath?.title, 'Jaracz');
+assert.ok(jaraczBody.lifePath?.description);
+assert.ok(jaraczBody.influence, 'a real flawed primary in a meaningful band earns influence');
+if (jaracz.lifePath.phase === 'committed' || jaracz.lifePath.phase === 'embodied') {
+  assert.ok(jaraczBody.lifePath?.cost, 'committed or embodied identity includes the cost');
+}
+
+let rejected = hatched('Reject', 606);
+rejected = evolveLifePath(rejected, 'zapalmy', NOW);
+rejected = evolveLifePathFromCreatureStatement(rejected, 'Nie chcę jarać. To nie dla mnie.', NOW + 1_000);
+const rejectedBody = buildCreatureMindRequest(withMessage(rejected, 'No to co?'));
+assert.equal(rejected.lifePath.primary, null);
+assert.equal(rejectedBody.lifePath?.layer, 'rejection');
+assert.match(JSON.stringify(rejectedBody.lifePath?.doesNotWant), /Jaracz|stoner/i);
+assert.doesNotMatch(JSON.stringify(rejectedBody.lifePath), /"title":"Jaracz"/);
+assert.equal(rejectedBody.influence, undefined, 'rejection must peel the flawed costume');
+
+const comfortable = hatched('Comfort', 707);
+const comfortableBody = buildCreatureMindRequest(withMessage(comfortable, 'Hej.'));
+assert.equal(comfortableBody.care, undefined, 'care overlay is omitted when needs are comfortable');
+
+const hungry = {
+  ...comfortable,
+  needs: { ...comfortable.needs, hunger: 18 },
+};
+const hungryBody = buildCreatureMindRequest(withMessage(hungry, 'Hej.'));
+assert.ok(hungryBody.care, 'care overlay is present when a need is not comfortable');
+assert.equal(hungryBody.care?.hunger, 'very_hungry');
+assert.equal(shouldCreatureSelfSpeak(hungry), true);
+assert.equal(shouldCreatureSelfSpeak(comfortable), false);
+
+const dirty = {
+  ...comfortable,
+  needs: { ...comfortable.needs, hygiene: 20 },
+};
+assert.equal(shouldCreatureSelfSpeak(dirty), true);
+assert.ok(buildCreatureMindRequest(withMessage(dirty, 'Hej.')).care);
+
+const bathroom = {
+  ...comfortable,
+  needs: { ...comfortable.needs, bladder: 12 },
+};
+assert.equal(shouldCreatureSelfSpeak(bathroom), true);
+
+const spokenOffer = beginConversationTurn(comfortable, 'Masz, dam ci jabłko.', NOW + 50_000, { worldAction: true }).state;
+assert.deepEqual(spokenOffer.personality, comfortable.personality, 'a world command must not rewrite personality');
+assert.equal(spokenOffer.lifePath.primary, comfortable.lifePath.primary);
+
+const roomSource = readFileSync('src/components/Room.tsx', 'utf8');
+assert.doesNotMatch(roomSource, /trigger:\s*'idle'/, 'local idle chatter must not fill the bubble');
+assert.doesNotMatch(roomSource, /triggerSpeech\(turn\.reply\)/, 'worker failure must not invent a local line');
+assert.match(roomSource, /kind:\s*'self'/, 'rare self-speak must reuse /chat');
+assert.match(roomSource, /groundedWorldReply/);
+
+console.log('Persona overlay checks passed.');

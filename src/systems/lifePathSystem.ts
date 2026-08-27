@@ -242,7 +242,7 @@ function evidenceBalance(evidence: LifePathEvidence) {
   return positiveEvidence(evidence) - evidence.creatureRejections * 2;
 }
 
-function isStablePath(score: number, evidence: LifePathEvidence) {
+export function isStablePath(score: number, evidence: LifePathEvidence) {
   const positives = positiveEvidence(evidence);
   const span = (evidence.lastPositiveAt ?? 0) - (evidence.firstPositiveAt ?? 0);
   return score >= 42
@@ -251,7 +251,7 @@ function isStablePath(score: number, evidence: LifePathEvidence) {
     && (span >= 30 * 60_000 || positives >= 9);
 }
 
-function isVisibleDirection(score: number, evidence: LifePathEvidence) {
+export function isVisibleDirection(score: number, evidence: LifePathEvidence) {
   return score >= 8 && positiveEvidence(evidence) >= 2 && evidenceBalance(evidence) >= 1;
 }
 

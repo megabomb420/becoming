@@ -2,8 +2,8 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.0
-> **Last Updated:** 2026-08-23
+> **Version:** 0.12.1
+> **Last Updated:** 2026-08-27
 
 ---
 
@@ -52,6 +52,7 @@ becoming/
 │   ├── life_path_checks.ts      # Deterministic system smoke checks
 │   ├── needs_time_checks.ts     # Needs, offline, local-time, timezone, DST checks
 │   ├── weather_environment_checks.ts # Open-Meteo, cache, solar light, reaction checks
+│   ├── persona_overlay_checks.ts # Thin mind payload, earned overlays, DeepSeek-only bubbles
 │   └── gen_icons.py             # PWA icon generation
 ├── src/
 │   ├── types/index.ts          # Core type definitions
@@ -65,7 +66,7 @@ becoming/
 │   │   ├── developmentSystem.ts # Stage progression, vocabulary acquisition
 │   │   ├── languageSystem.ts   # Stage-constrained speech generation
 │   │   ├── conversationSystem.ts # Persistent dialogue, user facts, growing mind
-│   │   ├── llmConversation.ts  # Bounded private-AI request construction
+│   │   ├── llmConversation.ts  # Thin always-on mind request plus earned overlays
 │   │   ├── offlineSimulation.ts # Time-passed simulation when app closed
 │   │   ├── memoryBook.ts       # Emergent biography generation
 │   │   ├── lifePathSystem.ts    # Paths, hybrids, consequences, and recovery
@@ -134,7 +135,7 @@ becoming/
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
 | Creature-initiated chat | ✅ | Creature can start conversations based on observations |
 | Chat interface | ✅ | Full-screen conversation with constrained responses |
-| Live AI mind | ✅ | DeepSeek replies through a private backend; the browser never receives the API key and gracefully falls back to local dialogue |
+| Live AI mind | ✅ | DeepSeek replies through a private backend; the browser never receives the API key. Room bubbles are DeepSeek text only; a worker failure leaves the bubble empty instead of inventing a local line |
 | Life paths | ✅ | 12 slowly forming lifestyles shaped by conversation, objects, repeated choices, consequences, and recovery |
 | Crossbreeds | ✅ | Compatible dominant tendencies combine into named hybrid identities such as Fog Gamer, Chill Sage, or Gentle Anchor |
 | Daily moments | ✅ | One authored dilemma per creature-day; choices alter the path and become persistent memories |
@@ -167,7 +168,7 @@ becoming/
 | Physical return traces | ✅ | Offline simulation moves or uses objects, continues a mark, touches the mirror, or changes the chosen rest place before dialogue explains anything |
 | Daily care physiology | ✅ | Hidden cleanliness, bladder, and bowel needs extend hunger; food affects later bathroom timing, body language replaces meters, and care never causes death or guilt |
 | Toilet, washing, and cleaning | ✅ | A compact care sheet opens food, toilet, washing, and room cleaning; pee/poop remain as tappable floor traces until cleaned, with bounded offline simulation |
-| Care-aware conversation | ✅ | Local fallback and the sanitised DeepSeek state can express hunger, bathroom needs, dirt, or a messy room without exposing values, shaming, or inventing danger |
+| Care-aware conversation | ✅ | The care overlay reaches DeepSeek only when a need is not comfortable. Rare self-speak can mention hunger, bathroom, dirt, weather-affinity, or wanting out without exposing values, shaming, or inventing danger |
 
 ### 🚧 Partial / Placeholder
 
@@ -487,6 +488,16 @@ Ordinary conversation now happens inside Room through a compact input and one pe
 
 `worldActionSystem.ts` provides deterministic PL/EN world intents and shared state transitions for offered objects, food, water, sleep/wake, movement, play, inspection, toilet, washing, and cleaning. Known commands do not add an LLM request or directly rewrite personality/life path: the room reacts immediately, existing notice/approach/object-choice behavior decides the outcome, and only the real `success`, `refused`, `unavailable`, `blocked`, or `already_satisfied` result produces speech. Tests and browser QA cover apple offer/consumption/refusal, water, sleep blocking, come-here, grounded replies, persistent speech, transcript behavior, safe areas, and 390×844 / 320×568 layouts.
 
+### v0.12.1 — Thin persona overlays, DeepSeek-only bubbles
+
+The private mind now starts from a thin always-on prompt: role lock, a short base, stage, language, name, age, mood, and recent messages. Path, influence, inner life, continuity, creations, presence, shared language, facts, habits, and care are overlay modules. The worker omits both the prompt block and the JSON key until the overlay is earned.
+
+Life-path overlays use the existing evidence functions. A user invitation such as "zapalmy" does not attach Jaracz. Creature curiosity is one line, not a costume; a stated preference leans; a stable primary can wear the title and description, with cost only at committed or embodied; a rejection peels the costume. Influence is sent only for a real flawed primary or secondary in a band that matters. Care is sent only when a need is not comfortable.
+
+Room idle chatter is gone. Worker failure no longer invents a local line. Rare self-speak still uses `/chat` on the existing room cadence when hungry, bathroom, dirty, weather-affinity, or wanting out, with a cooldown. World commands still execute locally and still do not rewrite path; if the mind later speaks, the grounded fact is already in the transcript.
+
+Weather-outdoors remains next. Notifications, music, and splitting Room.tsx were not part of this slice.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -502,7 +513,7 @@ Ordinary conversation now happens inside Room through a compact input and one pe
 - **Weather preference balance needs real seasons:** Reaction cadence and affinity growth are bounded and deterministic, but multi-week saves across heat, snow and storms should guide later tuning.
 
 ### Architecture
-- **AI depends on the private gateway:** If the Worker or model provider is unavailable, the conversation automatically falls back to the smaller local mind.
+- **AI depends on the private gateway:** If the Worker or model provider is unavailable, the room bubble stays empty rather than inventing a local line. World-command replies remain the grounded local fact.
 - **Public gateway protection is best-effort:** Role attacks and task abuse are filtered and rate-limited, but a determined hostile client can spoof browser headers. Durable Cloudflare rate limiting or Turnstile remains a future hardening option.
 - **Coverage is targeted, not comprehensive:** Needs, care, weather parsing/privacy/cache, solar time, migration, offline time, dates, timezones, DST, and day phases are covered; older conversation, social-learning, age-floor, and drag-gesture cases still need broader unit coverage.
 
@@ -511,19 +522,20 @@ Ordinary conversation now happens inside Room through a compact input and one pe
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
-2. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
-3. **Object mastery** — extend the new creation arc to music, boxes, keepsakes, and collaborative play.
+1. **Weather-outdoors** — let a want-out / weather-affinity line become a real outdoor beat without adding a second clock or turning weather into a dashboard.
+2. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
+3. **Conversation chapter quality** — enrich local summaries over time without sending full history or adding another model call.
 
 ### Priority: Medium
-4. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
-5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
-6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
+4. **Object mastery** — extend the creation arc to music, boxes, keepsakes, and collaborative play.
+5. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
+6. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
+7. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
 
 ### Priority: Low / Future
-7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
-8. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
-9. **Notifications** — gentle, non-manipulative PWA notifications.
+8. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
+9. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
+10. **Notifications** — gentle, non-manipulative PWA notifications.
 
 ---
 
@@ -533,14 +545,15 @@ Ordinary conversation now happens inside Room through a compact input and one pe
 - **A real sky, never an accelerated clock.** With weather enabled, the selected place's real local time and sunrise/sunset define the sky. With weather disabled, a seasonal solar fallback follows device-local time. The game never accelerates the sun or invents an unexplained night toggle.
 - **Weather is interpreted, not scored.** Open-Meteo supplies observations only. `WorldEnvironment` translates them into bounded stimuli, and gameplay combines those with needs, personality, preferences and memories before a reaction. No rule maps a condition directly to happiness loss.
 - **Location minimisation.** Geolocation is opt-in, high accuracy is disabled, coordinates are rounded to two decimals before requests or persistence, manual city selection remains available, and disabling weather stops forecast refreshes.
-- **Local-first with one optional observation source.** All core systems and the last successful weather state run from IndexedDB. Open-Meteo enriches the world when enabled; AI remains reserved for higher-level cognition and both weather and conversation degrade gracefully offline.
+- **Local-first with one optional observation source.** All core systems and the last successful weather state run from IndexedDB. Open-Meteo enriches the world when enabled. AI remains reserved for higher-level cognition and is composed as a thin always-on prompt plus earned overlays; weather still degrades offline, while room speech does not invent a substitute line.
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
 - **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
 - **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
 - **No death from neglect.** Long absences change the creature (more independent, different trust level) but never punish the player.
 - **Nocturnal Terrarium art direction.** Room is a quiet habitat, Chat is a voice-led presence, Memory Book is a material keepsake, Becoming is a narrative portrait, and Settings is a functional sheet. Decorative assets support these roles but never define the creature.
 - **Visible development is staged, not scored.** Meaningful firsts, small gestures, object initiative, and physical return traces communicate growth. The stored numeric model remains hidden.
-- **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency.
+- **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak reuses that cadence and `/chat`; it does not add a second timer.
+- **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
 - **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, and accidents advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, death, sickness pressure, or manipulative absence mechanics.
 
 ---
