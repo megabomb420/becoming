@@ -2233,7 +2233,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                       </div>
                     ))}
                   </div>
-                  <p className="text-warm-200/30 text-[9px] font-serif mt-2">{t('Paper and pencil', 'Papier i ołówek')} · {getCreationMastery(state, ui)}</p>
+                  <p className="text-warm-200/30 text-[9px] font-serif mt-2">{t('Making', 'Tworzenie')} · {getCreationMastery(state, ui)}</p>
                 </div>
               )}
               {(visitRitual || state.presence.sessionCount > 1) && (

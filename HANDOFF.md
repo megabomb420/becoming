@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.3
+> **Version:** 0.12.4
 > **Last Updated:** 2026-08-27
 
 ---
@@ -54,6 +54,7 @@ becoming/
 │   ├── weather_environment_checks.ts # Open-Meteo, cache, solar light, reaction checks
 │   ├── persona_overlay_checks.ts # Thin mind payload, earned overlays, DeepSeek-only bubbles
 │   ├── chapter_quality_checks.ts # Local chapter summaries without a second model call
+│   ├── creation_mastery_checks.ts # Box dens, stone keepsakes, shared ball games
 │   └── gen_icons.py             # PWA icon generation
 ├── src/
 │   ├── types/index.ts          # Core type definitions
@@ -152,7 +153,7 @@ becoming/
 | Return presence | ✅ | Reopening after time away creates a gentle, time-aware greeting without guilt or punishment |
 | Shared rituals | ✅ | Visit timing and consecutive-day rhythm are learned locally and can become a visible relationship ritual |
 | Optional sound & haptics | ✅ | Synthesised interaction tones and restrained vibration can be controlled independently on-device |
-| Creature creations | ✅ | Paper + pencil mastery grows from a first mark into shapes, pictures, and a deliberate message kept in the room and Memory Book |
+| Creature creations | ✅ | Paper + pencil, box dens, stone keepsakes, and a shared ball game grow into persistent works kept in the room and Memory Book |
 | Private backup | ✅ | Export and restore the complete creature as a validated local JSON file with no login or cloud upload |
 | Polish + English UI | ✅ | Device-aware default plus an explicit two-language switch keeps the room, settings, backup, chat shell, and AI language aligned |
 | Visible PWA updates | ✅ | A bilingual update card replaces silently stale service-worker sessions and preserves all local creature state |
@@ -184,7 +185,6 @@ becoming/
 - Voiced creature vocalizations
 - Complete long-form, time-based 30-day milestone arc (real-age development floors already exist)
 - Music creation by creature
-- Broader object mastery beyond the existing paper-and-pencil creation arc
 - Lying / deception system
 
 ---
@@ -505,6 +505,10 @@ Want-out and earned weather affinity can now become a real, short outdoor beat. 
 
 Local conversation chapters now compress the last eight user turns into a short lived memory instead of a mechanical recap. Unwritten paths stay out of the text. User likes do not become the creature's identity. An outdoor visit in the window can enter the summary with the real condition, not invented sensory detail. A stable path may colour the stretch only after it is earned. Still no extra model call and still only three bounded chapter summaries reach DeepSeek.
 
+### v0.12.4 — Object mastery beyond paper
+
+The creation arc now uses objects already in the room. Repeated box hiding becomes a hideaway, then a den. A treasured stone can become a keepsake. A ball game becomes shared only when the user actually plays it with the creature; solitary play is not enough. Talking about music still does not invent an instrument. Paper and pencil are unchanged. Works still grow from object use on the existing cadence, still appear in Memory Book, and still reach DeepSeek only as sanitised titles.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -530,7 +534,7 @@ Local conversation chapters now compress the last eight user turns into a short 
 
 ### Priority: High
 1. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
-2. **Object mastery** — extend the creation arc to music, boxes, keepsakes, and collaborative play.
+2. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
 ### Priority: Medium
 3. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
@@ -593,7 +597,7 @@ location.reload();
 | How returns and shared rituals work | `src/systems/presenceSystem.ts` |
 | How optional tones and haptics work | `src/systems/sensorySystem.ts` |
 | How the two-language shell chooses copy | `src/systems/uiLanguage.ts` |
-| How paper-and-pencil creations evolve | `src/systems/creationSystem.ts` |
+| How paper, box, stone, and shared-game creations evolve | `src/systems/creationSystem.ts` |
 | How touch boundaries work | `src/systems/boundarySystem.ts` |
 | How shared sayings are adopted | `src/systems/sharedLanguageSystem.ts` |
 | How bounded AI requests are created | `src/systems/llmConversation.ts` |

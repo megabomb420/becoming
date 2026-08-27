@@ -154,6 +154,7 @@ const ObjectIcon: React.FC<ObjectIconProps> = ({ type, size = 48, status, classN
 
   if (type === 'box') {
     const opened = status === 'opened';
+    const occupied = status === 'hiding' || status === 'den';
     return (
       <svg {...common}>
         <ellipse cx="32" cy="54" rx="24" ry="5" fill="#171614" opacity=".3" />
@@ -164,17 +165,20 @@ const ObjectIcon: React.FC<ObjectIconProps> = ({ type, size = 48, status, classN
         ) : (
           <><path d="M32 32v21M23 15l9 17 9-17" stroke="#755a42" strokeWidth="2.5" /><path d="M27 38h10" stroke="#dfbb80" strokeWidth="2.5" /></>
         )}
+        {occupied && <path d="M44 48c6 1 10 4 11 8" stroke={ink} strokeWidth="3" strokeLinecap="round" />}
       </svg>
     );
   }
 
   if (type === 'stone') {
+    const kept = status === 'treasured' || status === 'keepsake';
     return (
       <svg {...common}>
         <ellipse cx="32" cy="52" rx="23" ry="5" fill="#171614" opacity=".3" />
-        <path d="M9 45 17 23l13-10 18 8 8 24-10 8H20L9 45Z" fill="#77766f" stroke={ink} strokeWidth="3" strokeLinejoin="round" />
+        <path d="M9 45 17 23l13-10 18 8 8 24-10 8H20L9 45Z" fill={kept ? '#8a7a68' : '#77766f'} stroke={ink} strokeWidth="3" strokeLinejoin="round" />
         <path d="m17 23 14 8 17-10M31 31l-3 22" stroke="#9b9990" strokeWidth="2.5" opacity=".8" />
         <path d="m42 33 6 4" stroke="#5a5954" strokeWidth="2.5" strokeLinecap="round" />
+        {kept && <path d="M24 38c3-4 8-5 12-2" stroke="#e4c9a1" strokeWidth="2" strokeLinecap="round" />}
       </svg>
     );
   }

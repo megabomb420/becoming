@@ -262,7 +262,7 @@ export function applyWorldObjectReaction(
   const experienced = recordObjectExperience(next, type, reaction, initiatedByUser);
   const pathEvolved = evolveLifePathFromObject(experienced, type, reaction.outcome);
   const inward = evolveInnerLifeFromObject(pathEvolved, type, reaction.outcome);
-  return evolveCreationFromObject(inward, type);
+  return evolveCreationFromObject(inward, type, now, initiatedByUser);
 }
 
 export function performImmediateWorldAction(

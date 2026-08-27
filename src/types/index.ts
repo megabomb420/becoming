@@ -693,7 +693,15 @@ export interface SharedLanguageState {
   phrases: SharedPhrase[];
 }
 
-export type CreationStage = 'mark' | 'shape' | 'picture' | 'message';
+export type CreationStage =
+  | 'mark'
+  | 'shape'
+  | 'picture'
+  | 'message'
+  | 'hideaway'
+  | 'den'
+  | 'keepsake'
+  | 'shared_game';
 
 export interface CreatureCreation {
   id: string;
