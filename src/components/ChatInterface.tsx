@@ -73,7 +73,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const opening = initialMessage || (messages.length === 0 ? getConversationOpening(state) : null);
     if (!opening) return;
     const timer = window.setTimeout(() => {
-      onStateChange(prev => appendCreatureMessage(prev, opening));
+      onStateChange(prev => appendCreatureMessage(prev, opening, Date.now(), { roomBubble: false }));
     }, 450 + Math.random() * 350);
     return () => {
       window.clearTimeout(timer);

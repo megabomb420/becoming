@@ -93,7 +93,10 @@ assert.deepEqual(cameCloser.position, { x: 50, y: 74 });
 assert.equal(cameCloser.creatureBehavior, 'walking');
 
 assert.deepEqual(parseWorldIntent('Chodźmy na dwór.'), { kind: 'go_outside' });
+assert.deepEqual(parseWorldIntent('go outside and tell me what the weather is like'), { kind: 'go_outside' });
 assert.deepEqual(parseWorldIntent('Please come back inside'), { kind: 'come_inside' });
+assert.deepEqual(parseWorldIntent('go look in the box'), { kind: 'use_object', objectType: 'box' });
+assert.deepEqual(parseWorldIntent('Look inside the box'), { kind: 'use_object', objectType: 'box' });
 assert.equal(parseWorldIntent('Lubię deszcz za oknem.'), null, 'a weather mention is not automatically a command');
 
 const outdoorNow = NOW + 80_000;
@@ -147,8 +150,27 @@ const cameInside = performImmediateWorldAction(wentOut.state, { kind: 'come_insi
 assert.equal(cameInside.result.status, 'success');
 assert.equal(cameInside.state.world.place, 'indoor');
 
-const noSky = performImmediateWorldAction(base, { kind: 'go_outside' }, outdoorNow);
-assert.equal(noSky.result.status, 'unavailable');
+const solarSky = performImmediateWorldAction(base, { kind: 'go_outside' }, outdoorNow);
+assert.equal(solarSky.result.status, 'success', 'a solar sky is enough to go outside');
+assert.equal(solarSky.state.world.place, 'outdoors');
+assert.doesNotMatch(groundedWorldReply(solarSky.result, 'en'), /there is no outside from here yet/i);
+
+const staleWeather = performImmediateWorldAction({
+  ...weatherReady,
+  world: { ...weatherReady.world, status: 'error', lastError: 'weather_unavailable' },
+}, { kind: 'go_outside' }, outdoorNow);
+assert.equal(staleWeather.result.status, 'success', 'last-known sky must still allow an outdoor visit');
+
+assert.doesNotMatch(groundedWorldReply({
+  intent: { kind: 'use_object', objectType: 'box' },
+  status: 'success',
+  objectType: 'box',
+}, 'en'), /bell|crinkle|tiny/i);
+assert.match(groundedWorldReply({
+  intent: { kind: 'use_object', objectType: 'box' },
+  status: 'success',
+  objectType: 'box',
+}, 'en'), /checked the box/i);
 
 const roomSource = readFileSync('src/components/Room.tsx', 'utf8');
 const cssSource = readFileSync('src/index.css', 'utf8');

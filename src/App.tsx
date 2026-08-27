@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, OfflineActivity } from './types';
-import { loadGameState, saveGameState } from './systems/persistence';
+import { loadGameState, resetAllLocalData, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
 import { advanceNeeds } from './systems/needsSystem';
@@ -21,7 +21,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.4';
+const APP_VERSION = '0.12.5';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -236,12 +236,11 @@ function App() {
   }, []);
 
   const handleReset = useCallback(() => {
-    const polish = (gameStateRef.current?.conversation.language ?? detectUiLanguage()) === 'pl';
-    if (confirm(polish ? 'Zacząć od nowa z innym stworkiem?' : 'Start over with a new creature?')) {
-      saveGameState(createNewCreature()).then(() => {
-        window.location.reload();
-      });
-    }
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = undefined;
+    void resetAllLocalData().finally(() => {
+      window.location.reload();
+    });
   }, []);
 
   if (loading) {

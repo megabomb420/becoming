@@ -88,9 +88,13 @@ const WeatherLayer: React.FC<WeatherLayerProps> = ({ world, lighting, time, seed
         {stimulus.condition === 'fog' && <div className="weather-fog absolute -inset-x-1/2 inset-y-0 bg-[linear-gradient(90deg,transparent,rgba(225,224,215,.52),transparent)] blur-[6px]" style={{ opacity: lighting.fogOpacity + 0.22 }} />}
         {stimulus.condition === 'storm' && <div className="weather-lightning absolute inset-0 bg-[#e8eef3] mix-blend-screen" style={{ opacity: 0 }} />}
 
-        <div className="absolute inset-y-0 left-1/2 w-px bg-[#171714]/55 transition-opacity duration-700" style={{ opacity: expanded ? 0.12 : 1 }} />
-        <div className="absolute inset-x-0 top-1/2 h-px bg-[#171714]/45 transition-opacity duration-700" style={{ opacity: expanded ? 0.12 : 1 }} />
-        <div className="absolute inset-0 rounded-[1.05rem] shadow-[inset_0_0_0_4px_rgba(29,26,22,.42)] transition-opacity duration-700" style={{ opacity: expanded ? 0.35 : 1 }} />
+        {!expanded && (
+          <>
+            <div className="absolute inset-y-0 left-1/2 w-px bg-[#171714]/55" />
+            <div className="absolute inset-x-0 top-1/2 h-px bg-[#171714]/45" />
+            <div className="absolute inset-0 rounded-[1.05rem] shadow-[inset_0_0_0_4px_rgba(29,26,22,.42)]" />
+          </>
+        )}
       </div>
 
       <div className="absolute top-[16%] h-[24%] w-3 origin-top rounded-full bg-warm-200/5 blur-[1px] weather-curtain" style={{ ...style, left: 'calc(50% - 5.9rem)', opacity: stimulus.wind * 0.44 }} />

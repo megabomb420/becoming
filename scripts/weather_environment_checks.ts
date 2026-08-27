@@ -316,8 +316,13 @@ assert.equal(indoorBase.world.place ?? 'indoor', 'indoor');
 assert.equal(wantsOutdoors(indoorBase), true);
 assert.equal(outdoorVisitBlocked(indoorBase), null);
 
-const noWeather = outdoorVisitBlocked(needsStart);
-assert.equal(noWeather, 'unavailable');
+const noLiveWeather = outdoorVisitBlocked(needsStart);
+assert.equal(noLiveWeather, null, 'missing Open-Meteo must not mean there is no outside');
+const lastKnown = outdoorVisitBlocked({
+  ...needsStart,
+  world: { ...worldWith(snapshot()), status: 'error', lastError: 'weather_unavailable' },
+});
+assert.equal(lastKnown, null);
 
 const waryStormOut: GameState = {
   ...needsStart,

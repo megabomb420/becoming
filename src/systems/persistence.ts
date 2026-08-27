@@ -263,6 +263,24 @@ export async function saveGameState(state: GameState): Promise<void> {
   }
 }
 
+export async function resetAllLocalData(): Promise<void> {
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      db.close();
+    } catch {
+      // A failed open still needs the database deleted.
+    }
+    dbPromise = null;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error ?? new Error('Could not clear local Becoming data.'));
+    request.onblocked = () => resolve();
+  });
+}
+
 export async function loadMemoryBook(): Promise<MemoryBookEntry[]> {
   const db = await getDB();
   const entries = await db.getAll('memoryBook');

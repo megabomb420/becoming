@@ -688,17 +688,15 @@ export function wantsOutdoors(state: GameState) {
 }
 
 export function outdoorVisitBlocked(state: GameState): 'unavailable' | 'sleeping' | 'need' | 'wary' | null {
-  const mode = state.world.settings.mode;
   if (state.sleepState === 'sleeping') return 'sleeping';
-  if (!state.world.current || (mode !== 'device' && mode !== 'city')) return 'unavailable';
   if (state.needs.hunger < 24 || state.needs.bladder < 30 || state.needs.bowel < 24 || state.needs.hygiene < 24) return 'need';
-  if (state.world.current.condition === 'storm' && state.personality.caution > state.personality.curiosity + 12) return 'wary';
+  if (state.world.current?.condition === 'storm' && state.personality.caution > state.personality.curiosity + 12) return 'wary';
   return null;
 }
 
 export function shouldEndOutdoorVisit(state: GameState, now = Date.now()) {
   if (state.world.place !== 'outdoors') return false;
-  if (state.world.settings.mode === 'disabled' || state.world.settings.mode === 'unconfigured' || !state.world.current) return true;
+  if (state.world.settings.mode === 'disabled') return true;
   if (now >= (state.world.outdoorUntil || 0)) return true;
   if (state.needs.hunger < 24 || state.needs.bladder < 30 || state.needs.bowel < 24 || state.needs.hygiene < 24) return true;
   return false;

@@ -87,7 +87,7 @@ const OBJECT_ALIASES: Array<[ObjectType, string[]]> = [
 
 const COMMAND_WORDS = {
   offer: ['daj', 'dam', 'podaj', 'masz', 'prosze wez', 'give', 'take this', 'here is', 'have a'],
-  use: ['uzyj', 'podejdz', 'podejdz do', 'zobacz', 'sprawdz', 'look at', 'go to', 'approach', 'use'],
+  use: ['uzyj', 'podejdz', 'podejdz do', 'zobacz', 'zobacz do', 'zobacz w', 'zajrzyj', 'sprawdz', 'look at', 'look in', 'look inside', 'go look', 'inspect', 'go to', 'approach', 'use'],
 };
 
 export function normalizeWorldText(text: string): string {
@@ -126,7 +126,7 @@ export function parseWorldIntent(text: string): WorldIntent | null {
 
   if (hasPhrase(normalized, ['obudz sie', 'obudz go', 'obudz ja', 'wake up', 'wake'])) return { kind: 'wake' };
   if (hasPhrase(normalized, ['idz spac', 'idź spać', 'poloz sie spac', 'spij', 'go to sleep', 'go sleep', 'sleep now'])) return { kind: 'sleep' };
-  if (hasPhrase(normalized, ['chodzmy na dwor', 'wyjdz na dwor', 'wyjdz na zewnatrz', 'go outside', 'come outside', 'step outside', 'lets go outside'])) return { kind: 'go_outside' };
+  if (hasPhrase(normalized, ['chodzmy na dwor', 'wyjdz na dwor', 'wyjdz na zewnatrz', 'go outside', 'come outside', 'step outside', 'lets go outside', 'go out'])) return { kind: 'go_outside' };
   if (hasPhrase(normalized, ['wroc do pokoju', 'wracaj do srodka', 'wroc do srodka', 'come back inside', 'come inside', 'go back inside'])) return { kind: 'come_inside' };
   if (hasPhrase(normalized, ['chodz tutaj', 'chodz tu', 'podejdz do mnie', 'come here', 'come to me'])) return { kind: 'come_here' };
   if (hasPhrase(normalized, ['napij sie', 'napij', 'pij wode', 'have a drink', 'drink some water', 'drink'])) return { kind: 'drink', objectType: 'water_bowl' };
@@ -315,11 +315,10 @@ export function performImmediateWorldAction(
   if (intent.kind === 'go_outside') {
     if (state.world.place === 'outdoors') return { state, result: { intent, status: 'already_satisfied' } };
     const blocked = outdoorVisitBlocked(state);
-    if (blocked === 'unavailable') return { state, result: { intent, status: 'unavailable', reason: 'no_weather' } };
     if (blocked === 'sleeping' || blocked === 'need') return { state, result: { intent, status: 'blocked', reason: blocked } };
     if (blocked === 'wary') return { state, result: { intent, status: 'refused', reason: 'wary' } };
     const next = beginOutdoorVisit(state, now);
-    return { state: next, result: { intent, status: 'success', reason: next.world.current?.condition } };
+    return { state: next, result: { intent, status: 'success', reason: next.world.current?.condition ?? 'unknown' } };
   }
 
   if (intent.kind === 'come_inside') {
@@ -355,7 +354,6 @@ export function groundedWorldReply(result: WorldActionResult, language: 'pl' | '
   const polish = language === 'pl';
   const label = result.objectType ? LABELS[result.objectType][language] : '';
   if (result.status === 'unavailable') {
-    if (result.intent.kind === 'go_outside') return polish ? 'Stąd jeszcze nie ma wyjścia.' : 'There is no outside from here yet.';
     return polish ? `Nie widzę tu ${label}.` : `I cannot find the ${label} here.`;
   }
   if (result.status === 'refused') {

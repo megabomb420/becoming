@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
-import { beginConversationTurn } from '../src/systems/conversationSystem';
+import { beginConversationTurn, migrateConversationState } from '../src/systems/conversationSystem';
 import {
   buildCreatureMindRequest,
   shouldCreatureSelfSpeak,
@@ -162,9 +162,16 @@ assert.deepEqual(spokenOffer.personality, comfortable.personality, 'a world comm
 assert.equal(spokenOffer.lifePath.primary, comfortable.lifePath.primary);
 
 const roomSource = readFileSync('src/components/Room.tsx', 'utf8');
+assert.doesNotMatch(roomSource, /generateCreatureSpeech/, 'canned language-system lines must not fill the room bubble');
+assert.doesNotMatch(roomSource, /moment\.utterance/, 'autonomous utterances must not fill the room bubble');
 assert.doesNotMatch(roomSource, /trigger:\s*'idle'/, 'local idle chatter must not fill the bubble');
 assert.doesNotMatch(roomSource, /triggerSpeech\(turn\.reply\)/, 'worker failure must not invent a local line');
+assert.doesNotMatch(roomSource, /Quiet here\.|What now\?/);
 assert.match(roomSource, /kind:\s*'self'/, 'rare self-speak must reuse /chat');
 assert.match(roomSource, /groundedWorldReply/);
+assert.match(roomSource, /resetArmed|Really start over|Na pewno zacząć/, 'start-over must show an in-sheet confirm');
+assert.match(readFileSync('src/App.tsx', 'utf8'), /resetAllLocalData|deleteDatabase/);
+assert.equal(migrateConversationState({ lastCreatureMessage: 'Quiet here.' }).lastCreatureMessage, null);
+assert.equal(migrateConversationState({ lastCreatureMessage: 'What now?' }).lastCreatureMessage, null);
 
 console.log('Persona overlay checks passed.');

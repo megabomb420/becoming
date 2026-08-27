@@ -33,7 +33,7 @@ import {
   recordMeaningfulFirst,
   updateDevelopment,
 } from '../systems/developmentSystem';
-import { generateCreatureSpeech, shouldSpeak } from '../systems/languageSystem';
+
 import { shouldInitiateConversation, generateInitiatedTopic, clearInitiatedTopic } from '../systems/socialLearningSystem';
 import {
   chooseObjectReaction,
@@ -311,6 +311,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [resetArmed, setResetArmed] = useState(false);
   const [sensoryPreferences, setSensoryPreferences] = useState<SensoryPreferences>(() => loadSensoryPreferences());
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [creatureEmotion, setCreatureEmotion] = useState(state.emotionalState);
@@ -557,19 +558,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const localizedReaction = reactionLabel(reaction.id, type, reaction.label, polish);
     const reactionDuration = reaction.duration;
     const reactionEmotion = reaction.emotion;
-    const speechTrigger = type === 'ball' ? 'play' : type === 'apple' || type === 'broccoli' ? 'food' : type;
-
     onStateChange(prev => applyWorldObjectReaction(prev, objectId, reaction, target, localizedReaction, initiatedByUser));
 
     behaviorRef.current = reaction.behavior;
     showCreatureCue({ icon: reaction.icon, label: localizedReaction, tone: 'reaction' }, reactionDuration);
     setTemporaryEmotion(reactionEmotion, reactionDuration);
-    const spoken = generateCreatureSpeech(stateRef.current, {
-      trigger: speechTrigger,
-      emotionalState: reactionEmotion,
-      recentEvent: type,
-    });
-    if (spoken && !worldIntent) triggerSpeech(spoken, false);
     if (worldIntent && onWorldResult) {
       const object = stateRef.current.roomObjects.find(item => item.id === objectId) ?? {
         id: objectId, type, x: target.x, y: target.y, state: {}, interactions: 0, placedByUser: true, beingUsedByCreature: true,
@@ -774,7 +767,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     }
 
     behaviorRef.current = moment.behavior;
-    if (moment.utterance) triggerSpeech(moment.utterance, false);
     onStateChange(prev => ({ ...prev, creatureBehavior: moment.behavior, currentActivity: label }));
     ambientTimerRef.current = setTimeout(() => {
       if (activeObjectRef.current || behaviorRef.current !== moment.behavior) return;
@@ -983,7 +975,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           const topic = generateInitiatedTopic(currentState);
           if (topic) {
             setInitiatedTopic(topic.openingLine);
-            onStateChange(prev => appendCreatureMessage(clearInitiatedTopic(prev, topic.observationId), topic.openingLine));
+            onStateChange(prev => appendCreatureMessage(clearInitiatedTopic(prev, topic.observationId), topic.openingLine, Date.now(), { roomBubble: false }));
             return;
           }
         }
@@ -1006,10 +998,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     showCreatureCue({ icon: '?', label: t('notices your touch', 'zauważa twój dotyk'), tone: 'notice' }, 1600);
     const updated = recordBondEvent(touchCreature(boundary.state, 'tap'), 'tap');
     setTemporaryEmotion('curious', 2000);
-    if (shouldSpeak(updated)) {
-      const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'curious' });
-      if (text) triggerSpeech(text, false);
-    }
     onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
 
@@ -1025,10 +1013,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     showCreatureCue({ icon: '♡', label: t('leans into your hand', 'przysuwa się do twojej dłoni'), tone: 'reaction' }, 2400);
     const updated = recordBondEvent(touchCreature(boundary.state, 'stroke'), 'stroke');
     setTemporaryEmotion('happy', 3000);
-    if (shouldSpeak(updated)) {
-      const text = generateCreatureSpeech(updated, { trigger: 'touch', emotionalState: 'happy' });
-      if (text) triggerSpeech(text, false);
-    }
     onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
 
@@ -2452,7 +2436,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                 <p className="eyebrow text-[#a8ad91]/90">{t('On this device', 'Na tym urządzeniu')}</p>
                 <h2 className="display-title text-warm-100 text-2xl mt-2">{t('Settings', 'Ustawienia')}</h2>
               </div>
-              <button aria-label={t('Close settings', 'Zamknij ustawienia')} onClick={() => setShowSettings(false)} className="tap-target grid place-items-center text-warm-200/60 hover:text-warm-100 rounded-full"><GlyphIcon name="close" size={21} /></button>
+              <button aria-label={t('Close settings', 'Zamknij ustawienia')} onClick={() => { setShowSettings(false); setResetArmed(false); }} className="tap-target grid place-items-center text-warm-200/60 hover:text-warm-100 rounded-full"><GlyphIcon name="close" size={21} /></button>
             </div>
             <div className="space-y-3">
               <div className="ink-card p-4">
@@ -2497,10 +2481,36 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                 <p className="text-warm-200/62 text-[9px] font-serif mt-3">{t('The file contains personal conversations and the rounded weather location. Store it somewhere you trust.', 'Plik zawiera prywatne rozmowy i zaokrągloną lokalizację pogody. Przechowuj go w zaufanym miejscu.')}</p>
               </div>
               {onReset && (
-                <div className="rounded-2xl border border-red-200/10 bg-room-mid/25 p-4">
+                <div className="relative z-50 rounded-2xl border border-red-200/10 bg-room-mid/25 p-4">
                   <div className="text-warm-100/70 text-sm font-serif">{t('Begin another life', 'Zacznij inne życie')}</div>
                   <p className="text-warm-200/62 text-[10px] font-serif mt-1">{t('Save a backup first if you may want to return to this creature.', 'Najpierw zapisz backup, jeśli możesz chcieć wrócić do tego stworka.')}</p>
-                  <button onClick={onReset} className="mt-3 min-h-11 w-full rounded-xl border border-red-200/15 px-3 py-2 text-red-100/55 text-xs font-serif active:scale-[0.98] transition-transform">{t('Start over', 'Zacznij od nowa')}</button>
+                  {resetArmed ? (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-red-100/80 text-xs font-serif">{t('Really start over? This cannot be undone.', 'Na pewno zacząć od nowa? Tego nie da się cofnąć.')}</p>
+                      <button
+                        type="button"
+                        onClick={onReset}
+                        className="min-h-11 w-full rounded-xl border border-red-200/35 bg-red-200/10 px-3 py-2 text-red-100 text-xs font-serif active:scale-[0.98] transition-transform"
+                      >
+                        {t('Yes, start over', 'Tak, zacznij od nowa')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setResetArmed(false)}
+                        className="min-h-11 w-full rounded-xl border border-warm-200/15 px-3 py-2 text-warm-100/70 text-xs font-serif active:scale-[0.98] transition-transform"
+                      >
+                        {t('Cancel', 'Anuluj')}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setResetArmed(true)}
+                      className="mt-3 min-h-11 w-full rounded-xl border border-red-200/15 px-3 py-2 text-red-100/55 text-xs font-serif active:scale-[0.98] transition-transform"
+                    >
+                      {t('Start over', 'Zacznij od nowa')}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

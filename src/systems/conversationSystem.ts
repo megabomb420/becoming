@@ -38,6 +38,13 @@ export function createConversationState(): ConversationState {
   };
 }
 
+export function isCannedRoomSpeech(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  return /^(quiet here|what now|cicho tu|co teraz)[.?!]?$/i.test(trimmed)
+    || /^(it is quiet today|cicho tu dzisiaj)[.?!]?$/i.test(trimmed);
+}
+
 export function migrateConversationState(value?: Partial<ConversationState> | null): ConversationState {
   const fallback = createConversationState();
   if (!value) return fallback;
@@ -47,6 +54,7 @@ export function migrateConversationState(value?: Partial<ConversationState> | nu
   const facts = Array.isArray(value.facts)
     ? value.facts.filter(fact => fact?.value && fact?.kind).slice(-MAX_FACTS)
     : [];
+  const lastCreatureMessage = value.lastCreatureMessage ?? null;
   return {
     messages,
     facts,
@@ -54,7 +62,7 @@ export function migrateConversationState(value?: Partial<ConversationState> | nu
     totalCreatureMessages: Math.max(value.totalCreatureMessages ?? 0, messages.filter(message => message.sender === 'creature').length),
     language: value.language === 'pl' || value.language === 'en' ? value.language : 'unknown',
     lastConversationAt: value.lastConversationAt ?? 0,
-    lastCreatureMessage: value.lastCreatureMessage ?? null,
+    lastCreatureMessage: isCannedRoomSpeech(lastCreatureMessage) ? null : lastCreatureMessage,
   };
 }
 
@@ -478,7 +486,12 @@ export function beginConversationTurn(
   return { state: updated, reply: echoSharedPhrase(updated, text, reply) };
 }
 
-export function appendCreatureMessage(state: GameState, text: string, now = Date.now()): GameState {
+export function appendCreatureMessage(
+  state: GameState,
+  text: string,
+  now = Date.now(),
+  options: { roomBubble?: boolean } = {},
+): GameState {
   if (!text.trim()) return state;
   const last = state.conversation.messages[state.conversation.messages.length - 1];
   if (last?.sender === 'creature' && last.text === text) return state;
@@ -488,13 +501,14 @@ export function appendCreatureMessage(state: GameState, text: string, now = Date
     text,
     timestamp: now,
   };
+  const showInRoom = options.roomBubble !== false && !isCannedRoomSpeech(text);
   let updated = clearPendingDisclosure({
     ...state,
     conversation: {
       ...state.conversation,
       messages: [...state.conversation.messages, message].slice(-MAX_MESSAGES),
       totalCreatureMessages: state.conversation.totalCreatureMessages + 1,
-      lastCreatureMessage: text,
+      lastCreatureMessage: showInRoom ? text : state.conversation.lastCreatureMessage,
       lastConversationAt: now,
     },
   });

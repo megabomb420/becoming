@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.4
+> **Version:** 0.12.5
 > **Last Updated:** 2026-08-27
 
 ---
@@ -127,7 +127,7 @@ becoming/
 | Feeding | ✅ | Explicitly using placed food calls the creature; consumed food returns to the shelf for repeated use |
 | Creature movement | ✅ | Goal-driven state machine: idle → notice → look → approach → react; bounded shared floor coordinates and refresh-rate-independent canvas movement |
 | Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
-| Living world weather | ✅ | Opt-in Open-Meteo weather, rounded device coordinates or manual city search, 45-minute IndexedDB cache, last-known offline fallback, atmospheric room rendering, personality/memory-shaped reactions, and short outdoor visits |
+| Living world weather | ✅ | Opt-in Open-Meteo weather, rounded device coordinates or manual city search, 45-minute IndexedDB cache, last-known offline fallback, and atmospheric room rendering. Outdoor visits are wired in 0.12.5 but not yet live-proven |
 | Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
 | Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
@@ -137,7 +137,7 @@ becoming/
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
 | Creature-initiated chat | ✅ | Creature can start conversations based on observations |
 | Chat interface | ✅ | Full-screen conversation with constrained responses |
-| Live AI mind | ✅ | DeepSeek replies through a private backend; the browser never receives the API key. Room bubbles are DeepSeek text only; a worker failure leaves the bubble empty instead of inventing a local line |
+| Live AI mind | 🚧 | DeepSeek replies through a private backend; the browser never receives the API key. 0.12.5 stops canned room lines (`Quiet here.`, `What now?`) and local fallback on worker failure. Live proof on a real save is still required |
 | Life paths | ✅ | 12 slowly forming lifestyles shaped by conversation, objects, repeated choices, consequences, and recovery |
 | Crossbreeds | ✅ | Compatible dominant tendencies combine into named hybrid identities such as Fog Gamer, Chill Sage, or Gentle Anchor |
 | Daily moments | ✅ | One authored dilemma per creature-day; choices alter the path and become persistent memories |
@@ -176,6 +176,8 @@ becoming/
 
 | Feature | State | Gap |
 |---|---|---|
+| DeepSeek-only room bubbles | 🚧 | 0.12.5 removes canned idle/touch/autonomy lines and local worker fallback. Needs a live pass on an existing save. |
+| Outdoor visits | 🚧 | 0.12.5 lets `go outside` use last-known or solar sky, walks, and widens the sky. A 2026-08-27 playtest on v0.12.4 still saw the 4-pane window and “no outside”. |
 | Notifications | 🚧 | Architecture prepared but no push notification logic. |
 
 ### ❌ Not Yet Implemented
@@ -509,6 +511,18 @@ Local conversation chapters now compress the last eight user turns into a short 
 
 The creation arc now uses objects already in the room. Repeated box hiding becomes a hideaway, then a den. A treasured stone can become a keepsake. A ball game becomes shared only when the user actually plays it with the creature; solitary play is not enough. Talking about music still does not invent an instrument. Paper and pencil are unchanged. Works still grow from object use on the existing cadence, still appear in Memory Book, and still reach DeepSeek only as sanitised titles.
 
+### v0.12.5 — Playtest fix pass (Moth / NEWBORN / UNWRITTEN)
+
+A live playtest on 2026-08-27 showed that 0.12.4 still put canned lines in the room bubble, treated `go outside` as impossible without a live Open-Meteo hit, sent “go look in the box” to DeepSeek (which invented a bell), and let Settings start-over fail because auto-save could rewrite the creature after a reset.
+
+0.12.5 changes the room wiring:
+- Canned idle/touch/autonomy lines are no longer assigned to `lastCreatureMessage`. Known leftovers such as “Quiet here.” and “What now?” are cleared on migrate. Worker failure stays empty.
+- `go outside` / `chodźmy na dwór` uses last-known weather or the solar sky. It no longer answers “There is no outside from here yet.” Storm + high caution may still refuse. Urgent need or explicitly disabled weather still brings the creature back. The 4-pane mullion hides while outdoors.
+- `go look in the box` is a local inspect: notice → walk → react. Speech is “I checked the box.” It does not invent contents.
+- Start over is a two-step in-sheet confirm, then `indexedDB.deleteDatabase('becoming-db')` after closing the live DB, then reload.
+
+DeepSeek-only bubbles and outdoor visits remain live-verification items until a real save proves them in the room.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -533,18 +547,19 @@ The creation arc now uses objects already in the room. Repeated box hiding becom
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
-2. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
+1. **Live-prove DeepSeek-only bubbles and outdoor visits** — replay the Moth save path: load, idle ~60s, PWA update, `go outside and tell me what the weather is like`, `go look in the box`, Settings start-over. Do not mark those rows fully working until the room does them.
+2. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
+3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
 ### Priority: Medium
-3. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
-4. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
-5. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
+4. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
+5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
+6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
 
 ### Priority: Low / Future
-6. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
-7. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
-8. **Notifications** — gentle, non-manipulative PWA notifications.
+7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
+8. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
+9. **Notifications** — gentle, non-manipulative PWA notifications.
 
 ---
 
