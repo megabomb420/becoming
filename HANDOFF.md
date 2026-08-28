@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.3
+> **Version:** 0.13.4
 > **Last Updated:** 2026-08-28
 
 ---
@@ -658,6 +658,10 @@ The window is a peat frame with glass, a sill, fabric curtains, and a sun or moo
 ### v0.13.3 — The creature looks like an animal
 
 Sleep no longer wags the tail or twinkles the party marks. The body is haunch, chest and belly instead of one oval; the tail tapers and curls when they rest; paws sit on the floor; eyes have a cream, an iris and a pupil. Breath while asleep is smaller than while awake.
+
+### v0.13.4 — Sleep is not restlessness
+
+A full moon is something the user said. It is not in CLOCK and does not make them restless. Drowsy or rest-phase talk is a murmur unless a body need is keeping them up. If they fall asleep while the mind is still answering, the late reply is discarded. Sleeping mood is sent as `asleep`, not as a chatty feeling.
 
 ---
 

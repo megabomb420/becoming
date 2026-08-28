@@ -261,6 +261,8 @@ assert.deepEqual(clockedPayload.creature.clock, {
   sleeping: true,
 });
 assert.match(systemPrompt(clockedPayload), /CLOCK is this creature's solar day/);
+assert.match(systemPrompt(clockedPayload), /no moon/i);
+assert.match(systemPrompt(clockedPayload), /restless/);
 assert.equal(cleanPayload({
   creature: { name: 'BadClock', stage: 'sentences', language: 'en', clock: { phase: 'hack', schedule: 'ai' } },
   messages: [{ role: 'user', content: 'Hi' }],

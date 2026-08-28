@@ -46,6 +46,8 @@ assert.equal(typeof unwrittenBody.creature.clock?.rest, 'boolean');
 assert.ok(unwrittenBody.messages.length >= 1);
 assert.equal(shouldCreatureSelfSpeak(unwritten), false);
 assert.equal(shouldCreatureSelfSpeak({ ...unwritten, sleepState: 'sleeping' }), false);
+assert.equal(buildCreatureMindRequest({ ...unwritten, sleepState: 'sleeping' }).creature.mood, 'asleep');
+assert.equal(buildCreatureMindRequest({ ...unwritten, sleepState: 'drowsy' }).creature.mood, 'sleepy');
 assert.equal(shouldCreatureSelfSpeak(unwritten, Date.UTC(2026, 7, 27, 1, 30)), false, 'no idle self-speak on an ordinary night');
 
 let mentioned = hatched('Mention', 202);

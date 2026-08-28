@@ -11,7 +11,9 @@ import {
 import { advanceDevelopmentFromConversation, getDevelopmentLabel, syncDevelopmentWithAge } from './developmentSystem';
 import { attemptImitation, findExistingObservation, parseUserStatement, recordObservation } from './socialLearningSystem';
 import { recordBondEvent } from './relationshipSystem';
-import { evolveLifePath, evolveLifePathFromCreatureStatement, evolveLifePathFromImitation, getLifePathTitle } from './lifePathSystem';
+import { evolveLifePath, evolveLifePathFromCreatureStatement, evolveLifePathFromImitation, getLifePathTitle, getRestSchedule } from './lifePathSystem';
+import { getSleepBlocker } from './needsSystem';
+import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
 import {
   clearPendingDisclosure,
   evolveInnerLifeFromConversation,
@@ -46,11 +48,20 @@ export function isCannedRoomSpeech(text: string | null | undefined): boolean {
 }
 
 /** They are not a night-shift chatbot. Talk waits until they wake. */
-export function getSleepingTalkReply(state: GameState): string | null {
-  if (state.sleepState !== 'sleeping') return null;
-  return state.conversation.language === 'pl'
-    ? 'Mmm. Jestem w swoim śnie.'
-    : 'Mmm. I am in my rest.';
+export function getSleepingTalkReply(state: GameState, now = Date.now()): string | null {
+  const polish = state.conversation.language === 'pl';
+  if (state.sleepState === 'sleeping') {
+    return polish ? 'Mmm. Jestem w swoim śnie.' : 'Mmm. I am in my rest.';
+  }
+  const rest = isCreatureRestPhase(getTimeOfDay(now, state.world), getRestSchedule(state.lifePath));
+  const upForCare = Boolean(getSleepBlocker(state));
+  if (state.sleepState === 'drowsy' && !upForCare) {
+    return polish ? 'Mmm. Moja pora snu.' : 'Mmm. It is my rest.';
+  }
+  if (rest && !upForCare) {
+    return polish ? 'Mmm. To moja pora snu.' : 'Mmm. This is my rest.';
+  }
+  return null;
 }
 
 export function migrateConversationState(value?: Partial<ConversationState> | null): ConversationState {

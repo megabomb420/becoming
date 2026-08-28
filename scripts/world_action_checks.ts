@@ -249,11 +249,54 @@ const sleeper = {
   ...base,
   sleepState: 'sleeping' as const,
   conversation: { ...base.conversation, language: 'pl' as const },
+  world: {
+    ...base.world,
+    settings: {
+      ...base.world.settings,
+      mode: 'city' as const,
+      location: {
+        source: 'city' as const,
+        name: 'UTC',
+        latitude: 51.5,
+        longitude: 0,
+        timezone: 'UTC',
+        countryCode: 'GB',
+        country: 'UTC',
+      },
+    },
+  },
 };
-assert.match(getSleepingTalkReply(sleeper) || '', /śnie/i);
-assert.equal(getSleepingTalkReply({ ...sleeper, sleepState: 'awake' }), null);
+const restNight = Date.UTC(2027, 5, 15, 1, 30);
+const restDay = Date.UTC(2027, 5, 15, 14, 0);
+assert.match(getSleepingTalkReply(sleeper, restNight) || '', /śnie/i);
+assert.equal(getSleepingTalkReply({ ...sleeper, sleepState: 'awake' }, restDay), null);
+assert.match(getSleepingTalkReply({ ...sleeper, sleepState: 'awake' }, restNight) || '', /pora snu/i, 'an ordinary night is rest, not a chat');
+assert.match(getSleepingTalkReply({ ...sleeper, sleepState: 'drowsy' }, restDay) || '', /pora snu|rest/i);
+assert.equal(
+  getSleepingTalkReply({ ...sleeper, sleepState: 'drowsy', needs: { ...sleeper.needs, hunger: 4 } }, restNight),
+  null,
+  'urgent hunger may speak even in rest',
+);
+assert.equal(
+  getSleepingTalkReply({
+    ...sleeper,
+    sleepState: 'awake',
+    lifePath: {
+      ...sleeper.lifePath,
+      primary: 'party_animal',
+      phase: 'committed',
+      scores: { ...sleeper.lifePath.scores, party_animal: 52 },
+    },
+  }, restNight),
+  null,
+  'a settled night life can talk after dark',
+);
 assert.equal(isCannedRoomSpeech(getSleepingTalkReply(sleeper)), false, 'a rest murmur is not stripped canned idle');
 assert.equal(getSleepingTalkReply({ ...sleeper, conversation: { ...sleeper.conversation, language: 'en' } }), 'Mmm. I am in my rest.');
+assert.ok(
+  sendBody.lastIndexOf('getSleepingTalkReply') > sendBody.indexOf('requestCreatureReply(turn.state)'),
+  'a mind reply that arrives after they sleep must become a murmur',
+);
 const weatherLayer = readFileSync('src/components/WeatherLayer.tsx', 'utf8');
 assert.match(weatherLayer, /expanded/);
 assert.match(weatherLayer, /!expanded && \(/);

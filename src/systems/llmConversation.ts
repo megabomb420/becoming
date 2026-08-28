@@ -370,7 +370,11 @@ export function buildCreatureMindRequest(
       name: (state.identity.name || 'the creature').slice(0, 40),
       ageDays: Number((Math.max(0, now - state.identity.birthTimestamp) / 86_400_000).toFixed(1)),
       stage: state.development.stage,
-      mood: state.emotionalState.slice(0, 32),
+      mood: state.sleepState === 'sleeping'
+        ? 'asleep'
+        : state.sleepState === 'drowsy'
+          ? 'sleepy'
+          : state.emotionalState.slice(0, 32),
       language: state.conversation.language,
       clock: creatureClock(state, now),
     },

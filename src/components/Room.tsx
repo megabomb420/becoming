@@ -1508,7 +1508,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setMindState('connecting');
     try {
       const reply = await requestCreatureReply(turn.state);
-      triggerSpeech(reply);
+      const quiet = getSleepingTalkReply(stateRef.current);
+      if (quiet) {
+        triggerSpeech(quiet, false);
+      } else {
+        triggerSpeech(reply);
+      }
       setMindState('online');
     } catch (error) {
       console.warn('AI reply unavailable; no substitute line.', error);
