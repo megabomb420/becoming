@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, OfflineActivity } from './types';
-import { isHatchableBoot, loadGameStateForBoot, resetForNewLife, saveGameState } from './systems/persistence';
+import { closeDatabaseConnections, isHatchableBoot, loadGameStateForBoot, resetForNewLife, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
 import { advanceNeeds } from './systems/needsSystem';
@@ -21,7 +21,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.8';
+const APP_VERSION = '0.12.9';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -32,6 +32,8 @@ function App() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const needsTimerRef = useRef<ReturnType<typeof setInterval>>();
   const resettingRef = useRef(false);
+  const updatingRef = useRef(false);
+  const bootRunRef = useRef(0);
   const hasGameState = gameState !== null;
   const weatherMode = gameState?.world.settings.mode;
   const selectedWeatherLocationKey = gameState?.world.settings.location
@@ -42,11 +44,14 @@ function App() {
     gameStateRef.current = gameState;
   }, [gameState]);
 
-  // Load saved state
-  useEffect(() => {
-    let cancelled = false;
-    void loadGameStateForBoot().then(saved => {
-      if (cancelled) return;
+  const runBoot = useCallback(async () => {
+    const run = ++bootRunRef.current;
+    setLoading(true);
+    setBootError(false);
+    setShowEgg(false);
+    try {
+      const saved = await loadGameStateForBoot();
+      if (bootRunRef.current !== run) return;
       if (saved && !isHatchableBoot(saved)) {
         // CRITICAL: If the creature has already hatched, never show the egg again.
         // The hatched flag is a permanent lifecycle transition.
@@ -69,19 +74,24 @@ function App() {
         gameStateRef.current = null;
         setShowEgg(true);
       }
-    }).catch(error => {
-      if (cancelled) return;
+    } catch (error) {
+      if (bootRunRef.current !== run) return;
       // Unavailable is not empty. Never let a slow/blocked existing database
       // become a new egg that could overwrite the living record on retry.
       console.warn('Becoming could not read local state during boot.', error);
       gameStateRef.current = null;
       setBootError(true);
-    }).finally(() => {
-      if (cancelled) return;
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
+    } finally {
+      if (bootRunRef.current === run) setLoading(false);
+    }
   }, []);
+
+  // Load saved state. Every run performs fresh finite open attempts; the
+  // recovery action below calls this same path without reloading the page.
+  useEffect(() => {
+    void runBoot();
+    return () => { bootRunRef.current += 1; };
+  }, [runBoot]);
 
   // Auto-save
   const queueSave = useCallback((state: GameState) => {
@@ -91,12 +101,24 @@ function App() {
     }, 1000);
   }, []);
 
-  const flushLatestState = useCallback(async () => {
+  const prepareForUpdate = useCallback(async () => {
+    updatingRef.current = true;
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = undefined;
     const latest = gameStateRef.current;
-    if (resettingRef.current || !latest?.development.hatched) return;
-    await saveGameState(latest);
+    try {
+      if (!resettingRef.current && latest?.development.hatched) await saveGameState(latest);
+      // The new page must own the next open. pagehide is suppressed while
+      // updating so it cannot recreate a connection after this close.
+      closeDatabaseConnections();
+    } catch (error) {
+      updatingRef.current = false;
+      throw error;
+    }
+  }, []);
+
+  const handleUpdateFailed = useCallback(() => {
+    updatingRef.current = false;
   }, []);
 
   // Open-Meteo is a source, never a gameplay controller. This lifecycle only
@@ -185,7 +207,7 @@ function App() {
   // window where a quick app switch could otherwise lose the last action.
   useEffect(() => {
     const saveLatest = () => {
-      if (resettingRef.current) return;
+      if (resettingRef.current || updatingRef.current) return;
       const latest = gameStateRef.current;
       if (latest?.development.hatched) void saveGameState(latest);
     };
@@ -194,10 +216,20 @@ function App() {
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('pagehide', saveLatest);
+    const handlePageHide = () => {
+      if (resettingRef.current || updatingRef.current) return;
+      const latest = gameStateRef.current;
+      if (latest?.development.hatched) {
+        void saveGameState(latest).finally(closeDatabaseConnections);
+      } else {
+        closeDatabaseConnections();
+      }
+    };
+
+    window.addEventListener('pagehide', handlePageHide);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('pagehide', saveLatest);
+      window.removeEventListener('pagehide', handlePageHide);
     };
   }, []);
 
@@ -285,7 +317,7 @@ function App() {
         <div className="h-screen w-screen bg-room-dark flex items-center justify-center">
           <div className="text-warm-200/40 text-sm font-serif animate-pulse">{detectUiLanguage() === 'pl' ? 'Ładowanie...' : 'Loading...'}</div>
         </div>
-        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={flushLatestState} />
+        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
       </>
     );
   }
@@ -296,14 +328,14 @@ function App() {
       <>
         <div className="h-screen w-screen bg-room-dark flex items-center justify-center px-6">
           <div className="max-w-sm text-center font-serif">
-            <p className="text-warm-100/80 text-base">{polish ? 'Lokalny zapis jeszcze się nie otworzył.' : 'The local save has not opened yet.'}</p>
-            <p className="text-warm-200/50 text-xs mt-2">{polish ? 'Istniejące życie nie zostało zastąpione. Spróbuj ponownie.' : 'The existing life was not replaced. Try again.'}</p>
-            <button type="button" onClick={() => window.location.reload()} className="mt-5 min-h-11 rounded-xl border border-warm-300/25 bg-warm-300/15 px-5 py-2 text-warm-100 text-xs">
+            <p className="text-warm-100/80 text-base">{polish ? 'Lokalny zapis jest nadal zajęty.' : 'The local save is still busy.'}</p>
+            <p className="text-warm-200/50 text-xs mt-2">{polish ? 'Aplikacja nie otworzy jajka bez potwierdzonego pustego zapisu.' : 'The app will not open a new egg without a confirmed empty save.'}</p>
+            <button type="button" onClick={() => void runBoot()} className="mt-5 min-h-11 rounded-xl border border-warm-300/25 bg-warm-300/15 px-5 py-2 text-warm-100 text-xs">
               {polish ? 'Spróbuj ponownie' : 'Try again'}
             </button>
           </div>
         </div>
-        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={flushLatestState} />
+        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
       </>
     );
   }
@@ -314,7 +346,7 @@ function App() {
         <div className="h-screen w-screen">
           <EggHatching onHatch={handleHatch} onNameChosen={handleNameChosen} />
         </div>
-        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={flushLatestState} />
+        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
       </>
     );
   }
@@ -332,7 +364,7 @@ function App() {
       <div className="h-screen w-screen overflow-hidden relative">
         <Room state={safeState} onStateChange={handleStateChange} onReset={handleReset} version={APP_VERSION} />
       </div>
-      <PwaUpdateNotice language={uiLanguage(safeState.conversation.language)} onBeforeUpdate={flushLatestState} />
+      <PwaUpdateNotice language={uiLanguage(safeState.conversation.language)} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
     </>
   );
 }

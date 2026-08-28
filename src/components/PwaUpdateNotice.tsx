@@ -5,9 +5,10 @@ import { SupportedUiLanguage, uiText } from '../systems/uiLanguage';
 interface PwaUpdateNoticeProps {
   language: SupportedUiLanguage;
   onBeforeUpdate?: () => Promise<void>;
+  onUpdateFailed?: () => void;
 }
 
-const PwaUpdateNotice: React.FC<PwaUpdateNoticeProps> = ({ language, onBeforeUpdate }) => {
+const PwaUpdateNotice: React.FC<PwaUpdateNoticeProps> = ({ language, onBeforeUpdate, onUpdateFailed }) => {
   const [updating, setUpdating] = React.useState(false);
   const [updateError, setUpdateError] = React.useState(false);
   const {
@@ -29,6 +30,7 @@ const PwaUpdateNotice: React.FC<PwaUpdateNoticeProps> = ({ language, onBeforeUpd
       await updateServiceWorker(true);
     } catch (error) {
       console.warn('PWA update could not safely reload.', error);
+      onUpdateFailed?.();
       setUpdateError(true);
       setUpdating(false);
     }

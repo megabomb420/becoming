@@ -37,18 +37,39 @@ const BASE_INVENTORY: ObjectType[] = [
 const SAVE_FORMAT = 'becoming-save';
 const SAVE_FORMAT_VERSION = 1;
 const MAX_IMPORT_LENGTH = 2_000_000;
-const DB_OPEN_TIMEOUT_MS = 8_000;
-const BOOT_LOAD_TIMEOUT_MS = 10_000;
+const DB_OPEN_TIMEOUT_MS = 4_000;
+const BOOT_LOAD_TIMEOUT_MS = 5_000;
+const BOOT_OPEN_ATTEMPTS = 2;
 
 let dbPromise: Promise<IDBPDatabase<BecomingDB>> | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
 let resetInProgress = false;
 const openConnections = new Set<IDBPDatabase<BecomingDB>>();
+let pendingOpen: { abandoned: boolean; cancelDeadline: () => void } | null = null;
 
-export function closeDatabaseConnections(): void {
+const lifecycleChannel = typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined'
+  ? new BroadcastChannel('becoming-db-lifecycle')
+  : null;
+
+function closeSettledDatabaseConnections(): void {
   for (const db of openConnections) db.close();
   openConnections.clear();
+}
+
+export function closeDatabaseConnections(): void {
+  if (pendingOpen) {
+    pendingOpen.abandoned = true;
+    pendingOpen.cancelDeadline();
+    pendingOpen = null;
+  }
+  closeSettledDatabaseConnections();
   dbPromise = null;
+}
+
+if (lifecycleChannel) {
+  lifecycleChannel.onmessage = event => {
+    if (event.data === 'close-connections') closeDatabaseConnections();
+  };
 }
 
 function timeoutAfter(ms: number, message: string): { promise: Promise<never>; cancel: () => void } {
@@ -63,8 +84,9 @@ function timeoutAfter(ms: number, message: string): { promise: Promise<never>; c
 
 function getDB(): Promise<IDBPDatabase<BecomingDB>> {
   if (!dbPromise) {
-    let openTimedOut = false;
     const timeout = timeoutAfter(DB_OPEN_TIMEOUT_MS, 'Opening Becoming IndexedDB timed out.');
+    const thisOpen = { abandoned: false, cancelDeadline: timeout.cancel };
+    pendingOpen = thisOpen;
     const opening = openDB<BecomingDB>(DB_NAME, DB_VERSION, {
       upgrade(db) {
         // A half-created v1 database is recoverable. Only create stores that
@@ -74,10 +96,11 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
         if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots', { keyPath: 'timestamp' });
       },
       blocked() {
-        // A blocked open can still succeed as soon as the previous page
-        // releases its version. Keep waiting up to the finite boot deadline;
-        // treating this event as an empty database can replace a living save.
+        // Ask any other current Becoming tab to release its connection. Older
+        // tabs still receive the native versionchange event via `blocking`.
         console.warn('Opening Becoming IndexedDB is waiting for another connection.');
+        closeSettledDatabaseConnections();
+        lifecycleChannel?.postMessage('close-connections');
       },
       blocking(_currentVersion, _blockedVersion, event) {
         // A reset from this or another open tab must be allowed to finish.
@@ -94,15 +117,17 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
     });
 
     const openDeadline = timeout.promise.catch(error => {
-      openTimedOut = true;
+      thisOpen.abandoned = true;
+      if (pendingOpen === thisOpen) pendingOpen = null;
       throw error;
     });
     const attempt = Promise.race([opening, openDeadline])
       .then(db => {
-        if (resetInProgress) {
+        if (resetInProgress || thisOpen.abandoned) {
           db.close();
-          throw new Error('Becoming IndexedDB opened while a reset was in progress.');
+          throw new Error('Becoming IndexedDB open was superseded.');
         }
+        if (pendingOpen === thisOpen) pendingOpen = null;
         openConnections.add(db);
         return db;
       })
@@ -110,24 +135,16 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
 
     dbPromise = attempt;
     void attempt.catch(() => {
-      if (dbPromise === attempt) {
-        // An IDB request cannot be cancelled. Preserve a slow request after
-        // the UI deadline so a retry can consume its eventual successful open
-        // instead of starting another competing request or deleting a save.
-        dbPromise = openTimedOut ? opening : null;
-      }
+      if (dbPromise === attempt) dbPromise = null;
     });
     void opening.then(db => {
-      if (resetInProgress) {
+      if (resetInProgress || thisOpen.abandoned) {
         db.close();
         openConnections.delete(db);
-        if (dbPromise === opening) dbPromise = null;
-        return;
       }
-      openConnections.add(db);
-      if (dbPromise === opening) dbPromise = Promise.resolve(db);
     }).catch(() => {
-      if (dbPromise === opening || dbPromise === attempt) dbPromise = null;
+      if (dbPromise === attempt) dbPromise = null;
+      if (pendingOpen === thisOpen) pendingOpen = null;
     });
   }
   return dbPromise;
@@ -342,13 +359,23 @@ export async function loadGameState(): Promise<GameState | null> {
 export async function loadGameStateForBoot(
   loader: () => Promise<GameState | null> = loadGameState,
   timeoutMs = BOOT_LOAD_TIMEOUT_MS,
+  attempts = BOOT_OPEN_ATTEMPTS,
 ): Promise<GameState | null> {
-  const timeout = timeoutAfter(timeoutMs, 'Loading Becoming state timed out.');
-  try {
-    return await Promise.race([loader(), timeout.promise]);
-  } finally {
-    timeout.cancel();
+  let lastError: unknown = new Error('Loading Becoming state failed.');
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const timeout = timeoutAfter(timeoutMs, 'Loading Becoming state timed out.');
+    try {
+      return await Promise.race([loader(), timeout.promise]);
+    } catch (error) {
+      lastError = error;
+      // The next attempt must create a new IDB request, never await the same
+      // dead promise. A late success from this generation closes itself.
+      closeDatabaseConnections();
+    } finally {
+      timeout.cancel();
+    }
   }
+  throw lastError;
 }
 
 async function writeGameState(state: GameState): Promise<void> {
