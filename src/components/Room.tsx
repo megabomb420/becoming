@@ -85,6 +85,7 @@ import {
   getPhaseLabel,
   getRoomLighting,
   getTimeOfDay,
+  isCreatureRestPhase,
 } from '../systems/timeSystem';
 import {
   beginOutdoorVisit,
@@ -802,8 +803,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       if (showChat || showCare || showInventory || activeObjectRef.current || behaviorRef.current !== 'idle') return;
 
       if (currentState.world.place === 'outdoors') {
-        if (shouldEndOutdoorVisit(currentState, Date.now())) {
-          const ended = endOutdoorVisit(currentState, Date.now());
+        const now = Date.now();
+        const time = getTimeOfDay(now, currentState.world);
+        const schedule = getRestSchedule(currentState.lifePath);
+        const restPullsInside = isCreatureRestPhase(time, schedule) && currentState.needs.energy >= 20;
+        if (shouldEndOutdoorVisit(currentState, now) || restPullsInside) {
+          const ended = endOutdoorVisit(currentState, now);
           stateRef.current = ended;
           onStateChange(ended);
           walkToIdlePosition(INDOOR_RETURN_PLACE);

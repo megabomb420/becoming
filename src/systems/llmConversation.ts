@@ -2,6 +2,7 @@ import { ChatMessage, GameState, LifePathId } from '../types';
 import {
   getLifePathDescription,
   getLifePathTitle,
+  getRestSchedule,
   isStablePath,
   isVisibleDirection,
   LIFE_PATHS,
@@ -12,6 +13,7 @@ import { getRankedInterests } from './innerLifeSystem';
 import { getAbsenceSummary } from './presenceSystem';
 import { getAdoptedSharedPhrases } from './sharedLanguageSystem';
 import { wantsOutdoors } from './environmentSystem';
+import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
 
 const API_URL = String((import.meta as { env?: { VITE_BECOMING_API_URL?: string } }).env?.VITE_BECOMING_API_URL ?? '').replace(/\/$/, '');
 const MAX_CONTEXT_MESSAGES = 14;
@@ -313,9 +315,11 @@ function buildWeatherOverlay(state: GameState) {
   return overlay;
 }
 
-export function shouldCreatureSelfSpeak(state: GameState): boolean {
+export function shouldCreatureSelfSpeak(state: GameState, now = Date.now()): boolean {
   if (state.sleepState === 'sleeping' || state.development.stage === 'egg') return false;
-  return careIsNeeded(careContext(state)) || Boolean(buildWeatherOverlay(state));
+  if (careIsNeeded(careContext(state))) return true;
+  if (isCreatureRestPhase(getTimeOfDay(now, state.world), getRestSchedule(state.lifePath))) return false;
+  return Boolean(buildWeatherOverlay(state));
 }
 
 export function buildCreatureMindRequest(

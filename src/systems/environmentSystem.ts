@@ -696,6 +696,7 @@ export function outdoorVisitBlocked(state: GameState): 'unavailable' | 'sleeping
 
 export function shouldEndOutdoorVisit(state: GameState, now = Date.now()) {
   if (state.world.place !== 'outdoors') return false;
+  if (state.sleepState === 'sleeping') return true;
   if (state.world.settings.mode === 'disabled') return true;
   if (now >= (state.world.outdoorUntil || 0)) return true;
   if (state.needs.hunger < 24 || state.needs.bladder < 30 || state.needs.bowel < 24 || state.needs.hygiene < 24) return true;

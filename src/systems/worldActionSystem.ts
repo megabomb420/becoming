@@ -15,11 +15,10 @@ import {
   wakeUp,
   washCreature,
 } from './needsSystem';
-import { getRestSchedule } from './lifePathSystem';
-import { creatureMaySleep, getTimeOfDay } from './timeSystem';
+import { evolveLifePathFromObject, getRestSchedule } from './lifePathSystem';
+import { creatureMaySleep, getTimeOfDay, isCreatureRestPhase } from './timeSystem';
 import { learnWord, updateDevelopment } from './developmentSystem';
 import { ObjectReaction, recordBondEvent, recordObjectExperience } from './relationshipSystem';
-import { evolveLifePathFromObject } from './lifePathSystem';
 import { evolveInnerLifeFromObject } from './innerLifeSystem';
 import { evolveCreationFromObject } from './creationSystem';
 import {
@@ -319,6 +318,10 @@ export function performImmediateWorldAction(
     const blocked = outdoorVisitBlocked(state);
     if (blocked === 'sleeping' || blocked === 'need') return { state, result: { intent, status: 'blocked', reason: blocked } };
     if (blocked === 'wary') return { state, result: { intent, status: 'refused', reason: 'wary' } };
+    const schedule = getRestSchedule(state.lifePath);
+    if (isCreatureRestPhase(getTimeOfDay(now, state.world), schedule)) {
+      return { state, result: { intent, status: 'refused', reason: schedule === 'nocturnal' ? 'day_sleep' : 'night_rest' } };
+    }
     const next = beginOutdoorVisit(state, now);
     return { state: next, result: { intent, status: 'success', reason: next.world.current?.condition ?? 'unknown' } };
   }
@@ -383,6 +386,8 @@ export function groundedWorldReply(result: WorldActionResult, language: 'pl' | '
   if (result.status === 'refused') {
     if (result.reason === 'not_tired') return polish ? 'Nie chcę jeszcze spać. Mam za dużo energii.' : 'I do not want to sleep yet. I have too much energy.';
     if (result.reason === 'wary') return polish ? 'Nie przy tej pogodzie. Zostanę w środku.' : 'Not this weather. I will stay inside.';
+    if (result.reason === 'night_rest') return polish ? 'U mnie noc. Zostaję i śpię.' : 'It is night for me. I am staying in to sleep.';
+    if (result.reason === 'day_sleep') return polish ? 'Teraz jest mój sen. Wyjdę, jak zrobi się ciemno.' : 'This is my sleep. I will go out when it is dark.';
     return polish ? `Nie chcę teraz ${label}. Zostawię to tutaj.` : `I do not want the ${label} now. I will leave it here.`;
   }
   if (result.status === 'blocked') {

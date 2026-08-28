@@ -97,8 +97,12 @@ const WeatherLayer: React.FC<WeatherLayerProps> = ({ world, lighting, time, seed
         )}
       </div>
 
-      <div className="absolute top-[16%] h-[24%] w-3 origin-top rounded-full bg-warm-200/5 blur-[1px] weather-curtain" style={{ ...style, left: 'calc(50% - 5.9rem)', opacity: stimulus.wind * 0.44 }} />
-      <div className="absolute top-[16%] h-[24%] w-3 origin-top rounded-full bg-warm-200/5 blur-[1px] weather-curtain" style={{ ...style, right: 'calc(50% - 5.9rem)', animationDelay: '-.6s', opacity: stimulus.wind * 0.44 }} />
+      {!expanded && (
+        <>
+          <div className="absolute top-[16%] h-[24%] w-3 origin-top rounded-full bg-warm-200/5 blur-[1px] weather-curtain" style={{ ...style, left: 'calc(50% - 5.9rem)', opacity: stimulus.wind * 0.44 }} />
+          <div className="absolute top-[16%] h-[24%] w-3 origin-top rounded-full bg-warm-200/5 blur-[1px] weather-curtain" style={{ ...style, right: 'calc(50% - 5.9rem)', animationDelay: '-.6s', opacity: stimulus.wind * 0.44 }} />
+        </>
+      )}
 
       {stimulus.condition === 'fog' && <div className="absolute inset-0 bg-[#c5c6bf] transition-opacity duration-[30000ms]" style={{ opacity: lighting.fogOpacity * 0.16 }} />}
       {stimulus.thermal === 'hot' && <div className="weather-heat absolute inset-x-0 bottom-[14%] h-[34%] bg-[repeating-linear-gradient(90deg,transparent_0_18px,rgba(225,189,139,.035)_19px_21px)]" style={{ opacity: Math.abs(stimulus.temperatureStress) * 0.7 }} />}

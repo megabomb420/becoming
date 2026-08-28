@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.14
+> **Version:** 0.12.15
 > **Last Updated:** 2026-08-28
 
 ---
@@ -189,7 +189,7 @@ becoming/
 | Feature | State | Gap |
 |---|---|---|
 | DeepSeek-only room bubbles | 🚧 | 0.12.5 removes canned idle/touch/autonomy lines and local worker fallback. Needs a live pass on an existing save. |
-| Outdoor visits | 🚧 | 0.12.5 lets `go outside` use last-known or solar sky, walks, and widens the sky. A 2026-08-27 playtest on v0.12.4 still saw the 4-pane window and “no outside”. |
+| Outdoor visits | 🚧 | Solar/last-known sky is enough. The 4-pane mullion and curtains hide while outside. Ordinary lives refuse to go out on their night; a settled party life goes out after dark. Sleeping outside pulls them back in. Still needs a live pass on a real save. |
 | Notifications | 🚧 | Architecture prepared but no push notification logic. |
 
 ### ❌ Not Yet Implemented
@@ -625,6 +625,10 @@ The dock moon/sun control treated rest as a player order. A living creature cann
 ### v0.12.14 — Their night, not the player's
 
 Sleep follows the creature's sun, not the user's shift. An ordinary life sleeps through solar night and dusk, and wakes at dawn/day. A settled party animal, alcoholic, or degen inverts: day rest, night awake. Leanings and recovery stay diurnal. Opening the app at 3am does not make them nocturnal. Urgent body needs still block rest; collapse (energy gone) can drop them even on their day.
+
+### v0.12.15 — Night stays in; outside hides the window
+
+`go outside` no longer fights their clock. An ordinary life refuses at night (`U mnie noc. Zostaję i śpię.`). A settled party life goes out after dark. If they fall asleep outside, the visit ends and they come back in. The expanded sky drops the 4-pane mullion and the curtain slivers. DeepSeek self-speak does not fire during their rest phase.
 
 ---
 

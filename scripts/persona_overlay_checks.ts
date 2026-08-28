@@ -43,6 +43,8 @@ assert.equal(unwrittenBody.weather, undefined);
 assert.deepEqual(Object.keys(unwrittenBody.creature).sort(), ['ageDays', 'language', 'mood', 'name', 'stage']);
 assert.ok(unwrittenBody.messages.length >= 1);
 assert.equal(shouldCreatureSelfSpeak(unwritten), false);
+assert.equal(shouldCreatureSelfSpeak({ ...unwritten, sleepState: 'sleeping' }), false);
+assert.equal(shouldCreatureSelfSpeak(unwritten, Date.UTC(2026, 7, 27, 1, 30)), false, 'no idle self-speak on an ordinary night');
 
 let mentioned = hatched('Mention', 202);
 mentioned = evolveLifePath(mentioned, 'zapalmy', NOW);

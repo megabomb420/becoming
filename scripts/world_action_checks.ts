@@ -17,6 +17,7 @@ import {
   createWorldEnvironment,
   receiveWeatherSnapshot,
   setWeatherLocation,
+  shouldEndOutdoorVisit,
 } from '../src/systems/environmentSystem';
 
 const NOW = 1_825_000_000_000;
@@ -177,6 +178,36 @@ const staleWeather = performImmediateWorldAction({
 }, { kind: 'go_outside' }, outdoorNow);
 assert.equal(staleWeather.result.status, 'success', 'last-known sky must still allow an outdoor visit');
 
+const utcNight = Date.UTC(2026, 7, 27, 1, 30);
+const utcDay = Date.UTC(2026, 7, 27, 14, 0);
+const nightWorld = {
+  ...weatherReady,
+  world: {
+    ...weatherReady.world,
+    current: weatherReady.world.current ? { ...weatherReady.world.current, observedAt: utcNight, isDay: false } : null,
+  },
+};
+const nightOut = performImmediateWorldAction(nightWorld, { kind: 'go_outside' }, utcNight);
+assert.equal(nightOut.result.status, 'refused', 'an ordinary life does not go out on its night');
+assert.equal(nightOut.result.reason, 'night_rest');
+assert.match(groundedWorldReply(nightOut.result, 'en'), /night/i);
+
+const dayOut = performImmediateWorldAction(nightWorld, { kind: 'go_outside' }, utcDay);
+assert.equal(dayOut.result.status, 'success', 'an ordinary life can go out on its day');
+
+const partyNight = {
+  ...nightWorld,
+  lifePath: {
+    ...nightWorld.lifePath,
+    primary: 'party_animal' as const,
+    phase: 'committed' as const,
+    scores: { ...nightWorld.lifePath.scores, party_animal: 52 },
+  },
+};
+const partyOut = performImmediateWorldAction(partyNight, { kind: 'go_outside' }, utcNight);
+assert.equal(partyOut.result.status, 'success', 'a settled party life goes out after dark');
+assert.equal(shouldEndOutdoorVisit({ ...partyOut.state, sleepState: 'sleeping' }), true, 'sleeping outside must come back in');
+
 assert.doesNotMatch(groundedWorldReply({
   intent: { kind: 'use_object', objectType: 'box' },
   status: 'success',
@@ -201,5 +232,8 @@ assert.match(roomSource, /beginWorldObjectApproach/);
 assert.doesNotMatch(roomSource, /Put creature to sleep/);
 assert.doesNotMatch(roomSource, /handleSleepToggle/);
 assert.match(roomSource, /settleIfSleepy/);
+const weatherLayer = readFileSync('src/components/WeatherLayer.tsx', 'utf8');
+assert.match(weatherLayer, /expanded/);
+assert.match(weatherLayer, /!expanded && \(/);
 
 console.log('World action and room-first conversation checks passed.');
