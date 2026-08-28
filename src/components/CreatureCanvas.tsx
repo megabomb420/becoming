@@ -13,6 +13,29 @@ interface CreatureCanvasProps {
   onHoldEnd: () => void;
 }
 
+function quadPoint(t: number, ax: number, ay: number, bx: number, by: number, cx: number, cy: number) {
+  const u = 1 - t;
+  return {
+    x: u * u * ax + 2 * u * t * bx + t * t * cx,
+    y: u * u * ay + 2 * u * t * by + t * t * cy,
+  };
+}
+
+function fillCoat(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  x: number,
+  y: number,
+  rx: number,
+  ry: number,
+  rot = 0,
+) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke, onHoldStart, onHoldEnd }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
@@ -251,87 +274,74 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       return alpha >= 1 ? `hsl(${hue}, ${s}%, ${l}%)` : `hsla(${hue}, ${s}%, ${l}%, ${alpha})`;
     };
     const tail = app.tailLength;
+    const r = roundness;
 
-    // A sleeping tail does not wag. It curls around the hip and stays.
+    // A sleeping tail does not wag. Mass along a curve, not a stroked line.
     if (tail > 0) {
       const excited = !isSleeping && (behavior === 'playing' || state.emotionalState === 'happy' || state.emotionalState === 'excited');
       const tailWag = isSleeping
         ? 0
-        : Math.sin(time * (excited ? 0.014 : 0.005)) * (excited ? 0.42 : 0.18)
-          + Math.sin(time * 0.008) * environment.wind * 0.1;
+        : Math.sin(time * (excited ? 0.013 : 0.0042)) * (excited ? 0.38 : 0.14)
+          + Math.sin(time * 0.007) * environment.wind * 0.08;
       ctx.save();
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = fur(2, 2);
-      if (isSleeping) {
-        ctx.lineWidth = 12 * tail;
-        ctx.beginPath();
-        ctx.moveTo(-20 * roundness, 18);
-        ctx.quadraticCurveTo(-38 * roundness, 30, -12 * roundness, 34);
-        ctx.stroke();
-        ctx.lineWidth = 7 * tail;
-        ctx.strokeStyle = fur(8, -2);
-        ctx.beginPath();
-        ctx.moveTo(-12 * roundness, 34);
-        ctx.quadraticCurveTo(6, 36, 14, 24);
-        ctx.stroke();
-      } else {
-        ctx.rotate(tailWag - 0.18);
-        ctx.lineWidth = 13 * tail;
-        ctx.beginPath();
-        ctx.moveTo(-26 * roundness, 10);
-        ctx.quadraticCurveTo(-46 * tail, 2 + tailWag * 16, -54 * tail, 20);
-        ctx.stroke();
-        ctx.lineWidth = 6.5 * tail;
-        ctx.strokeStyle = fur(9, -3);
-        ctx.beginPath();
-        ctx.moveTo(-52 * tail, 18);
-        ctx.quadraticCurveTo(-62 * tail, 28 + tailWag * 10, -66 * tail, 14 + tailWag * 18);
-        ctx.stroke();
+      if (!isSleeping) ctx.rotate(tailWag - 0.12);
+      const ax = -22 * r;
+      const ay = 12;
+      const bx = isSleeping ? -44 * r : -50 * Math.max(0.55, tail);
+      const by = isSleeping ? 26 : -2 + tailWag * 14;
+      const cx = isSleeping ? -8 * r : -70 * Math.max(0.55, tail);
+      const cy = isSleeping ? 34 : 18 + tailWag * 10;
+      const dx = isSleeping ? 16 : cx - 8;
+      const dy = isSleeping ? 22 : cy + 4;
+      for (let step = 0; step <= 12; step += 1) {
+        const t = step / 12;
+        const p = t < 0.72
+          ? quadPoint(t / 0.72, ax, ay, bx, by, cx, cy)
+          : quadPoint((t - 0.72) / 0.28, cx, cy, (cx + dx) / 2, (cy + dy) / 2 + (isSleeping ? 6 : 2), dx, dy);
+        const radius = (12.5 - t * 8.2) * Math.max(0.5, tail);
+        fillCoat(ctx, fur(3 - t * 10, 1), p.x, p.y, radius, radius * 0.72, isSleeping ? 0.55 : -0.45 + tailWag);
       }
+      const tip = quadPoint(1, cx, cy, (cx + dx) / 2, (cy + dy) / 2, dx, dy);
+      fillCoat(ctx, fur(14, -4), tip.x, tip.y, 4.4 * Math.max(0.5, tail), 3.6 * Math.max(0.5, tail), 0.2);
       ctx.restore();
     }
 
-    // Haunch, chest and belly instead of one oval.
-    ctx.fillStyle = fur(-6);
-    ctx.beginPath();
-    ctx.ellipse(10 * roundness, 14, 26 * roundness, 23, 0.12, 0, Math.PI * 2);
-    ctx.fill();
-    const bodyGrad = ctx.createRadialGradient(-12, -10, 6, 2, 8, 44);
-    bodyGrad.addColorStop(0, fur(16, -4));
-    bodyGrad.addColorStop(0.55, fur(2));
-    bodyGrad.addColorStop(1, fur(-10, 2));
+    // Under-coat silhouette, then chest, rump, belly. Fur is volume, not hairs.
+    fillCoat(ctx, fur(-16), 6 * r, 12, 37 * r, 33, 0.1);
+    fillCoat(ctx, fur(-14), -10 * r, 8, 32 * r, 29, -0.14);
+    const bodyGrad = ctx.createRadialGradient(-14, -8, 6, 4, 10, 46);
+    bodyGrad.addColorStop(0, fur(18, -5));
+    bodyGrad.addColorStop(0.48, fur(3));
+    bodyGrad.addColorStop(1, fur(-11, 2));
     ctx.fillStyle = bodyGrad;
     ctx.beginPath();
-    ctx.ellipse(-2, 6, 34 * roundness, 32, -0.08, 0, Math.PI * 2);
+    ctx.ellipse(-4, 7, 33 * r, 30, -0.1, 0, Math.PI * 2);
+    ctx.ellipse(10 * r, 13, 27 * r, 23, 0.16, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = fur(-14, -6, 0.55);
-    ctx.beginPath();
-    ctx.ellipse(1, 18, 22 * roundness, 14, 0.04, 0, Math.PI * 2);
-    ctx.fill();
+    fillCoat(ctx, fur(10, -8, 0.55), 2, 20, 20 * r, 13, 0.06);
+    [
+      [-26 * r, -4, 11, 8, -0.5],
+      [22 * r, 4, 10, 7.5, 0.35],
+      [-6, 29, 13, 7, 0.08],
+      [16 * r, 26, 11, 6.5, -0.2],
+    ].forEach(([cx, cy, rx, ry, rot]) => {
+      fillCoat(ctx, fur(-8, 2), cx, cy, rx, ry, rot);
+    });
 
     const sky = getTimeOfDay(undefined, state.world);
     if (sky.solarFactor > 0.12 && !isSleeping) {
-      ctx.strokeStyle = `hsla(${hue}, 18%, 82%, ${0.1 + sky.solarFactor * 0.16})`;
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.ellipse(-2, 6, 34 * roundness, 32, -0.08, -1.05, 0.28);
-      ctx.stroke();
+      fillCoat(ctx, `hsla(${hue}, 22%, 84%, ${0.08 + sky.solarFactor * 0.12})`, -12, -2, 16, 10, -0.4);
     }
 
     // Tiny paws keep them on the floor instead of floating as a blob.
-    ctx.fillStyle = fur(-12, 1);
-    ctx.beginPath();
-    ctx.ellipse(-16, 33, 9, 5.5, -0.15, 0, Math.PI * 2);
-    ctx.ellipse(11, 34, 9, 5.2, 0.12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = fur(-18, -4, 0.55);
-    ctx.beginPath();
-    ctx.ellipse(-18, 34, 3.2, 2.2, 0, 0, Math.PI * 2);
-    ctx.ellipse(-13, 35, 3.2, 2.2, 0, 0, Math.PI * 2);
-    ctx.ellipse(9, 35, 3.2, 2.1, 0, 0, Math.PI * 2);
-    ctx.ellipse(14, 35, 3.2, 2.1, 0, 0, Math.PI * 2);
-    ctx.fill();
+    fillCoat(ctx, fur(-13, 1), -17, 34, 10, 6, -0.18);
+    fillCoat(ctx, fur(-13, 1), 13, 35, 10, 5.8, 0.16);
+    ctx.fillStyle = fur(-20, -3, 0.7);
+    ;[[-21, 35], [-16, 36], [-12, 35], [9, 36], [14, 36], [18, 35]].forEach(([tx, ty]) => {
+      ctx.beginPath();
+      ctx.ellipse(tx, ty, 2.3, 1.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
 
     // Cleanliness is body language, not a meter. A few muted floor-coloured
     // flecks appear gradually and disappear completely after washing.
@@ -352,50 +362,50 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.restore();
     }
 
-    // Ears
+    // Ears are leaves, not tilted ovals. Sleep folds them back.
     if (app.earShape !== 'none') {
-      const earW = app.earShape === 'pointy' ? 11 : 15;
-      const autonomousPerk = !isSleeping && (behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'proud') ? 4 : 0;
-      const perk = isSleeping ? 0 : Math.max(autonomousPerk, weatherCuriosity * 3);
-      const earH = (app.earShape === 'pointy' ? 21 : 17) + perk;
-      const fold = isSleeping ? 0.42 : 0;
-      const drawEar = (ex: number, tilt: number) => {
-        ctx.fillStyle = fur(-3);
+      const pointy = app.earShape === 'pointy';
+      const small = app.earShape === 'small';
+      const autonomousPerk = !isSleeping && (behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'proud');
+      const perk = (!isSleeping && (autonomousPerk || weatherCuriosity > 0.2)) ? 1.08 : 1;
+      const drawEar = (ex: number, side: number) => {
+        ctx.save();
+        ctx.translate(ex, isSleeping ? -15 : -21);
+        ctx.rotate(side * (isSleeping ? 0.85 : 0.22));
+        ctx.scale(small ? 0.78 : 1, perk * (isSleeping ? 0.78 : 1));
+        ctx.fillStyle = fur(-4);
         ctx.beginPath();
-        ctx.ellipse(ex, isSleeping ? -16 : -22, earW, earH, tilt, 0, Math.PI * 2);
+        if (pointy) {
+          ctx.moveTo(0, 14);
+          ctx.quadraticCurveTo(-13 * side, 4, 0, -28);
+          ctx.quadraticCurveTo(11 * side, 2, 0, 14);
+        } else {
+          ctx.moveTo(0, 12);
+          ctx.bezierCurveTo(-15 * side, 6, -11 * side, -18, 0, -22);
+          ctx.bezierCurveTo(11 * side, -18, 15 * side, 6, 0, 12);
+        }
         ctx.fill();
-        ctx.fillStyle = fur(18, 8, 0.55);
+        ctx.fillStyle = fur(20, 10, 0.62);
         ctx.beginPath();
-        ctx.ellipse(ex + tilt * 4, (isSleeping ? -16 : -22) + 2, earW * 0.42, earH * 0.55, tilt, 0, Math.PI * 2);
+        ctx.ellipse(side * 1.2, -4, 4.2, pointy ? 9 : 8, side * 0.15, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
       };
-      drawEar(-22, -0.38 - fold);
-      drawEar(22, 0.38 + fold);
+      drawEar(-21, -1);
+      drawEar(21, 1);
     }
 
-    // Head sits on the chest instead of a painted oval on a blob.
-    ctx.fillStyle = fur(12, -5);
+    // Head and muzzle. A crown clump instead of radiating hairs.
+    fillCoat(ctx, fur(-10), 0, -8, 27, 24, 0);
+    const headGrad = ctx.createRadialGradient(-8, -18, 4, 2, -6, 28);
+    headGrad.addColorStop(0, fur(20, -6));
+    headGrad.addColorStop(1, fur(6, -3));
+    ctx.fillStyle = headGrad;
     ctx.beginPath();
-    ctx.ellipse(0, -10, 26, 23, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -11, 25, 22, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = fur(18, -8, 0.7);
-    ctx.beginPath();
-    ctx.ellipse(0, -4, 18, 14, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    const tuftSeed = state.identity.seed;
-    ctx.strokeStyle = fur(-16, 4, 0.35);
-    ctx.lineWidth = 1.15;
-    ctx.lineCap = 'round';
-    for (let index = 0; index < 9; index += 1) {
-      const unit = Math.sin(tuftSeed * 0.0013 + index * 19.17) * 0.5 + 0.5;
-      const angle = -0.9 + index * 0.22 + (unit - 0.5) * 0.2;
-      const radius = 31 + unit * 4;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(angle) * (radius - 4), Math.sin(angle) * (radius - 6) + 4);
-      ctx.lineTo(Math.cos(angle) * (radius + 3), Math.sin(angle) * (radius + 1) + 4);
-      ctx.stroke();
-    }
+    fillCoat(ctx, fur(16, -8), 0, -1, 13, 10, 0);
+    fillCoat(ctx, fur(-2), 0, -29, 9, 6.5, 0);
 
     // Eyes
     const attentive = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'imitating' || behavior === 'proud' || behavior === 'uncomfortable';

@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.4
+> **Version:** 0.13.5
 > **Last Updated:** 2026-08-28
 
 ---
@@ -128,7 +128,7 @@ becoming/
 |---|---|---|
 | PWA installability | ✅ | Manifest, service worker, offline shell, icons |
 | Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` prevents regression; a completed Start over returns through this same flow |
-| Creature rendering | ✅ | A small animal: haunch, chest, belly, tapered tail, paws, inner ears, iris. Sleeping curls the tail, closes the eyes, and stops the wag. Path marks still layer on the life |
+| Creature rendering | ✅ | A peat-mammal: under-coat silhouette, chest and rump, belly patch, filled tail mass along a curve, leaf ears, muzzle, crown clump, paws. No radiating hair strokes. Sleeping curls the tail and stops the wag |
 | Readable needs system | ✅ | 9 consistently directed needs (100 settled → 0 urgent), compact room signals, optional descriptive care sheet, body-language cues, and no raw percentages or permanent bars |
 | Hidden personality | ✅ | Seeded traits that now evolve through care, play, touch, exploration, and conversation |
 | Bond development | ✅ | Persistent tentative → familiar → close → bonded relationship arc with milestone memories, bond-aware idle behavior, and later-stage speech |
@@ -662,6 +662,10 @@ Sleep no longer wags the tail or twinkles the party marks. The body is haunch, c
 ### v0.13.4 — Sleep is not restlessness
 
 A full moon is something the user said. It is not in CLOCK and does not make them restless. Drowsy or rest-phase talk is a murmur unless a body need is keeping them up. If they fall asleep while the mind is still answering, the late reply is discarded. Sleeping mood is sent as `asleep`, not as a chatty feeling.
+
+### v0.13.5 — Coat, not hairs
+
+The radiating strokes were not fur. The creature is now built as mass: a dark under-coat, chest and rump, a belly, a filled tail that tapers along a curve (and curls in sleep), leaf ears with an inner, a muzzle, and a crown clump. No hair lines.
 
 ---
 

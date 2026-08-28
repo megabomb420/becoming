@@ -315,6 +315,10 @@ assert.match(canvasSource, /A sleeping tail does not wag/);
 assert.match(canvasSource, /tailWag = isSleeping/, 'the tail must not keep time while they sleep');
 assert.match(canvasSource, /drawEye/, 'awake eyes have iris and pupil, not a black disc');
 assert.match(canvasSource, /Tiny paws keep them on the floor/);
+assert.match(canvasSource, /Fur is volume, not hairs/);
+assert.match(canvasSource, /Mass along a curve, not a stroked line/);
+assert.match(canvasSource, /Ears are leaves/);
+assert.doesNotMatch(canvasSource, /for \(let index = 0; index < 9/, 'radiating hair strokes were not fur');
 const chatSource = readFileSync('src/components/ChatInterface.tsx', 'utf8');
 assert.match(chatSource, /state\.sleepState === 'sleeping'/, 'opening chat must not greet while they sleep');
 
