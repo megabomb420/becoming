@@ -392,6 +392,11 @@ export function shouldBeDrowsy(time: TimeOfDay, energy: number) {
     || energy < 20;
 }
 
+/** The creature may choose rest. This is not a player command. */
+export function creatureMaySleep(time: TimeOfDay, energy: number) {
+  return getCircadianDisposition(time, energy, false) === 'ready_to_sleep' || shouldBeDrowsy(time, energy);
+}
+
 function circularMinuteDistance(a: number, b: number) {
   const direct = Math.abs(a - b);
   return Math.min(direct, 1440 - direct);

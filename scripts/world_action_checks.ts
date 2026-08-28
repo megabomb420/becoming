@@ -89,6 +89,13 @@ const sleepBlocked = performImmediateWorldAction({
 assert.equal(sleepBlocked.result.status, 'blocked');
 assert.equal(sleepBlocked.state.sleepState, 'awake');
 
+const sleepAsked = performImmediateWorldAction({
+  ...base,
+  needs: { ...base.needs, energy: 12 },
+}, { kind: 'sleep' }, NOW);
+assert.equal(sleepAsked.result.status, 'success');
+assert.equal(sleepAsked.state.sleepState, 'awake', 'asking them to rest must not force sleep');
+
 const cameCloser = beginComeHere(base, { x: 50, y: 74 });
 assert.deepEqual(cameCloser.position, { x: 50, y: 74 });
 assert.equal(cameCloser.creatureBehavior, 'walking');
@@ -191,5 +198,8 @@ assert.match(cssSource, /min-height: calc\(7\.25rem \+ env\(safe-area-inset-top\
 assert.match(roomSource, /beginOutdoorVisit/);
 assert.match(roomSource, /shouldEndOutdoorVisit/);
 assert.match(roomSource, /beginWorldObjectApproach/);
+assert.doesNotMatch(roomSource, /Put creature to sleep/);
+assert.doesNotMatch(roomSource, /handleSleepToggle/);
+assert.match(roomSource, /settleIfSleepy/);
 
 console.log('World action and room-first conversation checks passed.');

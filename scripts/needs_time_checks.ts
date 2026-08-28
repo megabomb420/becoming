@@ -8,6 +8,7 @@ import {
   getNeedUrgency,
   getSleepBlocker,
   getVisibleNeedSignals,
+  settleIfSleepy,
   touchCreature,
   useToilet,
   washCreature,
@@ -15,6 +16,7 @@ import {
 import { simulateOfflineTime } from '../src/systems/offlineSimulation';
 import { migrateGameState } from '../src/systems/persistence';
 import {
+  creatureMaySleep,
   estimateNightRestMs,
   getLocalDateKey,
   getRoomLighting,
@@ -147,5 +149,18 @@ const sleepActivity = returned.activities.find(activity => activity.type === 'sl
 assert.ok(sleepActivity && sleepActivity.duration >= 8 * 60 && sleepActivity.duration <= 9 * 60);
 assert.equal(returned.state.sleepState, 'awake', 'a daytime return must not look mysteriously asleep');
 assert.equal(returned.state.needsUpdatedAt, returnNow);
+
+const night = getTimeOfDay(Date.UTC(2026, 7, 23, 1, 0), 0);
+const noon = getTimeOfDay(Date.UTC(2026, 7, 23, 12, 0), 0);
+assert.equal(creatureMaySleep(night, 40), true, 'a tired night body may choose sleep');
+assert.equal(creatureMaySleep(noon, 90), false, 'a rested midday body must not be put to sleep');
+const exhausted = { ...needsState, needs: { ...needsState.needs, energy: 18 } };
+assert.equal(settleIfSleepy(exhausted).sleepState, 'sleeping', 'exhaustion lets them choose sleep without a command');
+assert.equal(
+  settleIfSleepy({ ...exhausted, needs: { ...exhausted.needs, hunger: 3 } }).sleepState,
+  'awake',
+  'urgent hunger must keep them from settling',
+);
+assert.equal(settleIfSleepy({ ...needsState, needs: { ...needsState.needs, energy: 90 } }).sleepState, 'awake');
 
 console.log('Needs, urgency, care actions, migration, offline return, local-day, timezone, DST, and day-phase checks passed.');

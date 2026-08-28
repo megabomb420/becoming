@@ -11,7 +11,6 @@ import {
   drinkCreature,
   feedCreature,
   getSleepBlocker,
-  putToSleep,
   useToilet,
   wakeUp,
   washCreature,
@@ -283,7 +282,8 @@ export function performImmediateWorldAction(
     if (disposition === 'active' && state.needs.energy > 72) {
       return { state, result: { intent, status: 'refused', reason: 'not_tired' } };
     }
-    return { state: putToSleep(state, now), result: { intent, status: 'success' } };
+    // They may settle. The room walks to a blanket or curls up; this is not a command.
+    return { state, result: { intent, status: 'success' } };
   }
 
   if (intent.kind === 'toilet') {
@@ -409,7 +409,7 @@ export function groundedWorldReply(result: WorldActionResult, language: 'pl' | '
     return polish ? `Wyszedłem. Jest ${condition === 'clear' ? 'jasno' : label}.` : `I stepped outside. It is ${label}.`;
   }
   if (result.intent.kind === 'come_inside') return polish ? 'Wróciłem do pokoju.' : 'I am back in the room.';
-  if (result.intent.kind === 'sleep') return polish ? 'Dobrze. Układam się.' : 'All right. I am settling down.';
+  if (result.intent.kind === 'sleep') return polish ? 'Dobrze. Pójdę się ułożyć.' : 'All right. I will go settle.';
   if (result.intent.kind === 'wake') return polish ? 'Już jestem.' : 'I am here.';
   if (result.intent.kind === 'drink') return polish ? 'Napiłem się. Tego potrzebowałem.' : 'I drank. I needed that.';
   if (result.intent.kind === 'toilet') return polish ? 'Gotowe. Jest mi lżej.' : 'Done. I feel better.';

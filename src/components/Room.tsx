@@ -22,7 +22,10 @@ import {
   getNaturalNeedCue,
   getSleepBlocker,
   getVisibleNeedSignals,
+  putToSleep,
+  settleIfSleepy,
   touchCreature,
+  wakeUp,
 } from '../systems/needsSystem';
 import {
   getDevelopmentDescription,
@@ -76,6 +79,7 @@ import { getAdoptedSharedPhrases } from '../systems/sharedLanguageSystem';
 import { simulateOfflineTime } from '../systems/offlineSimulation';
 import {
   formatLocalClock,
+  creatureMaySleep,
   getCircadianDisposition,
   getPhaseLabel,
   getRoomLighting,
@@ -574,14 +578,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
     reactionTimerRef.current = setTimeout(() => {
       activeObjectRef.current = null;
-      behaviorRef.current = 'idle';
       showCreatureCue(null);
-      onStateChange(prev => ({
-        ...prev,
-        creatureBehavior: 'idle',
-        currentActivity: null,
-        roomObjects: prev.roomObjects.map(obj => obj.beingUsedByCreature ? { ...obj, beingUsedByCreature: false } : obj),
-      }));
+      onStateChange(prev => {
+        const next = type === 'blanket' ? settleIfSleepy(prev) : prev;
+        const sleeping = next.sleepState === 'sleeping';
+        behaviorRef.current = sleeping ? 'sleeping' : 'idle';
+        return {
+          ...next,
+          creatureBehavior: sleeping ? 'sleeping' : 'idle',
+          currentActivity: sleeping ? 'sleeping' : null,
+          roomObjects: next.roomObjects.map(obj => obj.beingUsedByCreature ? { ...obj, beingUsedByCreature: false } : obj),
+        };
+      });
     }, reactionDuration);
   }, [onStateChange, polish, setTemporaryEmotion, showCreatureCue, triggerSpeech]);
 
@@ -853,7 +861,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       if (!goal && (currentState.needs.bladder < 48 || currentState.needs.bowel < 48)) goal = closestOfType(['litter_box']);
       if (!goal && currentState.needs.hunger < 48) goal = closestOfType(['apple', 'broccoli']);
       if (!goal && currentState.needs.hygiene < 48) goal = closestOfType(['wash_basin']);
-      const disposition = getCircadianDisposition(getTimeOfDay(Date.now(), currentState.world), currentState.needs.energy, false);
+      const now = Date.now();
+      const time = getTimeOfDay(now, currentState.world);
+      const disposition = getCircadianDisposition(time, currentState.needs.energy, false);
+      if (!goal && creatureMaySleep(time, currentState.needs.energy) && !getSleepBlocker(currentState)) {
+        const blanket = closestOfType(['blanket']);
+        if (blanket) {
+          beginObjectInteraction(blanket, false);
+          return;
+        }
+        onStateChange(putToSleep(currentState, now));
+        return;
+      }
       if (!goal && (currentState.needs.energy < 40 || disposition === 'ready_to_sleep')) goal = closestOfType(['blanket']);
       if (!goal && currentState.needs.comfort < 48) goal = closestOfType(['blanket']);
       if (!goal && currentState.needs.stimulation < 48 && (disposition === 'active' || currentState.needs.stimulation < 25)) goal = closestOfType(['ball']);
@@ -981,7 +1000,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     return () => clearTimeout(initiateTimerRef.current);
   }, [state.sleepState, showChat, initiatedTopic, onStateChange]);
 
+  const wakeFromTouch = useCallback((label: string, polishLabel: string) => {
+    emitCue('wake');
+    const woken = wakeUp(stateRef.current);
+    showCreatureCue({ icon: '·', label: t(label, polishLabel), tone: 'notice' }, 2400);
+    onStateChange(woken);
+  }, [emitCue, onStateChange, showCreatureCue, t]);
+
   const handleTapCreature = useCallback(() => {
+    if (stateRef.current.sleepState === 'sleeping') {
+      wakeFromTouch('stirs at your touch', 'budzi się od twojego dotyku');
+      return;
+    }
     emitCue('touch');
     const boundary = evaluateTouchBoundary(stateRef.current, 'tap');
     if (!boundary.accepted) {
@@ -994,9 +1024,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const updated = recordBondEvent(touchCreature(boundary.state, 'tap'), 'tap');
     setTemporaryEmotion('curious', 2000);
     onStateChange(updated);
-  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
+  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech, wakeFromTouch]);
 
   const handleStrokeCreature = useCallback(() => {
+    if (stateRef.current.sleepState === 'sleeping') {
+      wakeFromTouch('leans into the stroke, then opens an eye', 'przysuwa się do dłoni i otwiera oko');
+      return;
+    }
     emitCue('comfort');
     const boundary = evaluateTouchBoundary(stateRef.current, 'stroke');
     if (!boundary.accepted) {
@@ -1009,11 +1043,15 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const updated = recordBondEvent(touchCreature(boundary.state, 'stroke'), 'stroke');
     setTemporaryEmotion('happy', 3000);
     onStateChange(updated);
-  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech]);
+  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech, wakeFromTouch]);
 
   const handleHoldStart = useCallback(() => {}, []);
 
   const handleHoldEnd = useCallback(() => {
+    if (stateRef.current.sleepState === 'sleeping') {
+      wakeFromTouch('wakes in your arms', 'budzi się w twoich ramionach');
+      return;
+    }
     emitCue('comfort');
     const boundary = evaluateTouchBoundary(stateRef.current, 'hold');
     if (!boundary.accepted) {
@@ -1026,7 +1064,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const updated = recordBondEvent(touchCreature(boundary.state, 'hold'), 'hold');
     setTemporaryEmotion('happy', 3000);
     onStateChange(updated);
-  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t]);
+  }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, wakeFromTouch]);
 
   // ========== OBJECT INPUT ==========
   // A short press places/uses an object. A moved pointer repositions it. This
@@ -1288,28 +1326,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setShowInventory(true);
   };
 
-  // ========== SLEEP ==========
-  const handleSleepToggle = () => {
-    setShowCare(false);
-    setShowInventory(false);
-    emitCue(state.sleepState === 'sleeping' ? 'wake' : 'sleep');
-    const intent: WorldIntent = { kind: state.sleepState === 'sleeping' ? 'wake' : 'sleep' };
-    const execution = performImmediateWorldAction(stateRef.current, intent);
-    if (execution.result.status === 'blocked') {
-      const blocker = getSleepBlocker(stateRef.current);
-      if (blocker) {
-        showCreatureCue({ icon: NEED_COPY[blocker].icon, label: getNaturalNeedCue(state, polish, blocker), tone: 'notice' }, 3400);
-        setTemporaryEmotion('uncertain', 3200);
-        return;
-      }
-    }
-    if (execution.result.status === 'refused') {
-      showCreatureCue({ icon: '·', label: t('is not sleepy yet', 'jeszcze nie jest senny'), tone: 'notice' }, 2800);
-      return;
-    }
-    onStateChange(execution.state);
-  };
-
   const handleOpenChatWithTopic = () => {
     emitCue('open');
     setShowCare(false);
@@ -1370,6 +1386,26 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       return;
     }
 
+    if (intent.kind === 'sleep') {
+      const execution = performImmediateWorldAction(stateRef.current, intent);
+      if (execution.result.status !== 'success') {
+        if (execution.result.status === 'refused') {
+          showCreatureCue({ icon: '·', label: t('is not sleepy yet', 'jeszcze nie jest senny'), tone: 'notice' }, 2800);
+        }
+        window.setTimeout(() => completeWorldAction(execution.result), 120);
+        return;
+      }
+      const blanket = stateRef.current.roomObjects.find(object => object.type === 'blanket');
+      if (blanket) {
+        beginObjectInteraction(blanket, true, undefined, intent, completeWorldAction);
+        return;
+      }
+      emitCue('sleep');
+      onStateChange(putToSleep(stateRef.current));
+      window.setTimeout(() => completeWorldAction({ intent, status: 'success' }), 520);
+      return;
+    }
+
     if (intent.kind === 'come_here') {
       if (stateRef.current.sleepState === 'sleeping') {
         completeWorldAction({ intent, status: 'blocked', reason: 'sleeping' });
@@ -1409,8 +1445,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       } else if (intent.kind === 'clean') {
         emitCue('clean');
         showCareEffect('clean', 2700);
-      } else if (intent.kind === 'sleep') {
-        emitCue('sleep');
       } else if (intent.kind === 'wake') {
         emitCue('wake');
       }
@@ -1418,7 +1452,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       setTemporaryEmotion('uncertain', 2600);
     }
     window.setTimeout(() => completeWorldAction(execution.result), execution.result.status === 'success' ? 520 : 120);
-  }, [beginObjectInteraction, completeWorldAction, emitCue, offerAndApproach, onStateChange, setTemporaryEmotion, showCareEffect, walkToIdlePosition]);
+  }, [beginObjectInteraction, completeWorldAction, emitCue, offerAndApproach, onStateChange, setTemporaryEmotion, showCareEffect, showCreatureCue, t, walkToIdlePosition]);
 
   const sendConversationMessage = useCallback(async (rawText: string) => {
     const text = rawText.trim();
@@ -1936,9 +1970,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           </button>
         </form>
         <nav className="room-dock mx-auto mt-1.5 flex w-fit items-center gap-1 rounded-[1.7rem] px-1.5 py-1" aria-label={t('Room actions', 'Działania w pokoju')}>
-          <button aria-label={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Put creature to sleep', 'Połóż stworka spać')} title={state.sleepState === 'sleeping' ? t('Wake creature', 'Obudź stworka') : t('Sleep', 'Sen')} onClick={handleSleepToggle} className="dock-action">
-            <GlyphIcon name={state.sleepState === 'sleeping' ? 'sun' : 'moon'} size={21} />
-          </button>
           <button
             aria-label={careNeedsAttention ? t('Open care — something needs attention', 'Otwórz opiekę — coś wymaga uwagi') : t('Open care', 'Otwórz opiekę')}
             title={t('Care', 'Opieka')}

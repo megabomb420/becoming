@@ -1,5 +1,6 @@
 import { GameState, Memory, Needs, RoomMess, RoomMessType } from '../types';
 import { generateDreamAfterSleep } from './innerLifeSystem';
+import { creatureMaySleep, getTimeOfDay } from './timeSystem';
 import { getEnvironmentalNeedMultiplier } from './environmentSystem';
 
 export type NeedUpdateMode = 'active' | 'offline';
@@ -450,6 +451,14 @@ export function putToSleep(state: GameState, now = Date.now()): GameState {
     currentActivity: 'sleeping',
     sleepStartTimestamp: now,
   };
+}
+
+/** Sleep only if the body is ready. Urgent hunger or toilet still wins. */
+export function settleIfSleepy(state: GameState, now = Date.now()): GameState {
+  if (state.sleepState === 'sleeping') return state;
+  if (getSleepBlocker(state)) return state;
+  if (!creatureMaySleep(getTimeOfDay(now, state.world), state.needs.energy)) return state;
+  return putToSleep(state, now);
 }
 
 export function wakeUp(state: GameState, now = Date.now()): GameState {

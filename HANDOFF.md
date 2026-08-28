@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.12
+> **Version:** 0.12.13
 > **Last Updated:** 2026-08-28
 
 ---
@@ -605,6 +605,10 @@ The persistence suite holds a second IndexedDB connection (the “other holder�
 - A dedicated worker may read `gameState/current` if the main-thread open is slow.
 
 The persistence suite: one loader call whose late success recovers the same `identity.id`; a hung main-thread `open` plus fallback still returns that life without a second `open`; a second same-version connection does not block boot; missing DB / reset → egg, then Ash survives the next boot. App source asserts no close-before-open on boot, `closeDatabaseForReload` on update, and no SW registration on the opening screen. `npm test && npm run check` pass.
+
+### v0.12.13 — Sleep is chosen, not commanded
+
+The dock moon/sun control treated rest as a player order. A living creature cannot be forced to lie down. 0.12.13 removes that button. They settle when tired or it is night: they walk to a blanket if one is in the room, nest, then sleep, or curl up where they are. Urgent hunger or toilet still keeps them up. Asking “go to sleep” in chat is a suggestion they may refuse; it does not snap them unconscious. Touch wakes them.
 
 ---
 
