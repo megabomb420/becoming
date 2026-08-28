@@ -37,8 +37,8 @@ const BASE_INVENTORY: ObjectType[] = [
 const SAVE_FORMAT = 'becoming-save';
 const SAVE_FORMAT_VERSION = 1;
 const MAX_IMPORT_LENGTH = 2_000_000;
-const DB_OPEN_TIMEOUT_MS = 4_000;
-const BOOT_LOAD_TIMEOUT_MS = 4_000;
+const DB_OPEN_TIMEOUT_MS = 2_000;
+const BOOT_LOAD_TIMEOUT_MS = 2_000;
 const BOOT_OPEN_ATTEMPTS = 8;
 
 let dbPromise: Promise<IDBPDatabase<BecomingDB>> | null = null;
@@ -72,6 +72,43 @@ export function closeDatabaseConnections(): void {
 
 /** Close this page's IDB handles and ask other Becoming tabs to do the same. */
 export function releaseDatabaseForReload(): void {
+  abandonLocalDatabaseOpens();
+  lifecycleChannel?.postMessage('close-connections');
+}
+
+/**
+ * A controlling service worker can keep IndexedDB blocked across skipWaiting
+ * and reload. Force-claim, then unregister, so the next open is not waiting
+ * on that worker. No-ops where service workers do not exist.
+ */
+export async function releaseControllingServiceWorker(): Promise<void> {
+  const container = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
+  if (!container || typeof container.getRegistration !== 'function') return;
+  const timeout = timeoutAfter(1_200, 'Releasing the service worker timed out.');
+  try {
+    const registration = await Promise.race([
+      Promise.resolve(container.getRegistration()),
+      timeout.promise,
+    ]);
+    if (!registration) return;
+    const skip = { type: 'SKIP_WAITING' };
+    try { registration.waiting?.postMessage(skip); } catch { /* ignore */ }
+    try { registration.active?.postMessage({ type: 'CLIENTS_CLAIM' }); } catch { /* ignore */ }
+    try { container.controller?.postMessage(skip); } catch { /* ignore */ }
+    await Promise.race([
+      Promise.resolve(registration.unregister()),
+      timeout.promise,
+    ]).catch(() => undefined);
+  } catch {
+    // IndexedDB open still proceeds; a missing worker is not a failed boot.
+  } finally {
+    timeout.cancel();
+  }
+}
+
+/** Unregister/claim the SW, then close IDB. Call this before a retry open. */
+export async function releaseDatabaseBlockers(): Promise<void> {
+  await releaseControllingServiceWorker();
   abandonLocalDatabaseOpens();
   lifecycleChannel?.postMessage('close-connections');
 }
@@ -121,11 +158,12 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
         if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots', { keyPath: 'timestamp' });
       },
       blocked() {
-        // Ask any other current Becoming tab to release its connection. Older
-        // tabs still receive the native versionchange event via `blocking`.
+        // Do not abandon this in-flight open. Release the holder (SW / other
+        // tab), then let this request complete once that connection drops.
         console.warn('Opening Becoming IndexedDB is waiting for another connection.');
         closeSettledDatabaseConnections();
         lifecycleChannel?.postMessage('close-connections');
+        void releaseControllingServiceWorker();
       },
       blocking(_currentVersion, _blockedVersion, event) {
         // A reset from this or another open tab must be allowed to finish.
@@ -379,16 +417,19 @@ export async function loadGameState(): Promise<GameState | null> {
 export interface BootLoadHooks {
   delay?: (ms: number) => Promise<void>;
   presence?: () => Promise<'present' | 'absent' | 'unknown'>;
+  releaseBlocker?: () => Promise<void>;
 }
 
 function bootRetryDelay(attempt: number): number {
-  return Math.min(400 * 2 ** attempt, 3_000);
+  return Math.min(200 * 2 ** attempt, 1_000);
 }
 
 /**
  * Boot retries until a read succeeds or indexedDB.databases() confirms the
  * Becoming database is gone. A timeout is never treated as an empty save, and
  * it is never a reason to invent an egg while the record may still exist.
+ * A blocked/hung open releases the service worker and other connections
+ * before the next open.
  */
 export async function loadGameStateForBoot(
   loader: () => Promise<GameState | null> = loadGameState,
@@ -401,15 +442,15 @@ export async function loadGameStateForBoot(
   const delay = hooks.delay ?? ((ms: number) => new Promise<void>(resolve => {
     setTimeout(resolve, ms);
   }));
+  const releaseBlocker = hooks.releaseBlocker ?? releaseDatabaseBlockers;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const timeout = timeoutAfter(timeoutMs, 'Loading Becoming state timed out.');
     try {
       return await Promise.race([loader(), timeout.promise]);
     } catch (error) {
       lastError = error;
-      // The next attempt must create a new IDB request, never await the same
-      // dead promise. A late success from this generation closes itself.
-      closeDatabaseConnections();
+      // SW first, then close, then a new open. Never await the hung promise.
+      await releaseBlocker();
       if (await presence() === 'absent') return null;
       if (attempt < attempts - 1) await delay(bootRetryDelay(attempt));
     } finally {

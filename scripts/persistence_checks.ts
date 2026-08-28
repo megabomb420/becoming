@@ -154,6 +154,77 @@ assert.ok(openCalls >= 4, 'a busy save must keep issuing new opens instead of pa
 assert.ok(recoveredAfterBusy, 'leaving the busy screen means the living record rehydrated');
 assert.equal(recoveredAfterBusy.identity.id, threeThenLive.identity.id);
 
+function openRawConnection(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = healthyIndexedDB.open('becoming-db', 1);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('Could not open a blocking connection.'));
+  });
+}
+
+async function bootWhileOtherConnectionHolds(): Promise<GameState | null> {
+  closeDatabaseConnections();
+  const extra = await openRawConnection();
+  let extraHolds = true;
+  let unregistered = false;
+  const previousNavigator = globalThis.navigator;
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      serviceWorker: {
+        controller: { postMessage: () => undefined },
+        getRegistration: async () => ({
+          waiting: { postMessage: () => undefined },
+          active: { postMessage: () => undefined },
+          unregister: async () => {
+            unregistered = true;
+            extraHolds = false;
+            extra.close();
+            return true;
+          },
+        }),
+      },
+    },
+  });
+  openCalls = 0;
+  const blockedByOther = new Proxy(healthyIndexedDB, {
+    get(target, property) {
+      if (property === 'open') {
+        return (name: string, version?: number) => {
+          openCalls += 1;
+          if (extraHolds) return new FakeIDBOpenDBRequest();
+          return version === undefined ? target.open(name) : target.open(name, version);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: blockedByOther });
+  try {
+    const recovered = await loadGameStateForBoot(undefined, 10, 4, {
+      delay: async () => undefined,
+      presence: async () => 'present',
+    });
+    assert.equal(unregistered, true, 'a blocked open must unregister the controlling service worker before retrying');
+    assert.ok(openCalls >= 2, 'boot must issue a new open after the other connection is released');
+    return recovered;
+  } finally {
+    Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: healthyIndexedDB });
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: previousNavigator });
+    try { extra.close(); } catch { /* already closed by unregister */ }
+  }
+}
+
+closeDatabaseConnections();
+const extraLife = createHatchedCreature(createNewCreature('Moth', 9911));
+await saveGameState(extraLife);
+closeDatabaseConnections();
+const recoveredThroughOtherConnection = await bootWhileOtherConnectionHolds();
+assert.ok(recoveredThroughOtherConnection, 'a blocked open held by another connection must still rehydrate the living save');
+assert.equal(recoveredThroughOtherConnection.identity.id, extraLife.identity.id);
+assert.equal(isHatchableBoot(recoveredThroughOtherConnection), false);
+
 // App treats busy as a round, not a destination: keep calling a new boot until
 // the living record rehydrates. Parking on Try again fails this assertion.
 async function simulateAppBoot(
@@ -193,6 +264,8 @@ assert.equal(
 await resetAllLocalData();
 const afterRealReset = await loadGameStateForBoot(undefined, 100, 2);
 assert.equal(afterRealReset, null, 'reset followed by boot must enter hatching from a confirmed empty read');
+const eggThroughOtherConnection = await bootWhileOtherConnectionHolds();
+assert.equal(eggThroughOtherConnection, null, 'a blocked open of an empty save must still reach the egg after the other connection is released');
 
 const ash = createHatchedCreature(createNewCreature('Ash', 8128));
 await saveGameState(ash);
@@ -210,8 +283,8 @@ const updateContract = appSource.slice(updateStart, updateEnd);
 assert.ok(updateStart >= 0 && updateEnd > updateStart, 'App must expose a bounded PWA update preparation path');
 assert.ok(
   updateContract.indexOf('await saveGameState') >= 0
-  && updateContract.indexOf('releaseDatabaseForReload()') > updateContract.indexOf('await saveGameState'),
-  'PWA update must save in-memory life before releasing IndexedDB for reload',
+  && updateContract.indexOf('releaseDatabaseBlockers()') > updateContract.indexOf('await saveGameState'),
+  'PWA update must save in-memory life before releasing the SW and IndexedDB',
 );
 assert.match(appSource, /updatingRef\.current\) return/, 'pagehide must not reopen IndexedDB during update reload');
 assert.match(appSource, /onClick=\{\(\) => void runBoot\(\)\}/, 'Try again must run a new boot/open attempt without reloading the same dead page state');
@@ -219,11 +292,14 @@ assert.match(appSource, /closeDatabaseConnections\(\);/, 'Try again / auto-retry
 assert.match(appSource, /retryTimerRef\.current = setTimeout\(\(\) => \{\s*if \(bootRunRef\.current === run\) void runBoot\(\);/, 'busy boot must auto-retry instead of parking');
 assert.match(appSource, /setBootError\(true\)/);
 assert.match(appSource, /Opening the local save/);
-assert.match(appSource, /The save is still there/);
+assert.match(appSource, /Releasing the save lock and opening again/);
 assert.doesNotMatch(appSource, /Loading…/);
 assert.doesNotMatch(appSource, /will not open a new egg without a confirmed empty save/);
 assert.doesNotMatch(appSource, /The local save has not opened yet/);
-assert.match(appSource, /releaseDatabaseForReload/);
+assert.doesNotMatch(appSource, /The save is still there/);
+assert.match(appSource, /releaseDatabaseBlockers/);
+const pwaSource = readFileSync('src/components/PwaUpdateNotice.tsx', 'utf8');
+assert.match(pwaSource, /location\.reload\(\)/, 'Update now must reload after releasing the worker, not skipWaiting while IDB is held');
 
 let deletionRequest: {
   onsuccess: null | (() => void);

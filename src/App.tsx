@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, OfflineActivity } from './types';
-import { closeDatabaseConnections, isHatchableBoot, loadGameStateForBoot, releaseDatabaseForReload, resetForNewLife, saveGameState } from './systems/persistence';
+import { closeDatabaseConnections, isHatchableBoot, loadGameStateForBoot, releaseDatabaseBlockers, resetForNewLife, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
 import { advanceNeeds } from './systems/needsSystem';
@@ -21,7 +21,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.10';
+const APP_VERSION = '0.12.11';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -62,9 +62,9 @@ function App() {
       if (bootRunRef.current !== run) return;
       recoveringRef.current = true;
       setBootError(true);
-    }, 4_000);
+    }, 2_000);
     try {
-      const saved = await loadGameStateForBoot(undefined, 4_000, 3);
+      const saved = await loadGameStateForBoot(undefined, 2_000, 6);
       if (bootRunRef.current !== run) return;
       recoveringRef.current = false;
       setBootError(false);
@@ -100,7 +100,7 @@ function App() {
       setLoading(false);
       retryTimerRef.current = setTimeout(() => {
         if (bootRunRef.current === run) void runBoot();
-      }, 2_000);
+      }, 300);
     } finally {
       clearTimeout(offerRetry);
     }
@@ -131,9 +131,9 @@ function App() {
     const latest = gameStateRef.current;
     try {
       if (!resettingRef.current && latest?.development.hatched) await saveGameState(latest);
-      // The new page must own the next open. pagehide is suppressed while
-      // updating so it cannot recreate a connection after this close.
-      releaseDatabaseForReload();
+      // Drop the controlling SW before reload so skipWaiting cannot keep
+      // IndexedDB blocked on the next boot.
+      await releaseDatabaseBlockers();
     } catch (error) {
       updatingRef.current = false;
       throw error;
@@ -347,8 +347,8 @@ function App() {
               <>
                 <p className="text-warm-200/50 text-xs mt-2">
                   {polish
-                    ? 'Zapis nadal istnieje. Zamykam zajęte połączenia i próbuję ponownie. Zamknij inne karty Becoming, jeśli to trwa.'
-                    : 'The save is still there. Closing busy connections and retrying. Close other Becoming tabs if this continues.'}
+                    ? 'Zwalniam blokadę zapisu i otwieram ponownie.'
+                    : 'Releasing the save lock and opening again.'}
                 </p>
                 <button type="button" onClick={() => void runBoot()} className="mt-5 min-h-11 rounded-xl border border-warm-300/25 bg-warm-300/15 px-5 py-2 text-warm-100 text-xs">
                   {polish ? 'Spróbuj ponownie' : 'Try again'}
