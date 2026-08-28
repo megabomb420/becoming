@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.7
+> **Version:** 0.12.8
 > **Last Updated:** 2026-08-28
 
 ---
@@ -131,7 +131,7 @@ becoming/
 | Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
 | Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
-| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; writes are ordered; migration repairs old saves without lowering a living creature or dropping identity and placed objects; blocked or hung boot reads leave `Loading…` for the hatch flow within four seconds |
+| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; the first room waits for a durable write; migration preserves living identity and placed objects; only a confirmed empty read enters hatching, while unavailable persistence exits `Loading…` into recovery without replacing the save |
 | Memory Book | ✅ | Emergent biography from significant memories |
 | Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
@@ -546,6 +546,18 @@ A second 2026-08-28 production playtest proved that a browser can leave `indexed
 
 Deterministic checks now include missing state → hatch, a loader that never settles → hatch within its test deadline, the Settings reset contract followed by a hatchable boot, blocked deletion not resolving early, and the existing living-save migration preservation case. `npm run check` passes, including TypeScript, the production PWA build, all system suites, and Worker/security checks.
 
+The live follow-up exposed a regression in that policy: the 2.5-second open deadline treated slow or temporarily blocked IndexedDB as an empty save, closed a late successful connection, and allowed the room to appear before the first creature write was durable. A player could meet Ash in Room and return to an egg on reload. v0.12.8 supersedes this fallback.
+
+### v0.12.8 — Living save rehydration
+
+0.12.8 restores the required distinction between **confirmed empty** and **temporarily unavailable** persistence:
+- A successful database open plus a missing `gameState/current` record enters the existing egg flow. Completed Start over still reaches that same condition after deletion.
+- A slow, blocked, rejected, or timed-out open never becomes `null` and never exposes a replacement egg. Boot remains finite and shows bilingual retry recovery after its deadline.
+- A slow underlying open is preserved rather than closed; a retry can consume its eventual success instead of creating competing opens.
+- Naming awaits `saveGameState()` before EggHatching unmounts or Room appears. A failed first write stays in the naming view with bilingual retry copy, so seeing Room now means the life is durable.
+
+The persistence suite uses `fake-indexeddb` to execute the production `saveGameState()` path, closes all database connections to simulate navigation, reopens through `loadGameStateForBoot()`, and asserts the same Ash identity, name, and permanent hatch transition. A never-settling loader exits `Loading…` as an error rather than a fresh egg. `npm run check` passes. Live GitHub Pages verification then completed both `hatch → Ash Room → reload → Ash Room` and `leave origin → reopen canonical URL → Ash Room`, with `NEWBORN / Ash / UNWRITTEN` preserved.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -570,7 +582,7 @@ Deterministic checks now include missing state → hatch, a loader that never se
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Physical-device replay** — on the deployed 0.12.7 build, confirm the previously blocked profile leaves `Loading…` for hatching within four seconds, then load a valid Moth save, place stone/ball, accept a PWA update, run `go look in the box`, and cancel/complete Settings start-over. Automated contracts cover these paths, but record the iPhone/browser result separately from the code checks. Also live-prove DeepSeek-only bubbles and outdoor visits.
+1. **Physical-device replay** — on deployed 0.12.8, confirm the original iPhone profile rehydrates its living save or shows recovery rather than an egg; then replay Start over and a PWA update on that device. Automated IndexedDB round-trip and live GitHub Pages hatch/reload/reopen checks pass, but record the physical Safari result separately. Also live-prove DeepSeek-only bubbles and outdoor visits.
 2. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
 3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
@@ -602,7 +614,7 @@ Deterministic checks now include missing state → hatch, a loader that never se
 - **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak and short outdoor visits reuse that cadence; they do not add a second timer.
 - **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
 - **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, and accidents advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, death, sickness pressure, or manipulative absence mechanics.
-- **Reset is a completed persistence transition, not a navigation trick.** Settings marks reset first, closes every settled IndexedDB connection, bounds any hung save/open drain, waits for deletion success, and only then reloads. It must not verify by reopening the deleted database, and `pagehide` must not recreate it. Boot itself is finite: a readable living save enters Room, while missing, empty, blocked, half-created, or indefinitely pending persistence returns to the original EggHatching flow within four seconds.
+- **Reset is a completed persistence transition, not a navigation trick.** Settings marks reset first, closes every settled IndexedDB connection, bounds any hung save/open drain, waits for deletion success, and only then reloads. It must not verify by reopening the deleted database, and `pagehide` must not recreate it. Boot is finite but three-valued: a readable living save enters Room, a confirmed successful empty read enters EggHatching, and unavailable/blocked persistence shows recovery without exposing a replacement egg.
 
 ---
 
