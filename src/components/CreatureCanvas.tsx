@@ -3,7 +3,6 @@ import { GameState } from '../types';
 import { getLifePathVisual } from '../systems/lifePathSystem';
 import { getDominantNeed, getNeedUrgency } from '../systems/needsSystem';
 import { getEffectiveStimulus } from '../systems/environmentSystem';
-import { getTimeOfDay } from '../systems/timeSystem';
 
 interface CreatureCanvasProps {
   state: GameState;
@@ -11,14 +10,6 @@ interface CreatureCanvasProps {
   onStroke: () => void;
   onHoldStart: () => void;
   onHoldEnd: () => void;
-}
-
-function quadPoint(t: number, ax: number, ay: number, bx: number, by: number, cx: number, cy: number) {
-  const u = 1 - t;
-  return {
-    x: u * u * ax + 2 * u * t * bx + t * t * cx,
-    y: u * u * ay + 2 * u * t * by + t * t * cy,
-  };
 }
 
 function fillCoat(
@@ -269,79 +260,63 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     }
 
     const fur = (dL: number, dS = 0, alpha = 1) => {
-      const s = Math.max(6, Math.min(70, saturation + dS));
-      const l = Math.max(16, Math.min(84, lightness + dL));
+      const s = Math.max(8, Math.min(62, saturation + dS));
+      const l = Math.max(22, Math.min(86, lightness + dL));
       return alpha >= 1 ? `hsl(${hue}, ${s}%, ${l}%)` : `hsla(${hue}, ${s}%, ${l}%, ${alpha})`;
     };
+    const ink = fur(-32, 6);
     const tail = app.tailLength;
     const r = roundness;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    const outline = () => {
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+    };
+    const blob = (color: string, x: number, y: number, rx: number, ry: number, rot = 0) => {
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      outline();
+    };
 
-    // A sleeping tail does not wag. Mass along a curve, not a stroked line.
+    // A sleeping tail does not wag. One kawaii teardrop, not a string of lumps.
     if (tail > 0) {
       const excited = !isSleeping && (behavior === 'playing' || state.emotionalState === 'happy' || state.emotionalState === 'excited');
       const tailWag = isSleeping
         ? 0
-        : Math.sin(time * (excited ? 0.013 : 0.0042)) * (excited ? 0.38 : 0.14)
-          + Math.sin(time * 0.007) * environment.wind * 0.08;
+        : Math.sin(time * (excited ? 0.014 : 0.0045)) * (excited ? 0.34 : 0.12)
+          + Math.sin(time * 0.007) * environment.wind * 0.07;
+      const len = 38 + tail * 22;
       ctx.save();
-      if (!isSleeping) ctx.rotate(tailWag - 0.12);
-      const ax = -22 * r;
-      const ay = 12;
-      const bx = isSleeping ? -44 * r : -50 * Math.max(0.55, tail);
-      const by = isSleeping ? 26 : -2 + tailWag * 14;
-      const cx = isSleeping ? -8 * r : -70 * Math.max(0.55, tail);
-      const cy = isSleeping ? 34 : 18 + tailWag * 10;
-      const dx = isSleeping ? 16 : cx - 8;
-      const dy = isSleeping ? 22 : cy + 4;
-      for (let step = 0; step <= 12; step += 1) {
-        const t = step / 12;
-        const p = t < 0.72
-          ? quadPoint(t / 0.72, ax, ay, bx, by, cx, cy)
-          : quadPoint((t - 0.72) / 0.28, cx, cy, (cx + dx) / 2, (cy + dy) / 2 + (isSleeping ? 6 : 2), dx, dy);
-        const radius = (12.5 - t * 8.2) * Math.max(0.5, tail);
-        fillCoat(ctx, fur(3 - t * 10, 1), p.x, p.y, radius, radius * 0.72, isSleeping ? 0.55 : -0.45 + tailWag);
+      ctx.translate(-16 * r, 20);
+      if (!isSleeping) ctx.rotate(tailWag - 0.35);
+      else ctx.rotate(0.85);
+      ctx.beginPath();
+      if (isSleeping) {
+        ctx.moveTo(4, -4);
+        ctx.quadraticCurveTo(-len * 0.35, 16, -4, 22);
+        ctx.quadraticCurveTo(len * 0.12, 10, 4, -4);
+      } else {
+        ctx.moveTo(6, -6);
+        ctx.quadraticCurveTo(-len * 0.55, -18, -len * 0.92, 4);
+        ctx.quadraticCurveTo(-len * 0.5, 16, 6, 8);
       }
-      const tip = quadPoint(1, cx, cy, (cx + dx) / 2, (cy + dy) / 2, dx, dy);
-      fillCoat(ctx, fur(14, -4), tip.x, tip.y, 4.4 * Math.max(0.5, tail), 3.6 * Math.max(0.5, tail), 0.2);
+      ctx.closePath();
+      ctx.fillStyle = fur(8, 2);
+      ctx.fill();
+      outline();
       ctx.restore();
     }
 
-    // Under-coat silhouette, then chest, rump, belly. Fur is volume, not hairs.
-    fillCoat(ctx, fur(-16), 6 * r, 12, 37 * r, 33, 0.1);
-    fillCoat(ctx, fur(-14), -10 * r, 8, 32 * r, 29, -0.14);
-    const bodyGrad = ctx.createRadialGradient(-14, -8, 6, 4, 10, 46);
-    bodyGrad.addColorStop(0, fur(18, -5));
-    bodyGrad.addColorStop(0.48, fur(3));
-    bodyGrad.addColorStop(1, fur(-11, 2));
-    ctx.fillStyle = bodyGrad;
-    ctx.beginPath();
-    ctx.ellipse(-4, 7, 33 * r, 30, -0.1, 0, Math.PI * 2);
-    ctx.ellipse(10 * r, 13, 27 * r, 23, 0.16, 0, Math.PI * 2);
-    ctx.fill();
-    fillCoat(ctx, fur(10, -8, 0.55), 2, 20, 20 * r, 13, 0.06);
-    [
-      [-26 * r, -4, 11, 8, -0.5],
-      [22 * r, 4, 10, 7.5, 0.35],
-      [-6, 29, 13, 7, 0.08],
-      [16 * r, 26, 11, 6.5, -0.2],
-    ].forEach(([cx, cy, rx, ry, rot]) => {
-      fillCoat(ctx, fur(-8, 2), cx, cy, rx, ry, rot);
-    });
-
-    const sky = getTimeOfDay(undefined, state.world);
-    if (sky.solarFactor > 0.12 && !isSleeping) {
-      fillCoat(ctx, `hsla(${hue}, 22%, 84%, ${0.08 + sky.solarFactor * 0.12})`, -12, -2, 16, 10, -0.4);
-    }
-
+    // Chibi: small body, huge head. Clean cel fill, not coat clumps.
+    blob(fur(2), 0, 26, 19 * r, 15, 0);
+    fillCoat(ctx, fur(16, -6, 0.55), 0, 24, 11 * r, 8, 0);
     // Tiny paws keep them on the floor instead of floating as a blob.
-    fillCoat(ctx, fur(-13, 1), -17, 34, 10, 6, -0.18);
-    fillCoat(ctx, fur(-13, 1), 13, 35, 10, 5.8, 0.16);
-    ctx.fillStyle = fur(-20, -3, 0.7);
-    ;[[-21, 35], [-16, 36], [-12, 35], [9, 36], [14, 36], [18, 35]].forEach(([tx, ty]) => {
-      ctx.beginPath();
-      ctx.ellipse(tx, ty, 2.3, 1.7, 0, 0, Math.PI * 2);
-      ctx.fill();
-    });
+    blob(fur(-4), -11, 36, 7.5, 5.2, -0.2);
+    blob(fur(-4), 11, 36, 7.5, 5.2, 0.2);
 
     // Cleanliness is body language, not a meter. A few muted floor-coloured
     // flecks appear gradually and disappear completely after washing.
@@ -350,10 +325,9 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.save();
       ctx.fillStyle = `rgba(67, 57, 43, ${0.18 + dirtStrength * 0.42})`;
       [
-        [-23, 13, 5, 3, -0.35],
-        [19, 20, 4, 5, 0.25],
-        [-10, 28, 3.5, 2.5, 0.1],
-        [28, 4, 2.8, 2.2, 0],
+        [-8, 24, 4, 2.4, -0.2],
+        [7, 29, 3.4, 2.2, 0.15],
+        [0, 32, 3, 2, 0],
       ].slice(0, 1 + Math.ceil(dirtStrength * 3)).forEach(([sx, sy, rx, ry, rotation]) => {
         ctx.beginPath();
         ctx.ellipse(sx, sy, rx, ry, rotation, 0, Math.PI * 2);
@@ -362,154 +336,132 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.restore();
     }
 
-    // Ears are leaves, not tilted ovals. Sleep folds them back.
+    // Round moe ears on the head, not botanical leaves.
     if (app.earShape !== 'none') {
       const pointy = app.earShape === 'pointy';
       const small = app.earShape === 'small';
-      const autonomousPerk = !isSleeping && (behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'proud');
-      const perk = (!isSleeping && (autonomousPerk || weatherCuriosity > 0.2)) ? 1.08 : 1;
-      const drawEar = (ex: number, side: number) => {
+      const perk = !isSleeping && (behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'proud' || weatherCuriosity > 0.2);
+      const drawEar = (side: number) => {
         ctx.save();
-        ctx.translate(ex, isSleeping ? -15 : -21);
-        ctx.rotate(side * (isSleeping ? 0.85 : 0.22));
-        ctx.scale(small ? 0.78 : 1, perk * (isSleeping ? 0.78 : 1));
-        ctx.fillStyle = fur(-4);
+        ctx.translate(side * 22, isSleeping ? -26 : -32);
+        ctx.rotate(side * (isSleeping ? 0.7 : perk ? 0.08 : 0.18));
+        const h = (pointy ? 20 : 16) * (small ? 0.78 : 1) * (perk ? 1.08 : 1);
+        const w = (pointy ? 11 : 13) * (small ? 0.82 : 1);
         ctx.beginPath();
         if (pointy) {
-          ctx.moveTo(0, 14);
-          ctx.quadraticCurveTo(-13 * side, 4, 0, -28);
-          ctx.quadraticCurveTo(11 * side, 2, 0, 14);
+          ctx.moveTo(0, 8);
+          ctx.quadraticCurveTo(-w * side, 0, 0, -h);
+          ctx.quadraticCurveTo(w * 0.7 * side, -2, 0, 8);
         } else {
-          ctx.moveTo(0, 12);
-          ctx.bezierCurveTo(-15 * side, 6, -11 * side, -18, 0, -22);
-          ctx.bezierCurveTo(11 * side, -18, 15 * side, 6, 0, 12);
+          ctx.ellipse(0, -h * 0.28, w, h * 0.72, 0, 0, Math.PI * 2);
         }
+        ctx.fillStyle = fur(6);
         ctx.fill();
-        ctx.fillStyle = fur(20, 10, 0.62);
+        outline();
+        ctx.fillStyle = 'hsla(350, 55%, 72%, 0.55)';
         ctx.beginPath();
-        ctx.ellipse(side * 1.2, -4, 4.2, pointy ? 9 : 8, side * 0.15, 0, Math.PI * 2);
+        ctx.ellipse(side * 1.5, -h * 0.22, w * 0.38, h * 0.38, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       };
-      drawEar(-21, -1);
-      drawEar(21, 1);
+      drawEar(-1);
+      drawEar(1);
     }
 
-    // Head and muzzle. A crown clump instead of radiating hairs.
-    fillCoat(ctx, fur(-10), 0, -8, 27, 24, 0);
-    const headGrad = ctx.createRadialGradient(-8, -18, 4, 2, -6, 28);
-    headGrad.addColorStop(0, fur(20, -6));
-    headGrad.addColorStop(1, fur(6, -3));
-    ctx.fillStyle = headGrad;
-    ctx.beginPath();
-    ctx.ellipse(0, -11, 25, 22, 0, 0, Math.PI * 2);
-    ctx.fill();
-    fillCoat(ctx, fur(16, -8), 0, -1, 13, 10, 0);
-    fillCoat(ctx, fur(-2), 0, -29, 9, 6.5, 0);
+    // Kawaii head: big circle, cel highlight, no muzzle mass.
+    blob(fur(10, -4), 0, -8, 31, 29, 0);
+    fillCoat(ctx, 'rgba(255,255,255,0.28)', -11, -18, 12, 8, -0.5);
 
-    // Eyes
     const attentive = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'imitating' || behavior === 'proud' || behavior === 'uncomfortable';
-    const weatherEyeScale = 1 + weatherCuriosity * 0.09 + stormCaution * 0.05;
-    const eyeW = 9.2 * eyeSize * (attentive ? 1.08 : 1) * weatherEyeScale;
-    const pathEyeHeight = 1 - pathVisual.eyeDroop * pathVisual.strength;
-    const tiredEyeScale = state.sleepState === 'drowsy' || dominantNeed === 'energy' ? Math.max(0.48, 1 - needStrength * 0.46) : 1;
-    const openEyeHeight = 8.4 * eyeSize * pathEyeHeight * tiredEyeScale * weatherEyeScale * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
-    const eyeH = blink.isBlinking && !isSleeping ? 1.2 : openEyeHeight;
+    const weatherEyeScale = 1 + weatherCuriosity * 0.06 + stormCaution * 0.04;
+    const pathEyeHeight = 1 - pathVisual.eyeDroop * pathVisual.strength * 0.45;
+    const tiredEyeScale = state.sleepState === 'drowsy' || dominantNeed === 'energy' ? Math.max(0.55, 1 - needStrength * 0.35) : 1;
+    const eyeW = 13.5 * eyeSize * (attentive ? 1.06 : 1) * weatherEyeScale;
+    const openEyeHeight = 16.5 * eyeSize * pathEyeHeight * tiredEyeScale * (attentive ? 1.08 : behavior === 'eating' ? 0.78 : 1);
+    const eyeH = blink.isBlinking && !isSleeping ? 1.4 : openEyeHeight;
+    const eyeY = -9;
     if (isSleeping) {
-      ctx.strokeStyle = '#4a4035';
-      ctx.lineWidth = 1.8;
-      ctx.lineCap = 'round';
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
-      ctx.moveTo(-19, -11);
-      ctx.quadraticCurveTo(-12, -6, -5, -11);
-      ctx.moveTo(5, -11);
-      ctx.quadraticCurveTo(12, -6, 19, -11);
+      ctx.moveTo(-20, -8);
+      ctx.quadraticCurveTo(-12, -6, -5, -8);
+      ctx.moveTo(5, -8);
+      ctx.quadraticCurveTo(12, -6, 20, -8);
       ctx.stroke();
     } else {
       const drawEye = (ex: number) => {
-        ctx.fillStyle = 'rgba(246, 240, 224, 0.92)';
+        ctx.fillStyle = '#fffaf1';
         ctx.beginPath();
-        ctx.ellipse(ex, -12, eyeW * 1.05, Math.max(2.4, eyeH * 1.12), 0, 0, Math.PI * 2);
+        ctx.ellipse(ex, eyeY, eyeW, Math.max(2.6, eyeH), 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = `hsl(${(hue + 18) % 360}, ${Math.min(48, saturation + 12)}%, ${Math.max(22, lightness - 28)}%)`;
+        outline();
+        ctx.fillStyle = `hsl(${(hue + 12) % 360}, ${Math.min(58, saturation + 22)}%, ${Math.max(28, lightness - 18)}%)`;
         ctx.beginPath();
-        ctx.ellipse(ex + 0.6, -12, eyeW * 0.72, eyeH * 0.92, 0, 0, Math.PI * 2);
+        ctx.ellipse(ex, eyeY + 1.4, eyeW * 0.72, eyeH * 0.72, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = '#1c1612';
+        ctx.fillStyle = '#1a1410';
         ctx.beginPath();
-        ctx.ellipse(ex + 0.8, -12, eyeW * 0.38, eyeH * 0.62, 0, 0, Math.PI * 2);
+        ctx.ellipse(ex, eyeY + 2.2, eyeW * 0.34, eyeH * 0.42, 0, 0, Math.PI * 2);
         ctx.fill();
+        if (!blink.isBlinking) {
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.beginPath();
+          ctx.ellipse(ex - eyeW * 0.28, eyeY - eyeH * 0.32, 4.6, 5.4, -0.25, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(ex + eyeW * 0.22, eyeY + eyeH * 0.18, 1.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
       };
-      drawEye(-12);
-      drawEye(12);
+      drawEye(-14);
+      drawEye(14);
     }
 
-    if (!isSleeping && !blink.isBlinking) {
-      ctx.fillStyle = 'rgba(255,255,255,0.72)';
-      ctx.beginPath();
-      ctx.arc(-10, -15, 2.2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(14, -15, 2.2, 0, Math.PI * 2);
-      ctx.fill();
+    fillCoat(ctx, 'hsla(352, 70%, 72%, 0.42)', -22, 8, 8, 4.5, -0.15);
+    fillCoat(ctx, 'hsla(352, 70%, 72%, 0.42)', 22, 8, 8, 4.5, 0.15);
 
-      if (attentive) {
-        ctx.fillStyle = 'rgba(255,255,255,0.28)';
-        ctx.beginPath();
-        ctx.arc(-14, -9, 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(10, -9, 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      if (state.emotionalState === 'skeptical' || state.emotionalState === 'wary') {
-        ctx.strokeStyle = 'rgba(42,32,24,0.75)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(-20, -25);
-        ctx.lineTo(-6, -22);
-        ctx.moveTo(6, -22);
-        ctx.lineTo(20, -25);
-        ctx.stroke();
-      } else if (state.emotionalState === 'concerned') {
-        ctx.strokeStyle = 'rgba(42,32,24,0.65)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(-20, -22);
-        ctx.lineTo(-7, -25);
-        ctx.moveTo(7, -25);
-        ctx.lineTo(20, -22);
-        ctx.stroke();
-      }
+    if (!isSleeping && (state.emotionalState === 'skeptical' || state.emotionalState === 'wary')) {
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(-24, -24);
+      ctx.lineTo(-8, -20);
+      ctx.moveTo(8, -20);
+      ctx.lineTo(24, -24);
+      ctx.stroke();
+    } else if (!isSleeping && state.emotionalState === 'concerned') {
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(-24, -19);
+      ctx.lineTo(-8, -23);
+      ctx.moveTo(8, -23);
+      ctx.lineTo(24, -19);
+      ctx.stroke();
     }
 
-    // Nose
-    ctx.fillStyle = '#3a3028';
+    ctx.fillStyle = '#2a2018';
     ctx.beginPath();
-    ctx.ellipse(0, -2, 4, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 5, 2.6, 2, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Mouth - subtle expression
-    ctx.strokeStyle = '#3a3028';
-    ctx.lineWidth = 1.5;
-    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#2a2018';
+    ctx.lineWidth = 1.7;
     ctx.beginPath();
     if (isSleeping) {
-      ctx.moveTo(-3, 6);
-      ctx.quadraticCurveTo(0, 8, 3, 6);
+      ctx.moveTo(-3, 11);
+      ctx.quadraticCurveTo(0, 13, 3, 11);
     } else if (heatStrength > 0.42) {
-      ctx.ellipse(0, 6, 4.5, 3 + Math.abs(Math.sin(time * 0.008)) * 1.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 12, 3.2, 2.4 + Math.abs(Math.sin(time * 0.008)), 0, 0, Math.PI * 2);
     } else if (state.emotionalState === 'happy' || state.emotionalState === 'excited') {
-      ctx.arc(0, 4, 6, 0.1, Math.PI - 0.1);
+      ctx.arc(0, 9, 4.5, 0.15, Math.PI - 0.15);
     } else if (state.emotionalState === 'sad' || state.emotionalState === 'concerned') {
-      ctx.arc(0, 10, 6, Math.PI + 0.1, -0.1);
-    } else if (state.emotionalState === 'skeptical' || state.emotionalState === 'wary') {
-      ctx.moveTo(-5, 5);
-      ctx.quadraticCurveTo(1, 3, 5, 5);
+      ctx.arc(0, 16, 4.2, Math.PI + 0.2, -0.2);
     } else {
-      ctx.moveTo(-4, 4);
-      ctx.quadraticCurveTo(0, 6, 4, 4);
+      ctx.moveTo(-3.5, 11);
+      ctx.lineTo(0, 13.5);
+      ctx.lineTo(3.5, 11);
     }
     ctx.stroke();
 
