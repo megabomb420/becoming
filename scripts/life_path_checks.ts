@@ -23,6 +23,8 @@ import {
 import { appendCreatureMessage, beginConversationTurn } from '../src/systems/conversationSystem';
 import { getDueOpenLoop, markOpenLoopAsked, migrateContinuityState } from '../src/systems/continuitySystem';
 import { consumeReturnGreeting, getAbsenceSummary, getPresenceReply, getVisitRitual, migratePresenceState, registerReturn } from '../src/systems/presenceSystem';
+import { applyCircadianSleep } from '../src/systems/needsSystem';
+import { WorldEnvironment } from '../src/types';
 import { evolveCreationFromObject, migrateCreations } from '../src/systems/creationSystem';
 import { parseImportedGameState, serializeGameState } from '../src/systems/persistence';
 import { formatLearnedBehaviour, formatStoredMemory, getFactKindLabel, getOpenLoopKindLabel, uiLanguage, uiText } from '../src/systems/uiLanguage';
@@ -224,9 +226,32 @@ const migratedContinuity = migrateContinuityState(null);
 assert.deepEqual(migratedContinuity.chapters, []);
 assert.deepEqual(migratedContinuity.openLoops, []);
 
+function withUtcCity(world: WorldEnvironment): WorldEnvironment {
+  return {
+    ...world,
+    settings: {
+      ...world.settings,
+      mode: 'city',
+      location: {
+        source: 'city',
+        name: 'UTC',
+        latitude: 51.5,
+        longitude: 0,
+        timezone: 'UTC',
+        countryCode: 'GB',
+        country: 'UTC',
+      },
+    },
+  };
+}
+
 let present = createHatchedCreature(createNewCreature('Presence', 515));
-present = { ...present, conversation: { ...present.conversation, language: 'pl' } };
-const returnStart = 1_800_070_000_000;
+present = {
+  ...present,
+  conversation: { ...present.conversation, language: 'pl' },
+  world: withUtcCity(present.world),
+};
+const returnStart = Date.UTC(2027, 0, 16, 14, 0);
 present = {
   ...present,
   presence: {
@@ -237,6 +262,7 @@ present = {
 };
 present = registerReturn(present, 3 * 60 * 60_000, returnStart, [{ type: 'explored room', duration: 40, timestamp: returnStart - 1_000 }]);
 assert.match(present.presence.pendingGreeting || '', /Wróciłeś|znowu/i);
+assert.doesNotMatch(present.presence.pendingGreeting || '', /porę snu/i, 'a daytime return is their wake, not rest');
 assert.match(present.presence.pendingGreeting || '', /Kiedy cię nie było/i);
 assert.equal(present.presence.absenceEpisodes.length, 1);
 assert.match(getAbsenceSummary(present) || '', /obchodziłem pokój/i);
@@ -254,6 +280,39 @@ const migratedPresence = migratePresenceState(null, returnStart);
 assert.equal(migratedPresence.sessionCount, 1);
 assert.equal(migratedPresence.pendingGreeting, null);
 assert.deepEqual(migratedPresence.absenceEpisodes, []);
+
+const nightReturn = Date.UTC(2027, 0, 16, 1, 30);
+const nightBase = createHatchedCreature(createNewCreature('NightReturn', 516));
+const restFixture = {
+  ...nightBase,
+  conversation: { ...nightBase.conversation, language: 'pl' as const },
+  world: withUtcCity(nightBase.world),
+};
+let ordinaryNight = registerReturn(restFixture, 3 * 60 * 60_000, nightReturn);
+assert.match(ordinaryNight.presence.pendingGreeting || '', /porę snu/i, 'an ordinary life greets a night return as their rest');
+assert.equal(ordinaryNight.relationship.routines.some(routine => routine.type === 'visit'), false, 'sleeping through a night-shift visit is not a shared ritual');
+assert.equal(applyCircadianSleep(ordinaryNight, nightReturn).sleepState, 'sleeping', 'boot must find them asleep on their night');
+
+const partyLife = {
+  ...restFixture,
+  lifePath: {
+    ...restFixture.lifePath,
+    primary: 'party_animal' as const,
+    phase: 'committed' as const,
+    scores: { ...restFixture.lifePath.scores, party_animal: 52 },
+  },
+};
+let partyAtNight = registerReturn(partyLife, 3 * 60 * 60_000, nightReturn);
+assert.doesNotMatch(partyAtNight.presence.pendingGreeting || '', /porę snu/i, 'a settled night life is awake after dark');
+assert.match(partyAtNight.presence.pendingGreeting || '', /Wróciłeś|znowu|jesteś/i);
+assert.ok(partyAtNight.relationship.routines.find(routine => routine.type === 'visit'));
+assert.equal(applyCircadianSleep(partyAtNight, nightReturn).sleepState, 'awake', 'a settled night life does not sleep because the player arrived');
+
+const dayReturn = Date.UTC(2027, 0, 16, 14, 0);
+let partyAtDay = registerReturn(partyLife, 3 * 60 * 60_000, dayReturn);
+assert.match(partyAtDay.presence.pendingGreeting || '', /porę snu/i, 'a settled night life rests through the day');
+assert.equal(partyAtDay.relationship.routines.some(routine => routine.type === 'visit'), false);
+assert.equal(applyCircadianSleep(partyAtDay, dayReturn).sleepState, 'sleeping');
 
 let maker = createHatchedCreature(createNewCreature('Maker', 616));
 maker = {

@@ -239,6 +239,11 @@ assert.doesNotMatch(appSource, /will not open a new egg without a confirmed empt
 assert.doesNotMatch(appSource, /The local save has not opened yet/);
 assert.doesNotMatch(appSource, /The save is still there/);
 assert.match(appSource, /closeDatabaseForReload/);
+assert.match(
+  appSource,
+  /applyCircadianSleep\(registerReturn/,
+  'boot must land on their sleep/wake before the room can greet',
+);
 const loadingSlice = appSource.slice(appSource.indexOf('if (loading || bootError)'), appSource.indexOf('if (showEgg)'));
 assert.doesNotMatch(loadingSlice, /PwaUpdateNotice/, 'service worker must not register until IndexedDB has opened');
 const pwaSource = readFileSync('src/components/PwaUpdateNotice.tsx', 'utf8');

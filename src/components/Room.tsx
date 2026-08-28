@@ -394,6 +394,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
   useEffect(() => {
     const greeting = state.presence.pendingGreeting;
+    // Speak after they wake. A rest-phase return must not talk as if they
+    // waited up on the player's night shift.
     if (!greeting || state.presence.pendingTrace || initiatedTopic || showChat || state.sleepState === 'sleeping') return;
     setInitiatedTopic(greeting);
     onStateChange(prev => appendCreatureMessage(consumeReturnGreeting(prev), greeting));

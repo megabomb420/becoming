@@ -150,6 +150,14 @@ const returned = simulateOfflineTime({ ...needsState, needsUpdatedAt: returnStar
 const sleepActivity = returned.activities.find(activity => activity.type === 'slept');
 assert.ok(sleepActivity && sleepActivity.duration >= 8 * 60 && sleepActivity.duration <= 9 * 60);
 assert.equal(returned.state.sleepState, 'awake', 'a daytime return must not look mysteriously asleep');
+const nightNow = Date.UTC(2026, 7, 23, 1, 0);
+const nightAway = simulateOfflineTime(
+  { ...needsState, needsUpdatedAt: nightNow - 3 * HOUR, lastSaved: nightNow - 3 * HOUR },
+  3 * HOUR,
+  nightNow,
+  () => 0,
+);
+assert.equal(nightAway.state.sleepState, 'sleeping', 'a night return finds an ordinary life asleep on their clock');
 assert.equal(returned.state.needsUpdatedAt, returnNow);
 
 const night = getTimeOfDay(Date.UTC(2026, 7, 23, 1, 0), 0);

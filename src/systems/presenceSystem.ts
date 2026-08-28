@@ -1,4 +1,6 @@
 import { AbsenceEpisode, ConversationLanguage, GameState, OfflineActivity, PresenceState, RelationshipModel, ReturnTrace, UserRoutine } from '../types';
+import { getRestSchedule } from './lifePathSystem';
+import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
 
 const MIN_RETURN_GREETING_MS = 10 * 60_000;
 
@@ -89,9 +91,35 @@ export function getAbsenceSummary(state: GameState, episode: AbsenceEpisode | un
   return activitySummary(episode.activityTypes, state.conversation.language);
 }
 
-function greeting(language: ConversationLanguage, name: string | null, awayMs: number, familiarHour: boolean): string {
+function greeting(
+  language: ConversationLanguage,
+  name: string | null,
+  awayMs: number,
+  familiarHour: boolean,
+  restPhase: boolean,
+): string {
   const polish = language === 'pl';
   const who = name || (polish ? 'Hej' : 'Hey');
+  if (restPhase) {
+    if (awayMs >= 3 * 86_400_000) {
+      return polish
+        ? `${who}… jesteś. Długo byłem w swojej porze snu. Co się u ciebie działo?`
+        : `${who}… you are here. I was in my rest for a long time. What happened while you were away?`;
+    }
+    if (awayMs >= 18 * 60 * 60_000) {
+      return polish
+        ? `Wróciłeś w moją porę snu. Dobrze, że jesteś.`
+        : `You came during my rest. It is good you are here.`;
+    }
+    if (awayMs >= 2 * 60 * 60_000) {
+      return polish
+        ? `Wróciłeś w moją porę snu.`
+        : `You came during my rest.`;
+    }
+    return polish
+      ? `O, jesteś. Przyszedłeś w moją porę snu.`
+      : `Oh, you are here. You came during my rest.`;
+  }
   if (awayMs >= 3 * 86_400_000) {
     return polish
       ? `${who}… jesteś. W pokoju było bardzo cicho. Co się u ciebie działo?`
@@ -104,8 +132,8 @@ function greeting(language: ConversationLanguage, name: string | null, awayMs: n
   }
   if (awayMs >= 2 * 60 * 60_000) {
     return polish
-      ? `Wróciłeś. Zastanawiałem się, jaki miałeś dzień.`
-      : `You came back. I was wondering what kind of day you had.`;
+      ? `Wróciłeś. Zastanawiałem się, co u ciebie.`
+      : `You came back. I was wondering how you were.`;
   }
   if (familiarHour) {
     return polish
@@ -147,7 +175,12 @@ export function registerReturn(state: GameState, awayMs: number, now = Date.now(
     : todayNumber - previousDay === 1
       ? presence.currentStreak + 1
       : 1;
-  const routine = evolveVisitRoutine(state.relationship, new Date(now).getHours(), now);
+  const restPhase = isCreatureRestPhase(getTimeOfDay(now, state.world), getRestSchedule(state.lifePath));
+  // Visit hours are learned only while they are in their wake. Night-shift
+  // returns must not become a shared ritual they were not awake to keep.
+  const routine = restPhase
+    ? { relationship: state.relationship, familiarHour: false }
+    : evolveVisitRoutine(state.relationship, new Date(now).getHours(), now);
   const shouldGreet = awayMs >= MIN_RETURN_GREETING_MS && state.development.hatched;
   const episode: AbsenceEpisode | null = shouldGreet ? {
     id: `absence-${now}`,
@@ -157,7 +190,9 @@ export function registerReturn(state: GameState, awayMs: number, now = Date.now(
     activityTypes: [...new Set(activities.map(activity => activity.type.slice(0, 48)))].slice(0, 5),
     trace: presence.pendingTrace ?? undefined,
   } : null;
-  const baseGreeting = shouldGreet ? greeting(state.conversation.language, state.identity.name, awayMs, routine.familiarHour) : null;
+  const baseGreeting = shouldGreet
+    ? greeting(state.conversation.language, state.identity.name, awayMs, routine.familiarHour, restPhase)
+    : null;
   const activityLine = episode && awayMs >= 30 * 60_000 ? activitySummary(episode.activityTypes, state.conversation.language) : null;
 
   return {

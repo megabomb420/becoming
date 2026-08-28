@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.15
+> **Version:** 0.12.16
 > **Last Updated:** 2026-08-28
 
 ---
@@ -17,7 +17,7 @@ The project is built as a **polished vertical slice** — playable from birth th
 
 **About 62%.** Not 80. The feature table below describes a vertical slice that “already works.” The true shape is tighter.
 
-**What is actually good.** Hatch → room → care → talk holds together. Needs are readable without bars. Objects, blanket, toilet, backup, Polish/English, and PWA install are a game, not a mockup. The art direction is distinct. Persistence from 0.12.7–0.12.12 finally looks adult. Ordinary lives now sleep on their own solar night and wake on their day; a settled party/alcohol/degen life inverts that clock. They do not adapt to the player’s night shifts.
+**What is actually good.** Hatch → room → care → talk holds together. Needs are readable without bars. Objects, blanket, toilet, backup, Polish/English, and PWA install are a game, not a mockup. The art direction is distinct. Persistence from 0.12.7–0.12.12 finally looks adult. Ordinary lives now sleep on their own solar night and wake on their day; a settled party/alcohol/degen life inverts that clock. They do not adapt to the player’s night shifts. A 3am return does not become “our ritual,” and the greeting they speak after waking knows it was their rest, not the player’s day.
 
 **What is weaker than the tables imply.** DeepSeek room bubbles and outdoor visits are not live-proven; they sit in the inventory as nearly done. Life paths are twelve labels and numbers, not a deep change of being — a nocturnal party animal is an inverted schedule, not a simulation of taking drugs. `Room.tsx` is a bag for everything; each persistence or sleep patch lands there. The promise “watch something become someone” is only half true: many authored overlays, little proof that the mind on a real save is someone rather than a system plus a prompt. There is no 30-day arc. There is physiology, not a biography in time.
 
@@ -162,8 +162,8 @@ becoming/
 | Conversation chapters | ✅ | Every eight user turns form a local relationship chapter; older low-value moments are compressed while important memories remain intact |
 | Open loops & check-ins | ✅ | Goals, difficult feelings, promises, and unfinished stories can return hours later and close when the user reports an outcome |
 | Mirror self-awareness | ✅ | Repeated mirror encounters form a permanent unaware → other → copying → recognized → reflective arc with milestone memories |
-| Return presence | ✅ | Reopening after time away creates a gentle, time-aware greeting without guilt or punishment |
-| Shared rituals | ✅ | Visit timing and consecutive-day rhythm are learned locally and can become a visible relationship ritual |
+| Return presence | ✅ | Reopening after time away creates a gentle greeting on their rest/wake clock, without guilt or punishment. The room holds it until they wake |
+| Shared rituals | ✅ | Visit timing is learned only while they are in their wake. Night-shift arrivals while they rest do not become a shared hour |
 | Optional sound & haptics | ✅ | Synthesised interaction tones and restrained vibration can be controlled independently on-device |
 | Creature creations | ✅ | Paper + pencil, box dens, stone keepsakes, and a shared ball game grow into persistent works kept in the room and Memory Book |
 | Private backup | ✅ | Export and restore the complete creature as a validated local JSON file with no login or cloud upload |
@@ -630,6 +630,10 @@ Sleep follows the creature's sun, not the user's shift. An ordinary life sleeps 
 
 `go outside` no longer fights their clock. An ordinary life refuses at night (`U mnie noc. Zostaję i śpię.`). A settled party life goes out after dark. If they fall asleep outside, the visit ends and they come back in. The expanded sky drops the 4-pane mullion and the curtain slivers. DeepSeek self-speak does not fire during their rest phase.
 
+### v0.12.16 — Returns on their clock
+
+Coming back no longer treats the player's hours as theirs. Ordinary lives greet a night return as their rest; a settled party/alcohol/degen life greets after dark as wake. Visit rituals are learned only while they are awake. Offline rest and boot `applyCircadianSleep` land them asleep on their night before the room can speak, so a 3am open does not get a “how was your day.”
+
 ---
 
 ## 6. Known Remaining Issues
@@ -655,7 +659,7 @@ Sleep follows the creature's sun, not the user's shift. An ordinary life sleeps 
 
 ### Priority: High
 1. **Live proof of the mind and the outside** — DeepSeek-only room bubbles and outdoor visits on a real save. Persistence on 0.12.12+ is believed good on a clean profile; do not treat old hung IndexedDB queues as a current boot bug.
-2. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, greetings, and daily moments from that, not from a single session.
+2. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, and daily moments from that, not from a single session. Return greetings now follow their rest/wake; live weeks still need to prove the rest.
 3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
 ### Priority: Medium
@@ -674,7 +678,7 @@ Sleep follows the creature's sun, not the user's shift. An ordinary life sleeps 
 
 - **No permanent raw-stat dashboard.** Body language remains the first signal. A compact room cue and optional descriptive care sheet may expose playable urgency and the helpful action, but never raw percentages, optimisation-heavy meters, personality scores, or life-path scores.
 - **A real sky, never an accelerated clock.** With weather enabled, the selected place's real local time and sunrise/sunset define the sky. With weather disabled, a seasonal solar fallback follows device-local time. The game never accelerates the sun or invents an unexplained night toggle.
-- **Their night, not the player's.** Ordinary lives sleep on solar night and wake on solar day. A committed party animal, alcoholic, or degen inverts that clock. Visit hours, night-shift play, and dock commands must not rewrite it. Leanings and recovery stay diurnal. Touch may wake them; they settle again if it is still their rest.
+- **Their night, not the player's.** Ordinary lives sleep on solar night and wake on solar day. A committed party animal, alcoholic, or degen inverts that clock. Visit hours, night-shift play, and dock commands must not rewrite it. Return greetings and visit rituals follow that same clock: a rest-phase arrival is held until they wake and is not learned as “our time.” Leanings and recovery stay diurnal. Touch may wake them; they settle again if it is still their rest.
 - **Weather is interpreted, not scored.** Open-Meteo supplies observations only. `WorldEnvironment` translates them into bounded stimuli, and gameplay combines those with needs, personality, preferences and memories before a reaction. No rule maps a condition directly to happiness loss.
 - **Location minimisation.** Geolocation is opt-in, high accuracy is disabled, coordinates are rounded to two decimals before requests or persistence, manual city selection remains available, and disabling weather stops forecast refreshes.
 - **Local-first with one optional observation source.** All core systems and the last successful weather state run from IndexedDB. Open-Meteo enriches the world when enabled. AI remains reserved for higher-level cognition and is composed as a thin always-on prompt plus earned overlays; weather still degrades offline, while room speech does not invent a substitute line.

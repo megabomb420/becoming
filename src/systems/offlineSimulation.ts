@@ -1,8 +1,8 @@
 import { GameState, Memory, ObjectType, OfflineActivity, ReturnTrace, ReturnTraceKind, RoomObject } from '../types';
 import { generateDreamAfterSleep } from './innerLifeSystem';
-import { advanceNeeds, applyNeedDelta } from './needsSystem';
+import { advanceNeeds, applyNeedDelta, getSleepBlocker } from './needsSystem';
 import { getRestSchedule } from './lifePathSystem';
-import { estimateNightRestMs, getTimeOfDay, shouldBeDrowsy } from './timeSystem';
+import { estimateNightRestMs, getTimeOfDay, isCreatureRestPhase, shouldBeDrowsy } from './timeSystem';
 import { endOutdoorVisit } from './environmentSystem';
 
 const TRACE_MINIMUM_MS = 10 * 60_000;
@@ -192,7 +192,9 @@ export function simulateOfflineTime(
   const localOffset = timezoneOffsetAt(now);
   const time = getTimeOfDay(now, currentState.world, localOffset);
   const shortUnfinishedSleep = wasSleeping && manualSleepMs > 0 && manualSleepMs < 8 * 60 * 60_000;
-  const sleepState: GameState['sleepState'] = shortUnfinishedSleep
+  const maySettle = !getSleepBlocker(currentState)
+    && (isCreatureRestPhase(time, schedule) || currentState.needs.energy < 20);
+  const sleepState: GameState['sleepState'] = shortUnfinishedSleep || maySettle
     ? 'sleeping'
     : shouldBeDrowsy(time, currentState.needs.energy, schedule) ? 'drowsy' : 'awake';
 

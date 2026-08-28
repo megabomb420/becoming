@@ -20,7 +20,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.15';
+const APP_VERSION = '0.12.16';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -77,7 +77,7 @@ function App() {
           returningState = updated;
           offlineActivities = activities;
         }
-        const ready = registerReturn(returningState, awayMs, now, offlineActivities);
+        const ready = applyCircadianSleep(registerReturn(returningState, awayMs, now, offlineActivities), now);
         gameStateRef.current = ready;
         setGameState(ready);
         setShowEgg(false);
