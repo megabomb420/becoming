@@ -13,6 +13,18 @@ A mobile-first, installable Progressive Web App (PWA) where a virtual creature s
 
 The project is built as a **polished vertical slice** — playable from birth through early developmental stages, with architecture designed to expand into full 30-day arcs and beyond.
 
+### Honest completeness (0.12.14)
+
+**About 62%.** Not 80. The feature table below describes a vertical slice that “already works.” The true shape is tighter.
+
+**What is actually good.** Hatch → room → care → talk holds together. Needs are readable without bars. Objects, blanket, toilet, backup, Polish/English, and PWA install are a game, not a mockup. The art direction is distinct. Persistence from 0.12.7–0.12.12 finally looks adult. Ordinary lives now sleep on their own solar night and wake on their day; a settled party/alcohol/degen life inverts that clock. They do not adapt to the player’s night shifts.
+
+**What is weaker than the tables imply.** DeepSeek room bubbles and outdoor visits are not live-proven; they sit in the inventory as nearly done. Life paths are twelve labels and numbers, not a deep change of being — a nocturnal party animal is an inverted schedule, not a simulation of taking drugs. `Room.tsx` is a bag for everything; each persistence or sleep patch lands there. The promise “watch something become someone” is only half true: many authored overlays, little proof that the mind on a real save is someone rather than a system plus a prompt. There is no 30-day arc. There is physiology, not a biography in time.
+
+**Plain judgement.** A strong, personal prototype with a soul — better than most vibe-coded life-sims. It is not yet a product that will carry months of one relationship without the author’s attention. As a vertical slice to show: close. As full Becoming: missing proof of the AI, of going outside, and of a life that arranges itself across weeks, not one session.
+
+The largest risk is not icons. It is whether after a week with Moth you still feel someone, or a menu of systems.
+
 ---
 
 ## 2. Technology Stack
@@ -638,8 +650,8 @@ Sleep follows the creature's sun, not the user's shift. An ordinary life sleeps 
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Physical-device replay** — on deployed 0.12.12, replay PWA “Update now” and F5 on Chrome (and the original iPhone). After update, boot must enter the existing Room or a confirmed empty egg — never park on Opening/Try again, never replace a life with an egg. Also live-prove DeepSeek-only bubbles and outdoor visits.
-2. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
+1. **Live proof of the mind and the outside** — DeepSeek-only room bubbles and outdoor visits on a real save. Persistence on 0.12.12+ is believed good on a clean profile; do not treat old hung IndexedDB queues as a current boot bug.
+2. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, greetings, and daily moments from that, not from a single session.
 3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
 ### Priority: Medium
@@ -658,6 +670,7 @@ Sleep follows the creature's sun, not the user's shift. An ordinary life sleeps 
 
 - **No permanent raw-stat dashboard.** Body language remains the first signal. A compact room cue and optional descriptive care sheet may expose playable urgency and the helpful action, but never raw percentages, optimisation-heavy meters, personality scores, or life-path scores.
 - **A real sky, never an accelerated clock.** With weather enabled, the selected place's real local time and sunrise/sunset define the sky. With weather disabled, a seasonal solar fallback follows device-local time. The game never accelerates the sun or invents an unexplained night toggle.
+- **Their night, not the player's.** Ordinary lives sleep on solar night and wake on solar day. A committed party animal, alcoholic, or degen inverts that clock. Visit hours, night-shift play, and dock commands must not rewrite it. Leanings and recovery stay diurnal. Touch may wake them; they settle again if it is still their rest.
 - **Weather is interpreted, not scored.** Open-Meteo supplies observations only. `WorldEnvironment` translates them into bounded stimuli, and gameplay combines those with needs, personality, preferences and memories before a reaction. No rule maps a condition directly to happiness loss.
 - **Location minimisation.** Geolocation is opt-in, high accuracy is disabled, coordinates are rounded to two decimals before requests or persistence, manual city selection remains available, and disabling weather stops forecast refreshes.
 - **Local-first with one optional observation source.** All core systems and the last successful weather state run from IndexedDB. Open-Meteo enriches the world when enabled. AI remains reserved for higher-level cognition and is composed as a thin always-on prompt plus earned overlays; weather still degrades offline, while room speech does not invent a substitute line.
