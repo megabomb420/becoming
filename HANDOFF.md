@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.8
+> **Version:** 0.12.9
 > **Last Updated:** 2026-08-28
 
 ---
@@ -131,7 +131,7 @@ becoming/
 | Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
 | Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
-| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; the first room waits for a durable write; migration preserves living identity and placed objects; only a confirmed empty read enters hatching, while unavailable persistence exits `Loading…` into recovery without replacing the save |
+| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; the first room waits for a durable write; migration preserves living identity and placed objects; only a successful empty read enters hatching, while unavailable persistence retries fresh opens and exits `Loading…` into recoverable UI without replacing the save |
 | Memory Book | ✅ | Emergent biography from significant memories |
 | Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
@@ -156,7 +156,7 @@ becoming/
 | Creature creations | ✅ | Paper + pencil, box dens, stone keepsakes, and a shared ball game grow into persistent works kept in the room and Memory Book |
 | Private backup | ✅ | Export and restore the complete creature as a validated local JSON file with no login or cloud upload |
 | Polish + English UI | ✅ | Device-aware default plus an explicit two-language switch keeps the room, settings, backup, chat shell, and AI language aligned |
-| Visible PWA updates | ✅ | The bilingual update card confirms the latest living state has reached IndexedDB before asking the service worker to reload; a failed save pauses the update |
+| Visible PWA updates | ✅ | The bilingual update card confirms the latest living state has reached IndexedDB, closes database connections, suppresses the `pagehide` reopen, and only then asks the service worker to reload; a failed save pauses the update |
 | Life while away | ✅ | Up to 12 absence episodes preserve sleep, exploration, quiet time, and room activity for greetings, memories, and later chat |
 | Touch boundaries | ✅ | Caution, independence, bond, and rapid-touch pressure decide when the creature accepts holding or asks for space |
 | Shared sayings | ✅ | Safe short phrases repeated two or three times can become persistent inside language visible in Memory Book and available to chat |
@@ -558,6 +558,19 @@ The live follow-up exposed a regression in that policy: the 2.5-second open dead
 
 The persistence suite uses `fake-indexeddb` to execute the production `saveGameState()` path, closes all database connections to simulate navigation, reopens through `loadGameStateForBoot()`, and asserts the same Ash identity, name, and permanent hatch transition. A never-settling loader exits `Loading…` as an error rather than a fresh egg. `npm run check` passes. Live GitHub Pages verification then completed both `hatch → Ash Room → reload → Ash Room` and `leave origin → reopen canonical URL → Ash Room`, with `NEWBORN / Ash / UNWRITTEN` preserved.
 
+The live PWA update then exposed a second failure: the recovery action reused the same timed-out `opening` promise, so a blocked first request could leave both reload and “Try again” on the same terminal recovery screen. v0.12.9 supersedes that retry behavior.
+
+### v0.12.9 — Fresh IndexedDB retry and update handoff
+
+0.12.9 keeps the finite boot boundary without letting a timeout decide that an existing life is empty:
+- Every real `openDB` attempt retains a finite timeout plus blocked, `versionchange`, and termination handling. A timed-out request is marked abandoned, its late connection is closed, and the cached promise is cleared so the next attempt issues a new `indexedDB.open()` rather than awaiting the dead request again.
+- A blocked attempt closes settled same-page connections and broadcasts a close request to other current Becoming tabs. Boot retries a fresh open. Only a successful read of a missing `gameState/current` record enters EggHatching; exhausting the open attempts shows the bilingual recovery UI.
+- “Try again” invokes the same boot callback with a new generation and fresh persistence attempts in the current page. It does not reload into, or reuse, the previous failed promise.
+- “Update now” flushes the latest in-memory hatched state, closes every pending or settled database connection, marks the update transition so `pagehide` cannot reopen IndexedDB, and then reloads through the service worker. If preparation or update fails, ordinary persistence is re-enabled.
+- Normal `pagehide` still flushes the latest living state, then closes its connection. Start over keeps its earlier contract: suppress saves, close/abandon opens, wait for confirmed deletion, then reload to a successful empty read and the existing egg flow.
+
+The persistence suite now makes the first real `indexedDB.open()` never emit success or error while a hatched save already exists, then asserts that the second real open rehydrates the same identity instead of egg or recovery. It separately proves true missing state → egg, reset → egg, and a newly named life → close connections → boot/F5 → the same life. `npm test && npm run check` pass. GitHub Pages deployment `7164686` succeeded; the live 0.12.9 bundle then completed `hatch → Moth Room → full reload → Moth Room` after the boot deadlines with `NEWBORN / Moth / UNWRITTEN` preserved and no application console errors. The original physical Safari profile should still replay the visible “Update now” card separately; this cloud pass did not claim that device-specific prompt interaction.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -582,7 +595,7 @@ The persistence suite uses `fake-indexeddb` to execute the production `saveGameS
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Physical-device replay** — on deployed 0.12.8, confirm the original iPhone profile rehydrates its living save or shows recovery rather than an egg; then replay Start over and a PWA update on that device. Automated IndexedDB round-trip and live GitHub Pages hatch/reload/reopen checks pass, but record the physical Safari result separately. Also live-prove DeepSeek-only bubbles and outdoor visits.
+1. **Physical-device replay** — on deployed 0.12.9, replay Start over and the visible PWA “Update now” card on the original iPhone profile. Automated stalled-open retry, reset/new-life round-trip, and live GitHub Pages hatch/reload checks pass, but record the physical Safari result separately. Also live-prove DeepSeek-only bubbles and outdoor visits.
 2. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
 3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
@@ -614,13 +627,13 @@ The persistence suite uses `fake-indexeddb` to execute the production `saveGameS
 - **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak and short outdoor visits reuse that cadence; they do not add a second timer.
 - **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
 - **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, and accidents advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, death, sickness pressure, or manipulative absence mechanics.
-- **Reset is a completed persistence transition, not a navigation trick.** Settings marks reset first, closes every settled IndexedDB connection, bounds any hung save/open drain, waits for deletion success, and only then reloads. It must not verify by reopening the deleted database, and `pagehide` must not recreate it. Boot is finite but three-valued: a readable living save enters Room, a confirmed successful empty read enters EggHatching, and unavailable/blocked persistence shows recovery without exposing a replacement egg.
+- **Reset is a completed persistence transition, not a navigation trick.** Settings marks reset first, closes or abandons every pending and settled IndexedDB connection, bounds any hung save/open drain, waits for deletion success, and only then reloads. It must not verify by reopening the deleted database, and `pagehide` must not recreate it. Boot is finite but three-valued: a readable living save enters Room, a confirmed successful empty read enters EggHatching, and unavailable/blocked persistence retries fresh opens before showing non-destructive recovery. Retry must never reuse a timed-out open promise or expose a replacement egg.
 
 ---
 
 ## 9. How to Reset / Start Fresh
 
-In the app, open **Settings**, scroll to **Begin another life / Zacznij inne życie**, and choose **Start over / Zacznij od nowa**. Save a private backup first if the creature may be needed later. Cancel changes nothing. Confirming suppresses new saves, closes all live `becoming-db` connections, drains or abandons hung persistence work, waits for `deleteDatabase.onsuccess`, then reloads into the existing egg/hatch/name flow. It does not reopen the deleted database before reload, and a blocked deletion is not treated as success.
+In the app, open **Settings**, scroll to **Begin another life / Zacznij inne życie**, and choose **Start over / Zacznij od nowa**. Save a private backup first if the creature may be needed later. Cancel changes nothing. Confirming marks reset before persistence work, suppresses visibility and `pagehide` saves, closes settled `becoming-db` connections, abandons pending opens, drains bounded writes, waits for `deleteDatabase.onsuccess`, then reloads into the existing egg/hatch/name flow. It does not reopen the deleted database before reload, and a blocked deletion is not treated as success. After reset, only the next successful empty read makes the egg valid; slow or blocked opens continue to retry without inventing a fresh life.
 
 To manually clear from console:
 ```js
