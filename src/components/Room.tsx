@@ -1643,6 +1643,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <div className="absolute bottom-0 left-0 right-0 h-[35%] transition-opacity duration-700" style={{ background: `linear-gradient(180deg, ${lighting.floorTop} 0%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear, opacity 900ms ease', opacity: outdoors ? 0.22 : 1 }} />
         <div className="absolute top-[64.7%] left-0 right-0 h-[2px] bg-[#100f0d]/70 shadow-[0_-1px_0_rgba(224,203,176,0.05)] transition-opacity duration-700" style={{ opacity: outdoors ? 0.15 : 1 }} />
         <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)', opacity: outdoors ? 0.06 : 0.25 }} />
+        <div
+          className="window-spill"
+          style={{
+            background: lighting.ambientGlow,
+            opacity: outdoors ? 0 : lighting.brightness * (state.sleepState === 'sleeping' ? 0.18 : 0.42),
+          }}
+          aria-hidden="true"
+        />
         <WeatherLayer world={state.world} lighting={lighting} time={timeOfDay} seed={state.identity.seed} now={clockNow} expanded={outdoors} />
         <div className="absolute top-[16%] left-[50%] w-[390px] h-[390px] -translate-x-1/2 rounded-full" style={{ background: `radial-gradient(circle, ${lighting.ambientGlow} 0%, transparent 70%)`, transition: 'background 30s linear' }} />
         <div className="absolute inset-0 transition-colors duration-[1800ms]" style={{ background: pathVisual.roomTint }} />
@@ -1653,10 +1661,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% 48%, transparent 42%, rgba(0,0,0,.42) 100%)' }} />
       <div className="absolute inset-0 ambient-grain" aria-hidden="true" />
 
-      {/* Sleep zzz */}
       {state.sleepState === 'sleeping' && state.development.stage !== 'egg' && (
-        <div className="absolute top-[30%] left-1/2 -translate-x-1/2 animate-float z-30">
-          <span className="text-warm-200/40 text-sm font-serif">z z z</span>
+        <div
+          className="sleep-motes"
+          style={{ left: `${creaturePos.x}%`, top: `${creaturePos.y}%` }}
+          aria-hidden="true"
+        >
+          <i>z</i><i>z</i><i>z</i>
         </div>
       )}
 
@@ -1849,9 +1860,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           className={`room-speech absolute -translate-x-1/2 -translate-y-full animate-fade-in z-40 transition-all duration-700 ${speechFresh ? 'is-fresh' : 'is-settled'}`}
           style={{ left: `${Math.max(30, Math.min(70, creaturePos.x))}%`, top: `${Math.max(18, creaturePos.y - 19)}%` }}
         >
-          <div className="relative bg-warm-100/90 text-room-dark px-4 py-2 rounded-2xl text-sm font-serif shadow-lg backdrop-blur-sm max-w-[min(240px,72vw)] text-center">
+          <div className="room-speech-chip">
             {roomSpeech}
-            <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-warm-100/90 rotate-45" />
           </div>
         </button>
       )}

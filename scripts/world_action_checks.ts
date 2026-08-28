@@ -257,6 +257,17 @@ assert.equal(getSleepingTalkReply({ ...sleeper, conversation: { ...sleeper.conve
 const weatherLayer = readFileSync('src/components/WeatherLayer.tsx', 'utf8');
 assert.match(weatherLayer, /expanded/);
 assert.match(weatherLayer, /!expanded && \(/);
+assert.match(weatherLayer, /window-habitat/, 'the sky sits in a framed window, not a floating rectangle');
+assert.match(weatherLayer, /window-disc/, 'the window carries a sun or moon');
+assert.match(roomSource, /window-spill/);
+assert.match(roomSource, /sleep-motes/);
+assert.doesNotMatch(roomSource, />z z z</);
+assert.match(roomSource, /room-speech-chip/);
+assert.match(cssSource, /\.window-frame/);
+assert.match(cssSource, /\.sleep-motes/);
+const canvasSource = readFileSync('src/components/CreatureCanvas.tsx', 'utf8');
+assert.match(canvasSource, /Contact shadow stays on the floor/);
+assert.match(canvasSource, /quadraticCurveTo\(-12, -6/);
 const chatSource = readFileSync('src/components/ChatInterface.tsx', 'utf8');
 assert.match(chatSource, /state\.sleepState === 'sleeping'/, 'opening chat must not greet while they sleep');
 

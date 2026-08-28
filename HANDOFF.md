@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.1
+> **Version:** 0.13.2
 > **Last Updated:** 2026-08-28
 
 ---
@@ -128,7 +128,7 @@ becoming/
 |---|---|---|
 | PWA installability | ✅ | Manifest, service worker, offline shell, icons |
 | Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` prevents regression; a completed Start over returns through this same flow |
-| Creature rendering | ✅ | Canvas-based with breathing, blinking, expressive eyes/ears/tail, and distinct walking, observing, investigating, eating, playing, and settling body language |
+| Creature rendering | ✅ | Canvas-based with breathing, blinking, closed sleeping eyes, a floor-true contact shadow, window rim light, and distinct walking, observing, investigating, eating, playing, and settling body language |
 | Readable needs system | ✅ | 9 consistently directed needs (100 settled → 0 urgent), compact room signals, optional descriptive care sheet, body-language cues, and no raw percentages or permanent bars |
 | Hidden personality | ✅ | Seeded traits that now evolve through care, play, touch, exploration, and conversation |
 | Bond development | ✅ | Persistent tentative → familiar → close → bonded relationship arc with milestone memories, bond-aware idle behavior, and later-stage speech |
@@ -650,6 +650,10 @@ A sleeping creature is not a night-shift chatbot. Chat and room input no longer 
 ### v0.13.1 — Rest stays quiet; night life wants the dark
 
 If they are up in their rest, they do not keep performing the day: autonomy leans into listening, yawning, settling. A settled party/alcohol/degen life can want outside after dark without first dropping into boredom. Becoming says whether they live by day or whether night is when they are most themselves.
+
+### v0.13.2 — The room looks inhabited
+
+The window is a peat frame with glass, a sill, fabric curtains, and a sun or moon in the actual sky. Daylight spills onto the floor. The creature's shadow stays on the boards when they curl up; sleeping eyes close instead of flattening. Speech sits in a paper chip, and sleep motes rise from the body instead of a floating “z z z”.
 
 ---
 

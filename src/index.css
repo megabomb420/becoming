@@ -108,6 +108,36 @@
     transform: translate(-50%, -100%) scale(.96);
   }
 
+  .room-speech-chip {
+    position: relative;
+    max-width: min(240px, 72vw);
+    padding: .55rem .9rem .62rem;
+    border: 1px solid rgba(55, 48, 38, .18);
+    border-radius: 1.15rem 1.05rem .85rem 1.2rem;
+    background:
+      radial-gradient(ellipse at 18% 0%, rgba(255,255,255,.34), transparent 42%),
+      linear-gradient(180deg, rgba(240, 234, 214, .96), rgba(228, 220, 196, .94));
+    color: var(--ink-deep);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: .875rem;
+    line-height: 1.35;
+    text-align: center;
+    box-shadow: 0 10px 28px rgba(8, 7, 5, .28), inset 0 1px rgba(255,255,255,.45);
+  }
+
+  .room-speech-chip::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -5px;
+    width: 9px;
+    height: 9px;
+    border-radius: 0 0 3px 0;
+    background: rgba(228, 220, 196, .94);
+    transform: translateX(-50%) rotate(45deg);
+    box-shadow: 2px 2px 0 rgba(55, 48, 38, .08);
+  }
+
   .room-dock {
     border: 1px solid var(--line);
     background: rgba(24, 27, 21, .94);
@@ -783,8 +813,112 @@
 }
 
 @keyframes weather-curtain-sway {
-  0%, 100% { transform: rotate(-1deg) scaleX(.9); }
-  50% { transform: rotate(4deg) scaleX(1.12); }
+  0%, 100% { transform: rotate(-1.4deg); }
+  50% { transform: rotate(2.8deg); }
+}
+
+.window-habitat {
+  z-index: 1;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, .28));
+}
+
+.window-frame {
+  position: absolute;
+  inset: -8px -7px -11px;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(180deg, rgba(72, 62, 48, .92), rgba(42, 36, 28, .96) 46%, rgba(32, 28, 22, .98));
+  box-shadow:
+    inset 0 1px rgba(224, 208, 176, .18),
+    0 10px 22px rgba(0, 0, 0, .28);
+}
+
+.window-frame::before {
+  content: "";
+  position: absolute;
+  inset: 6px 5px 8px;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(16, 14, 11, .55);
+}
+
+.window-sill {
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  bottom: -9px;
+  height: 7px;
+  pointer-events: none;
+  border-radius: 2px 2px 6px 6px;
+  background: linear-gradient(180deg, rgba(92, 78, 58, .95), rgba(38, 32, 24, .98));
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .32), inset 0 1px rgba(224, 208, 176, .16);
+}
+
+.window-sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(118deg, rgba(255,255,255,.16) 0 18%, transparent 36%, transparent 62%, rgba(255,255,255,.04) 100%);
+  mix-blend-mode: soft-light;
+}
+
+.window-spill {
+  position: absolute;
+  left: 50%;
+  top: 64.7%;
+  width: min(52vw, 16rem);
+  height: 22%;
+  pointer-events: none;
+  transform: translateX(-50%);
+  clip-path: polygon(30% 0, 70% 0, 96% 100%, 4% 100%);
+  filter: blur(16px);
+  mix-blend-mode: soft-light;
+}
+
+.weather-curtain {
+  position: absolute;
+  top: 15.4%;
+  height: 25.5%;
+  width: 18px;
+  transform-origin: top center;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(48, 42, 32, .42) 0 3px, rgba(72, 64, 50, .28) 3px 6px);
+  border-radius: 0 0 40% 40%;
+  filter: blur(.2px);
+  box-shadow: inset 0 8px 10px rgba(0, 0, 0, .18);
+}
+
+.weather-curtain--left { left: calc(50% - 6.55rem); }
+.weather-curtain--right { right: calc(50% - 6.55rem); }
+
+.sleep-motes {
+  position: absolute;
+  z-index: 30;
+  width: 2.6rem;
+  height: 2.4rem;
+  pointer-events: none;
+  transform: translate(-30%, -118%);
+  color: rgba(216, 210, 191, .48);
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: .72rem;
+  letter-spacing: .02em;
+}
+
+.sleep-motes i {
+  position: absolute;
+  font-style: italic;
+  animation: sleep-mote 4.6s ease-in-out infinite;
+}
+
+.sleep-motes i:nth-child(1) { left: .15rem; bottom: .1rem; font-size: .58rem; animation-delay: 0s; }
+.sleep-motes i:nth-child(2) { left: .85rem; bottom: .55rem; font-size: .7rem; animation-delay: -1.5s; }
+.sleep-motes i:nth-child(3) { left: 1.45rem; bottom: 1.05rem; font-size: .82rem; opacity: .7; animation-delay: -3s; }
+
+@keyframes sleep-mote {
+  0%, 100% { transform: translate3d(0, 0, 0); opacity: .22; }
+  45% { transform: translate3d(4px, -10px, 0); opacity: .62; }
+  80% { transform: translate3d(-2px, -16px, 0); opacity: .08; }
 }
 
 .weather-rain { animation: weather-rain-fall 1s linear infinite; }
@@ -794,7 +928,7 @@
 .weather-lightning { animation: weather-lightning 8.5s linear infinite; }
 .weather-heat { animation: weather-heat-rise 3.8s ease-in-out infinite; }
 .weather-wind-line { animation: weather-wind-cross 2.4s linear infinite; }
-.weather-curtain { animation: weather-curtain-sway var(--weather-wind, 1.2s) ease-in-out infinite; }
+.weather-curtain { animation: weather-curtain-sway var(--weather-wind, 1.8s) ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   .weather-rain,
@@ -804,7 +938,8 @@
   .weather-lightning,
   .weather-heat,
   .weather-wind-line,
-  .weather-curtain {
+  .weather-curtain,
+  .sleep-motes i {
     animation: none !important;
   }
   .weather-rain { transform: translate3d(4px, 90px, 0) rotate(10deg); }

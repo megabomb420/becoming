@@ -3,6 +3,7 @@ import { GameState } from '../types';
 import { getLifePathVisual } from '../systems/lifePathSystem';
 import { getDominantNeed, getNeedUrgency } from '../systems/needsSystem';
 import { getEffectiveStimulus } from '../systems/environmentSystem';
+import { getTimeOfDay } from '../systems/timeSystem';
 
 interface CreatureCanvasProps {
   state: GameState;
@@ -212,6 +213,18 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       }
     }
 
+    // Contact shadow stays on the floor even when the body curls or tilts.
+    ctx.save();
+    ctx.translate(x, y + 36);
+    const shadow = ctx.createRadialGradient(0, 0, 4, 0, 0, 40);
+    shadow.addColorStop(0, `rgba(0,0,0,${isSleeping ? 0.28 : 0.22})`);
+    shadow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = shadow;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 36 * roundness * (isSleeping ? 1.12 : 1), isSleeping ? 7 : 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     ctx.save();
     ctx.translate(x + motionX, y + motionY);
     ctx.scale(state.facing === 'left' ? -1 : 1, 1);
@@ -231,12 +244,6 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-
-    // Body shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.beginPath();
-    ctx.ellipse(0, 38, 35 * roundness, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
 
     // Tail
     if (app.tailLength > 0) {
@@ -260,6 +267,14 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.beginPath();
     ctx.ellipse(0, 5, 38 * roundness, 35, 0, 0, Math.PI * 2);
     ctx.fill();
+    const sky = getTimeOfDay(undefined, state.world);
+    if (sky.solarFactor > 0.12 && !isSleeping) {
+      ctx.strokeStyle = `hsla(${hue}, 18%, 82%, ${0.1 + sky.solarFactor * 0.16})`;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.ellipse(0, 5, 38 * roundness, 35, 0, -1.05, 0.35);
+      ctx.stroke();
+    }
 
     // Cleanliness is body language, not a meter. A few muted floor-coloured
     // flecks appear gradually and disappear completely after washing.
@@ -310,18 +325,26 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     const pathEyeHeight = 1 - pathVisual.eyeDroop * pathVisual.strength;
     const tiredEyeScale = state.sleepState === 'drowsy' || dominantNeed === 'energy' ? Math.max(0.48, 1 - needStrength * 0.46) : 1;
     const openEyeHeight = 10 * eyeSize * pathEyeHeight * tiredEyeScale * weatherEyeScale * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
-    const eyeH = isSleeping || blink.isBlinking ? 1 : openEyeHeight;
-    ctx.fillStyle = isSleeping ? '#4a4035' : '#2a2018';
-    
-    // Left eye
-    ctx.beginPath();
-    ctx.ellipse(-12, -12, eyeW, eyeH, 0, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Right eye
-    ctx.beginPath();
-    ctx.ellipse(12, -12, eyeW, eyeH, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const eyeH = blink.isBlinking && !isSleeping ? 1 : openEyeHeight;
+    if (isSleeping) {
+      ctx.strokeStyle = '#4a4035';
+      ctx.lineWidth = 1.7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-19, -11);
+      ctx.quadraticCurveTo(-12, -6, -5, -11);
+      ctx.moveTo(5, -11);
+      ctx.quadraticCurveTo(12, -6, 19, -11);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#2a2018';
+      ctx.beginPath();
+      ctx.ellipse(-12, -12, eyeW, eyeH, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(12, -12, eyeW, eyeH, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     if (!isSleeping && !blink.isBlinking) {
       // Eye shine
