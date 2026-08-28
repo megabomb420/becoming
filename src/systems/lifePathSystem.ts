@@ -876,6 +876,18 @@ export function getRestSchedule(path: LifePathState): 'diurnal' | 'nocturnal' {
   return nightPrimary || nightSecondary ? 'nocturnal' : 'diurnal';
 }
 
+/** A portrait of their clock, not a score. */
+export function getLivedClockNote(state: Pick<GameState, 'lifePath' | 'personality'>, language: 'en' | 'pl' = 'en'): string {
+  if (getRestSchedule(state.lifePath) === 'nocturnal') {
+    return language === 'pl'
+      ? 'Noc jest jego dniem. Śpi, kiedy świeci słońce.'
+      : 'Night is when it is most itself. It sleeps through the sun.';
+  }
+  return language === 'pl'
+    ? 'Żyje dniem i odpoczywa, kiedy zapada jego noc.'
+    : 'It lives by day and rests when its night comes.';
+}
+
 export function getLifePathPhaseLabel(phase: LifePathPhase, language: 'en' | 'pl' = 'en') {
   const labels: Record<LifePathPhase, { en: string; pl: string }> = {
     unformed: { en: 'still forming', pl: 'wciąż się kształtuje' },

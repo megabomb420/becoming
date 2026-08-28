@@ -6,6 +6,7 @@ import {
   evolveLifePathFromCreatureStatement,
   getLifePathTitle,
   getRestSchedule,
+  getLivedClockNote,
   migrateLifePathState,
   resolveDailyMoment,
 } from '../src/systems/lifePathSystem';
@@ -432,5 +433,7 @@ const partyNight = {
 assert.equal(getRestSchedule(partyNight), 'nocturnal');
 assert.equal(getRestSchedule({ ...partyNight, phase: 'leaning' }), 'diurnal', 'early party leanings still follow the sun');
 assert.equal(getRestSchedule({ ...partyNight, phase: 'recovering' }), 'diurnal', 'recovery returns ordinary days');
+assert.match(getLivedClockNote(ordinary, 'en'), /lives by day/i);
+assert.match(getLivedClockNote({ ...ordinary, lifePath: partyNight }, 'pl'), /Noc jest jego dniem/);
 
 console.log('Life path, inner life, continuity, mirror, presence, absence, creation, backup, language, boundary, and shared-language checks passed.');

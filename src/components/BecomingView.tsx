@@ -7,6 +7,7 @@ import {
   getLifePathMilestoneTitle,
   getLifePathTitle,
   getLifePathVisual,
+  getLivedClockNote,
   getRankedLifePaths,
 } from '../systems/lifePathSystem';
 import { getInterestStage, getRankedInterests, getSelfAwarenessStageLabel } from '../systems/innerLifeSystem';
@@ -26,6 +27,7 @@ const BecomingView: React.FC<BecomingViewProps> = ({ state, onClose }) => {
   const t = (english: string, polishText: string) => uiText(ui, english, polishText);
   const title = getLifePathTitle(state, ui);
   const description = getLifePathDescription(state, ui);
+  const clockNote = getLivedClockNote(state, ui);
   const visual = getLifePathVisual(state);
   const clues = getLifePathClues(state, 3, ui);
   const signature = getVisiblePersonalitySignature(state);
@@ -67,6 +69,7 @@ const BecomingView: React.FC<BecomingViewProps> = ({ state, onClose }) => {
             <div className="flex items-center gap-2 text-[#c7a66c]/72"><GlyphIcon name="becoming" size={18} /><p className="eyebrow">{t('Current shape', 'Obecny kształt')}</p></div>
             <h2 className="display-title text-[1.65rem] text-[#ece8da] mt-4">{title}</h2>
             <p className="text-[#d8d2bf]/66 text-xs font-serif leading-relaxed mt-3">{description}</p>
+            <p className="text-[#c7a66c]/70 text-[10px] font-serif leading-relaxed mt-3">{clockNote}</p>
             <p className="text-[#a8ad91]/88 text-[10px] font-serif leading-relaxed mt-3">{phaseCopy}</p>
             {recoveryCopy && <p className="text-[#c7a66c]/62 text-[10px] font-serif italic mt-2">{recoveryCopy}</p>}
           </div>

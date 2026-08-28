@@ -12,6 +12,8 @@ import {
   PersonalityTraits,
   RelationshipModel,
 } from '../types';
+import { getRestSchedule } from './lifePathSystem';
+import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
 
 export const ALL_OBJECT_TYPES: ObjectType[] = [
   'food_bowl',
@@ -806,17 +808,23 @@ export function chooseAutonomousMoment(state: GameState, now = Date.now()): Auto
   }
 
   const recent = experience?.recentAutonomy ?? [];
+  const rest = isCreatureRestPhase(getTimeOfDay(now, state.world), getRestSchedule(state.lifePath));
+  const restQuiet = new Set(['listen', 'watch_dust', 'yawn', 'stretch', 'steadfast_rest', 'independent_nearby', 'sniff']);
   const eligible = candidates.map(candidate => {
     const previousIndex = [...recent].reverse().findIndex(record => record.id === candidate.id);
     const previous = previousIndex >= 0 ? [...recent].reverse()[previousIndex] : undefined;
     if (previous && now - previous.timestamp < candidate.cooldown) return { ...candidate, weight: 0 };
     const recencyFactor = previousIndex === 0 ? 0.08 : previousIndex === 1 ? 0.22 : previousIndex === 2 ? 0.48 : 1;
-    return { ...candidate, weight: candidate.weight * recencyFactor };
+    let weight = candidate.weight * recencyFactor;
+    if (rest) weight *= restQuiet.has(candidate.id) ? 2.4 : 0.07;
+    else if (candidate.id === 'stretch' && state.needs.energy >= 65) weight *= 1.7;
+    return { ...candidate, weight };
   }).filter(candidate => candidate.weight > 0);
   if (eligible.length === 0) return null;
 
   // A quiet-room option keeps autonomy legible and prevents constant performance.
-  const quietWeight = 20 + state.needs.energy * 0.05;
+  // During their rest, sitting still is the ordinary choice, not a failed roll.
+  const quietWeight = (rest ? 38 : 20) + state.needs.energy * 0.05;
   const total = eligible.reduce((sum, candidate) => sum + candidate.weight, quietWeight);
   let roll = deterministicUnit(state.identity.seed, Math.floor(now / 7000) + recent.length * 13) * total;
   if (roll < quietWeight) return null;

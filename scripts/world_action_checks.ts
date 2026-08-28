@@ -229,6 +229,9 @@ assert.match(cssSource, /min-height: calc\(7\.25rem \+ env\(safe-area-inset-top\
 assert.match(roomSource, /beginOutdoorVisit/);
 assert.match(roomSource, /shouldEndOutdoorVisit/);
 assert.match(roomSource, /wantsOutdoors\(currentState, isCreatureRestPhase/, 'autonomous outside must use their rest, not only weather affinity');
+assert.match(roomSource, /schedule === 'nocturnal'/, 'a settled night life must be able to want the dark');
+const becomingSource = readFileSync('src/components/BecomingView.tsx', 'utf8');
+assert.match(becomingSource, /getLivedClockNote/, 'Becoming must portrait their day and night');
 assert.match(roomSource, /beginWorldObjectApproach/);
 assert.doesNotMatch(roomSource, /Put creature to sleep/);
 assert.doesNotMatch(roomSource, /handleSleepToggle/);

@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.0
+> **Version:** 0.13.1
 > **Last Updated:** 2026-08-28
 
 ---
@@ -17,7 +17,7 @@ The project is built as a **polished vertical slice** — playable from birth th
 
 **About 65%.** Not 80. The feature table below describes a vertical slice that “already works.” The true shape is tighter.
 
-**What is actually good.** Hatch → room → care → talk holds together. Needs are readable without bars. Objects, blanket, toilet, backup, Polish/English, and PWA install are a game, not a mockup. The art direction is distinct. Persistence from 0.12.7–0.12.12 finally looks adult. 0.12.13–0.12.17 gave them a night that is not the player’s. 0.13 gives them a day: the mind is told their solar clock, they can step into a solar or last-known sky on their wake without grinding weather affinity, daily moments wait for that wake, and an absence still contains their waking hours. They do not adapt to the player’s night shifts.
+**What is actually good.** Hatch → room → care → talk holds together. Needs are readable without bars. Objects, blanket, toilet, backup, Polish/English, and PWA install are a game, not a mockup. The art direction is distinct. Persistence from 0.12.7–0.12.12 finally looks adult. 0.12.13–0.12.17 gave them a night that is not the player’s. 0.13 gives them a day: the mind is told their solar clock, they can step into a solar or last-known sky on their wake without grinding weather affinity, daily moments wait for that wake, and an absence still contains their waking hours. Autonomy keeps their rest quiet; a settled night life wants the dark without first having to be bored. Becoming portraits that clock. They do not adapt to the player’s night shifts.
 
 **What is weaker than the tables imply.** DeepSeek room bubbles and outdoor visits are still not live-proven on a real save — they are now *possible* without a weather grind, which is not the same as watched. Life paths are twelve labels and numbers, not a deep change of being — a nocturnal party animal is an inverted schedule plus night-life dilemmas, not a simulation of taking drugs. `Room.tsx` is a bag for everything. The promise “watch something become someone” is only half true: many authored overlays, little proof that the mind on a real save is someone rather than a system plus a prompt. There is no 30-day arc.
 
@@ -154,7 +154,7 @@ becoming/
 | Crossbreeds | ✅ | Compatible dominant tendencies combine into named hybrid identities such as Fog Gamer, Chill Sage, or Gentle Anchor |
 | Daily moments | ✅ | One authored dilemma per creature-day, offered only in their wake. Night-life hours wait for a settled nocturnal life |
 | Visual evolution | ✅ | Body shape, gaze, colour, aura, room tint, marks, and accessories change with the current path and hybrid |
-| Becoming view | ✅ | Shows the current identity, visible clues, possible lives, recovery, skin stage, and turns in the road |
+| Becoming view | ✅ | Shows the current identity, their day or night clock, visible clues, possible lives, recovery, skin stage, and turns in the road |
 | Organic interests | ✅ | Conversation and object play grow curiosities into interests, passions, and obsessions without a manual skill tree |
 | Own opinions | ✅ | Seeded views evolve slowly and can disagree with the user instead of mirroring every message |
 | Dreams | ✅ | Meaningful sleep remixes real memories and preoccupations into persistent, shareable dream fragments |
@@ -178,7 +178,7 @@ becoming/
 | Nocturnal Terrarium UI | ✅ | Intimate dark room, material Memory Book, voice-led Chat, narrative Becoming, restrained functional settings |
 | Visible personality signatures | ✅ | Seeded trait combinations alter early hesitations, approaches, rest choices, object initiative, imitation, and conversation presence |
 | Meaningful firsts | ✅ | First word, approach, refusal, favorite, dream, creation, opinion, shared saying, self-recognition, and autonomous object use are staged once and kept in memory |
-| State-aware autonomy | ✅ | Weighted deterministic selection uses needs, age, temperament, bond, interests, known objects, cooldowns, and persistent recency history without LLM calls |
+| State-aware autonomy | ✅ | Weighted deterministic selection uses needs, age, temperament, their rest/wake, bond, interests, known objects, cooldowns, and persistent recency history without LLM calls. Rest stays quiet; a settled night life can want the dark |
 | Physical return traces | ✅ | Offline simulation moves or uses objects, continues a mark, touches the mirror, or changes the chosen rest place before dialogue explains anything |
 | Daily care physiology | ✅ | Hidden cleanliness, bladder, and bowel needs extend hunger; food affects later bathroom timing, body language replaces meters, and care never causes death or guilt |
 | Toilet, washing, and cleaning | ✅ | A compact care sheet opens food, toilet, washing, and room cleaning; pee/poop remain as tappable floor traces until cleaned, with bounded offline simulation |
@@ -646,6 +646,10 @@ A sleeping creature is not a night-shift chatbot. Chat and room input no longer 
 - **Outside.** They can want the sky on their wake without grinding Open-Meteo affinity. Restlessness plus a solar or last-known sky is enough. Their rest still keeps them in.
 - **Moments.** Daily dilemmas wait until they are awake. “2:17 AM” and other night-life hours are for a settled nocturnal life, not a diurnal morning.
 - **Absence.** Time away still contains their waking hours, even if they are not bold. You do not come back to a life that only slept.
+
+### v0.13.1 — Rest stays quiet; night life wants the dark
+
+If they are up in their rest, they do not keep performing the day: autonomy leans into listening, yawning, settling. A settled party/alcohol/degen life can want outside after dark without first dropping into boredom. Becoming says whether they live by day or whether night is when they are most themselves.
 
 ---
 

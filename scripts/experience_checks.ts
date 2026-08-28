@@ -62,6 +62,35 @@ bold = recordAutonomousMoment(bold, firstChoice!.id, choiceTime, firstChoice!.ob
 const immediateNext = chooseAutonomousMoment(bold, choiceTime + 7_000);
 assert.notEqual(immediateNext?.id, firstChoice!.id, 'cooldown and recency must prevent an immediate repeat');
 
+const utcWorld = {
+  ...bold.world,
+  settings: {
+    ...bold.world.settings,
+    mode: 'city' as const,
+    location: {
+      source: 'city' as const,
+      name: 'UTC',
+      latitude: 51.5,
+      longitude: 0,
+      timezone: 'UTC',
+      countryCode: 'GB',
+      country: 'UTC',
+    },
+  },
+};
+const restBold = { ...bold, world: utcWorld };
+const livelyIds = new Set(['bold_test', 'seek_user', 'imitate_user', 'continue_creation', 'favorite_return']);
+const nightPicks: string[] = [];
+for (let index = 0; index < 80; index += 1) {
+  const pick = chooseAutonomousMoment(restBold, Date.UTC(2027, 5, 15, 1, 40) + index * 7_000);
+  if (pick) nightPicks.push(pick.id);
+}
+assert.ok(nightPicks.length > 0, 'rest still allows quiet autonomous presence');
+assert.ok(
+  nightPicks.filter(id => livelyIds.has(id)).length <= 2,
+  'an ordinary rest must not keep performing as if it were their day',
+);
+
 let firsts = createHatchedCreature(createNewCreature('Firsts', 7007));
 firsts = recordMeaningfulFirst(firsts, 'first_spontaneous_approach', 1_810_000_100_000);
 firsts = recordMeaningfulFirst(firsts, 'first_spontaneous_approach', 1_810_000_101_000);

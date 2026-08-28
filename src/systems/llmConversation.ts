@@ -324,8 +324,8 @@ function creatureClock(state: GameState, now: number): CreatureClockOverlay {
 function buildWeatherOverlay(state: GameState, now: number) {
   const current = state.world.current;
   const affinity = weatherAffinity(state);
-  const rest = creatureClock(state, now).rest;
-  const wantOut = wantsOutdoors(state, rest);
+  const clock = creatureClock(state, now);
+  const wantOut = wantsOutdoors(state, clock.rest, clock.schedule === 'nocturnal');
   const outdoors = state.world.place === 'outdoors';
   if (!affinity && !wantOut && !outdoors) return undefined;
   const overlay: NonNullable<CreatureMindRequest['weather']> = {

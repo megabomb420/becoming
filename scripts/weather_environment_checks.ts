@@ -360,6 +360,18 @@ assert.equal(wantsOutdoors({
   needs: { ...indoorBase.needs, stimulation: 22 },
   development: { ...indoorBase.development, cognitiveLevel: 40, hatched: true },
 }), true, 'a solar sky is enough to want air on their wake');
+assert.equal(wantsOutdoors({
+  ...indoorBase,
+  world: { ...indoorBase.world, preferences: createWorldEnvironment().preferences, current: null },
+  needs: { ...indoorBase.needs, stimulation: 50 },
+  development: { ...indoorBase.development, cognitiveLevel: 40, hatched: true },
+}, false, true), true, 'a settled night life wants air after dark without being bored first');
+assert.equal(wantsOutdoors({
+  ...indoorBase,
+  world: { ...indoorBase.world, preferences: createWorldEnvironment().preferences, current: null },
+  needs: { ...indoorBase.needs, stimulation: 50 },
+  development: { ...indoorBase.development, cognitiveLevel: 40, hatched: true },
+}, false, false), false, 'an ordinary wake still needs restlessness without a liked sky');
 
 const disabledWhileOut = disableWeather(steppedOut.world);
 assert.equal(disabledWhileOut.place, 'indoor');

@@ -905,7 +905,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             return;
           }
         }
-        if (wantsOutdoors(currentState, isCreatureRestPhase(time, schedule)) && !outdoorVisitBlocked(currentState) && Date.now() - (currentState.world.lastOutdoorAt || 0) > OUTDOOR_COOLDOWN_MS) {
+        if (wantsOutdoors(currentState, isCreatureRestPhase(time, schedule), schedule === 'nocturnal') && !outdoorVisitBlocked(currentState) && Date.now() - (currentState.world.lastOutdoorAt || 0) > OUTDOOR_COOLDOWN_MS) {
           if (dist(currentPos, WINDOW_PLACE) > 8) {
             walkToIdlePosition(WINDOW_PLACE);
             return;

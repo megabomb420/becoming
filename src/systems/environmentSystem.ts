@@ -680,7 +680,7 @@ export function getWeatherIcon(condition: WeatherCondition) {
  * Callers pass restPhase from the creature's clock so this file does not
  * import timeSystem (timeSystem already reads weather stimulus).
  */
-export function wantsOutdoors(state: GameState, restPhase = false) {
+export function wantsOutdoors(state: GameState, restPhase = false, nightLife = false) {
   if (restPhase || state.sleepState === 'sleeping') return false;
   if (state.world.place === 'outdoors') return false;
   if (state.world.settings.mode === 'disabled') return false;
@@ -702,7 +702,9 @@ export function wantsOutdoors(state: GameState, restPhase = false) {
   );
   if (likesSky) return true;
   const awakeEnough = state.development.hatched && state.development.cognitiveLevel >= 18;
-  return awakeEnough && state.needs.stimulation < 38;
+  if (!awakeEnough) return false;
+  if (nightLife) return state.needs.stimulation < 64;
+  return state.needs.stimulation < 38;
 }
 
 export function outdoorVisitBlocked(state: GameState): 'unavailable' | 'sleeping' | 'need' | 'wary' | null {
