@@ -268,6 +268,10 @@ assert.match(cssSource, /\.sleep-motes/);
 const canvasSource = readFileSync('src/components/CreatureCanvas.tsx', 'utf8');
 assert.match(canvasSource, /Contact shadow stays on the floor/);
 assert.match(canvasSource, /quadraticCurveTo\(-12, -6/);
+assert.match(canvasSource, /A sleeping tail does not wag/);
+assert.match(canvasSource, /tailWag = isSleeping/, 'the tail must not keep time while they sleep');
+assert.match(canvasSource, /drawEye/, 'awake eyes have iris and pupil, not a black disc');
+assert.match(canvasSource, /Tiny paws keep them on the floor/);
 const chatSource = readFileSync('src/components/ChatInterface.tsx', 'utf8');
 assert.match(chatSource, /state\.sleepState === 'sleeping'/, 'opening chat must not greet while they sleep');
 

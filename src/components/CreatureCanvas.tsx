@@ -74,8 +74,8 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     const app = state.identity.appearance;
     const isSleeping = state.sleepState === 'sleeping';
     const behavior = state.creatureBehavior;
-    const breathSpeed = isSleeping ? 0.0016 : 0.003;
-    const breathAmount = isSleeping ? 0.035 : 0.02;
+    const breathSpeed = isSleeping ? 0.00105 : 0.003;
+    const breathAmount = isSleeping ? 0.012 : 0.022;
     const breath = Math.sin(time * breathSpeed) * breathAmount + 1;
     const { eyeSize, roundness } = app;
     const pathVisual = getLifePathVisual(state);
@@ -245,36 +245,93 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.globalAlpha = 1;
     }
 
-    // Tail
-    if (app.tailLength > 0) {
-      const excited = behavior === 'playing' || state.emotionalState === 'happy' || state.emotionalState === 'excited';
-      const tailWag = Math.sin(time * (excited ? 0.014 : 0.005)) * (excited ? 0.55 : 0.28)
-        + Math.sin(time * 0.008) * environment.wind * 0.16;
+    const fur = (dL: number, dS = 0, alpha = 1) => {
+      const s = Math.max(6, Math.min(70, saturation + dS));
+      const l = Math.max(16, Math.min(84, lightness + dL));
+      return alpha >= 1 ? `hsl(${hue}, ${s}%, ${l}%)` : `hsla(${hue}, ${s}%, ${l}%, ${alpha})`;
+    };
+    const tail = app.tailLength;
+
+    // A sleeping tail does not wag. It curls around the hip and stays.
+    if (tail > 0) {
+      const excited = !isSleeping && (behavior === 'playing' || state.emotionalState === 'happy' || state.emotionalState === 'excited');
+      const tailWag = isSleeping
+        ? 0
+        : Math.sin(time * (excited ? 0.014 : 0.005)) * (excited ? 0.42 : 0.18)
+          + Math.sin(time * 0.008) * environment.wind * 0.1;
       ctx.save();
-      ctx.rotate(tailWag - 0.2);
-      ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness + 3}%)`;
-      ctx.beginPath();
-      ctx.ellipse(-35 * roundness, 10, 18 * app.tailLength, 8, -0.5, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = fur(2, 2);
+      if (isSleeping) {
+        ctx.lineWidth = 12 * tail;
+        ctx.beginPath();
+        ctx.moveTo(-20 * roundness, 18);
+        ctx.quadraticCurveTo(-38 * roundness, 30, -12 * roundness, 34);
+        ctx.stroke();
+        ctx.lineWidth = 7 * tail;
+        ctx.strokeStyle = fur(8, -2);
+        ctx.beginPath();
+        ctx.moveTo(-12 * roundness, 34);
+        ctx.quadraticCurveTo(6, 36, 14, 24);
+        ctx.stroke();
+      } else {
+        ctx.rotate(tailWag - 0.18);
+        ctx.lineWidth = 13 * tail;
+        ctx.beginPath();
+        ctx.moveTo(-26 * roundness, 10);
+        ctx.quadraticCurveTo(-46 * tail, 2 + tailWag * 16, -54 * tail, 20);
+        ctx.stroke();
+        ctx.lineWidth = 6.5 * tail;
+        ctx.strokeStyle = fur(9, -3);
+        ctx.beginPath();
+        ctx.moveTo(-52 * tail, 18);
+        ctx.quadraticCurveTo(-62 * tail, 28 + tailWag * 10, -66 * tail, 14 + tailWag * 18);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
-    // Main body
-    const bodyGrad = ctx.createRadialGradient(-10, -15, 5, 0, 5, 45);
-    bodyGrad.addColorStop(0, `hsl(${hue}, ${Math.max(12, saturation - 4)}%, ${Math.min(72, lightness + 14)}%)`);
-    bodyGrad.addColorStop(1, `hsl(${hue}, ${saturation}%, ${Math.max(30, lightness - 7)}%)`);
+    // Haunch, chest and belly instead of one oval.
+    ctx.fillStyle = fur(-6);
+    ctx.beginPath();
+    ctx.ellipse(10 * roundness, 14, 26 * roundness, 23, 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    const bodyGrad = ctx.createRadialGradient(-12, -10, 6, 2, 8, 44);
+    bodyGrad.addColorStop(0, fur(16, -4));
+    bodyGrad.addColorStop(0.55, fur(2));
+    bodyGrad.addColorStop(1, fur(-10, 2));
     ctx.fillStyle = bodyGrad;
     ctx.beginPath();
-    ctx.ellipse(0, 5, 38 * roundness, 35, 0, 0, Math.PI * 2);
+    ctx.ellipse(-2, 6, 34 * roundness, 32, -0.08, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = fur(-14, -6, 0.55);
+    ctx.beginPath();
+    ctx.ellipse(1, 18, 22 * roundness, 14, 0.04, 0, Math.PI * 2);
+    ctx.fill();
+
     const sky = getTimeOfDay(undefined, state.world);
     if (sky.solarFactor > 0.12 && !isSleeping) {
       ctx.strokeStyle = `hsla(${hue}, 18%, 82%, ${0.1 + sky.solarFactor * 0.16})`;
       ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.ellipse(0, 5, 38 * roundness, 35, 0, -1.05, 0.35);
+      ctx.ellipse(-2, 6, 34 * roundness, 32, -0.08, -1.05, 0.28);
       ctx.stroke();
     }
+
+    // Tiny paws keep them on the floor instead of floating as a blob.
+    ctx.fillStyle = fur(-12, 1);
+    ctx.beginPath();
+    ctx.ellipse(-16, 33, 9, 5.5, -0.15, 0, Math.PI * 2);
+    ctx.ellipse(11, 34, 9, 5.2, 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = fur(-18, -4, 0.55);
+    ctx.beginPath();
+    ctx.ellipse(-18, 34, 3.2, 2.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(-13, 35, 3.2, 2.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(9, 35, 3.2, 2.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(14, 35, 3.2, 2.1, 0, 0, Math.PI * 2);
+    ctx.fill();
 
     // Cleanliness is body language, not a meter. A few muted floor-coloured
     // flecks appear gradually and disappear completely after washing.
@@ -297,38 +354,60 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
 
     // Ears
     if (app.earShape !== 'none') {
-      ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${Math.max(32, lightness - 4)}%)`;
-      const earW = app.earShape === 'pointy' ? 12 : 16;
-      const autonomousPerk = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'proud' ? 4 : 0;
-      const perk = Math.max(autonomousPerk, weatherCuriosity * 3);
-      const earH = (app.earShape === 'pointy' ? 22 : 18) + perk;
-      // Left ear
-      ctx.beginPath();
-      ctx.ellipse(-22, -22, earW, earH, -0.4, 0, Math.PI * 2);
-      ctx.fill();
-      // Right ear
-      ctx.beginPath();
-      ctx.ellipse(22, -22, earW, earH, 0.4, 0, Math.PI * 2);
-      ctx.fill();
+      const earW = app.earShape === 'pointy' ? 11 : 15;
+      const autonomousPerk = !isSleeping && (behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'proud') ? 4 : 0;
+      const perk = isSleeping ? 0 : Math.max(autonomousPerk, weatherCuriosity * 3);
+      const earH = (app.earShape === 'pointy' ? 21 : 17) + perk;
+      const fold = isSleeping ? 0.42 : 0;
+      const drawEar = (ex: number, tilt: number) => {
+        ctx.fillStyle = fur(-3);
+        ctx.beginPath();
+        ctx.ellipse(ex, isSleeping ? -16 : -22, earW, earH, tilt, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = fur(18, 8, 0.55);
+        ctx.beginPath();
+        ctx.ellipse(ex + tilt * 4, (isSleeping ? -16 : -22) + 2, earW * 0.42, earH * 0.55, tilt, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      drawEar(-22, -0.38 - fold);
+      drawEar(22, 0.38 + fold);
     }
 
-    // Face area (slightly lighter)
-    ctx.fillStyle = `hsl(${hue}, ${Math.max(10, saturation - 7)}%, ${Math.min(76, lightness + 16)}%)`;
+    // Head sits on the chest instead of a painted oval on a blob.
+    ctx.fillStyle = fur(12, -5);
     ctx.beginPath();
-    ctx.ellipse(0, -8, 28, 22, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -10, 26, 23, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = fur(18, -8, 0.7);
+    ctx.beginPath();
+    ctx.ellipse(0, -4, 18, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const tuftSeed = state.identity.seed;
+    ctx.strokeStyle = fur(-16, 4, 0.35);
+    ctx.lineWidth = 1.15;
+    ctx.lineCap = 'round';
+    for (let index = 0; index < 9; index += 1) {
+      const unit = Math.sin(tuftSeed * 0.0013 + index * 19.17) * 0.5 + 0.5;
+      const angle = -0.9 + index * 0.22 + (unit - 0.5) * 0.2;
+      const radius = 31 + unit * 4;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(angle) * (radius - 4), Math.sin(angle) * (radius - 6) + 4);
+      ctx.lineTo(Math.cos(angle) * (radius + 3), Math.sin(angle) * (radius + 1) + 4);
+      ctx.stroke();
+    }
 
     // Eyes
     const attentive = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'imitating' || behavior === 'proud' || behavior === 'uncomfortable';
     const weatherEyeScale = 1 + weatherCuriosity * 0.09 + stormCaution * 0.05;
-    const eyeW = 10 * eyeSize * (attentive ? 1.08 : 1) * weatherEyeScale;
+    const eyeW = 9.2 * eyeSize * (attentive ? 1.08 : 1) * weatherEyeScale;
     const pathEyeHeight = 1 - pathVisual.eyeDroop * pathVisual.strength;
     const tiredEyeScale = state.sleepState === 'drowsy' || dominantNeed === 'energy' ? Math.max(0.48, 1 - needStrength * 0.46) : 1;
-    const openEyeHeight = 10 * eyeSize * pathEyeHeight * tiredEyeScale * weatherEyeScale * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
-    const eyeH = blink.isBlinking && !isSleeping ? 1 : openEyeHeight;
+    const openEyeHeight = 8.4 * eyeSize * pathEyeHeight * tiredEyeScale * weatherEyeScale * (attentive ? 1.18 : behavior === 'eating' ? 0.72 : 1);
+    const eyeH = blink.isBlinking && !isSleeping ? 1.2 : openEyeHeight;
     if (isSleeping) {
       ctx.strokeStyle = '#4a4035';
-      ctx.lineWidth = 1.7;
+      ctx.lineWidth = 1.8;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(-19, -11);
@@ -337,23 +416,31 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.quadraticCurveTo(12, -6, 19, -11);
       ctx.stroke();
     } else {
-      ctx.fillStyle = '#2a2018';
-      ctx.beginPath();
-      ctx.ellipse(-12, -12, eyeW, eyeH, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.ellipse(12, -12, eyeW, eyeH, 0, 0, Math.PI * 2);
-      ctx.fill();
+      const drawEye = (ex: number) => {
+        ctx.fillStyle = 'rgba(246, 240, 224, 0.92)';
+        ctx.beginPath();
+        ctx.ellipse(ex, -12, eyeW * 1.05, Math.max(2.4, eyeH * 1.12), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `hsl(${(hue + 18) % 360}, ${Math.min(48, saturation + 12)}%, ${Math.max(22, lightness - 28)}%)`;
+        ctx.beginPath();
+        ctx.ellipse(ex + 0.6, -12, eyeW * 0.72, eyeH * 0.92, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#1c1612';
+        ctx.beginPath();
+        ctx.ellipse(ex + 0.8, -12, eyeW * 0.38, eyeH * 0.62, 0, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      drawEye(-12);
+      drawEye(12);
     }
 
     if (!isSleeping && !blink.isBlinking) {
-      // Eye shine
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillStyle = 'rgba(255,255,255,0.72)';
       ctx.beginPath();
-      ctx.arc(-10, -15, 3, 0, Math.PI * 2);
+      ctx.arc(-10, -15, 2.2, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(14, -15, 3, 0, Math.PI * 2);
+      ctx.arc(14, -15, 2.2, 0, Math.PI * 2);
       ctx.fill();
 
       if (attentive) {
@@ -398,7 +485,10 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.lineWidth = 1.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    if (heatStrength > 0.42 && !isSleeping) {
+    if (isSleeping) {
+      ctx.moveTo(-3, 6);
+      ctx.quadraticCurveTo(0, 8, 3, 6);
+    } else if (heatStrength > 0.42) {
       ctx.ellipse(0, 6, 4.5, 3 + Math.abs(Math.sin(time * 0.008)) * 1.5, 0, 0, Math.PI * 2);
     } else if (state.emotionalState === 'happy' || state.emotionalState === 'excited') {
       ctx.arc(0, 4, 6, 0.1, Math.PI - 0.1);
@@ -524,12 +614,14 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     }
     if (hasPath('party_animal')) {
       ctx.fillStyle = pathVisual.accent;
+      ctx.globalAlpha = isSleeping ? 0.18 + pathVisual.strength * 0.22 : 0.28 + pathVisual.strength * 0.72;
       [[-31, -2], [31, -1], [-27, 20], [27, 24]].forEach(([sx, sy], index) => {
-        const twinkle = 2.2 + ((Math.sin(time * 0.006 + index) + 1) * 1.2);
+        const twinkle = isSleeping ? 2.1 : 2.2 + ((Math.sin(time * 0.006 + index) + 1) * 1.2);
         ctx.beginPath();
         ctx.arc(sx, sy, twinkle, 0, Math.PI * 2);
         ctx.fill();
       });
+      ctx.globalAlpha = 0.28 + pathVisual.strength * 0.72;
     }
     if (hasPath('caretaker')) {
       ctx.fillStyle = pathVisual.accent;

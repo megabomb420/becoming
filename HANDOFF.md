@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.2
+> **Version:** 0.13.3
 > **Last Updated:** 2026-08-28
 
 ---
@@ -128,7 +128,7 @@ becoming/
 |---|---|---|
 | PWA installability | ✅ | Manifest, service worker, offline shell, icons |
 | Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` prevents regression; a completed Start over returns through this same flow |
-| Creature rendering | ✅ | Canvas-based with breathing, blinking, closed sleeping eyes, a floor-true contact shadow, window rim light, and distinct walking, observing, investigating, eating, playing, and settling body language |
+| Creature rendering | ✅ | A small animal: haunch, chest, belly, tapered tail, paws, inner ears, iris. Sleeping curls the tail, closes the eyes, and stops the wag. Path marks still layer on the life |
 | Readable needs system | ✅ | 9 consistently directed needs (100 settled → 0 urgent), compact room signals, optional descriptive care sheet, body-language cues, and no raw percentages or permanent bars |
 | Hidden personality | ✅ | Seeded traits that now evolve through care, play, touch, exploration, and conversation |
 | Bond development | ✅ | Persistent tentative → familiar → close → bonded relationship arc with milestone memories, bond-aware idle behavior, and later-stage speech |
@@ -654,6 +654,10 @@ If they are up in their rest, they do not keep performing the day: autonomy lean
 ### v0.13.2 — The room looks inhabited
 
 The window is a peat frame with glass, a sill, fabric curtains, and a sun or moon in the actual sky. Daylight spills onto the floor. The creature's shadow stays on the boards when they curl up; sleeping eyes close instead of flattening. Speech sits in a paper chip, and sleep motes rise from the body instead of a floating “z z z”.
+
+### v0.13.3 — The creature looks like an animal
+
+Sleep no longer wags the tail or twinkles the party marks. The body is haunch, chest and belly instead of one oval; the tail tapers and curls when they rest; paws sit on the floor; eyes have a cream, an iris and a pupil. Breath while asleep is smaller than while awake.
 
 ---
 
