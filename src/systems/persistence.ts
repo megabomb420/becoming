@@ -37,29 +37,82 @@ const BASE_INVENTORY: ObjectType[] = [
 const SAVE_FORMAT = 'becoming-save';
 const SAVE_FORMAT_VERSION = 1;
 const MAX_IMPORT_LENGTH = 2_000_000;
+const DB_OPEN_TIMEOUT_MS = 2_500;
+const BOOT_LOAD_TIMEOUT_MS = 4_000;
 
 let dbPromise: Promise<IDBPDatabase<BecomingDB>> | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
+let resetInProgress = false;
+const openConnections = new Set<IDBPDatabase<BecomingDB>>();
+
+function timeoutAfter(ms: number, message: string): { promise: Promise<never>; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout>;
+  return {
+    promise: new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    }),
+    cancel: () => clearTimeout(timer),
+  };
+}
 
 function getDB(): Promise<IDBPDatabase<BecomingDB>> {
   if (!dbPromise) {
-    dbPromise = openDB<BecomingDB>(DB_NAME, DB_VERSION, {
+    let abandoned = false;
+    let rejectBlocked: (error: Error) => void = () => undefined;
+    const blocked = new Promise<never>((_, reject) => { rejectBlocked = reject; });
+    const timeout = timeoutAfter(DB_OPEN_TIMEOUT_MS, 'Opening Becoming IndexedDB timed out.');
+    const opening = openDB<BecomingDB>(DB_NAME, DB_VERSION, {
       upgrade(db) {
-        db.createObjectStore('gameState');
-        db.createObjectStore('memoryBook');
-        db.createObjectStore('snapshots', { keyPath: 'timestamp' });
+        // A half-created v1 database is recoverable. Only create stores that
+        // are actually absent rather than throwing during the repair open.
+        if (!db.objectStoreNames.contains('gameState')) db.createObjectStore('gameState');
+        if (!db.objectStoreNames.contains('memoryBook')) db.createObjectStore('memoryBook');
+        if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots', { keyPath: 'timestamp' });
+      },
+      blocked() {
+        rejectBlocked(new Error('Opening Becoming IndexedDB was blocked by another connection.'));
       },
       blocking(_currentVersion, _blockedVersion, event) {
         // A reset from this or another open tab must be allowed to finish.
         // Keeping an old connection alive here leaves deleteDatabase blocked
         // and the next boot waiting forever for the same database.
         (event.target as IDBDatabase | null)?.close();
+        // `blocking` is idb's versionchange handler. Any cached wrapper for
+        // this one database is stale once a version change/delete begins.
+        for (const connection of openConnections) connection.close();
+        openConnections.clear();
         dbPromise = null;
       },
       terminated() {
         dbPromise = null;
       },
     });
+
+    const attempt = Promise.race([opening, blocked, timeout.promise])
+      .then(db => {
+        if (resetInProgress || abandoned) {
+          db.close();
+          throw new Error('Becoming IndexedDB opened while a reset was in progress.');
+        }
+        openConnections.add(db);
+        return db;
+      })
+      .finally(() => timeout.cancel());
+
+    dbPromise = attempt;
+    void attempt.catch(() => {
+      abandoned = true;
+      if (dbPromise === attempt) dbPromise = null;
+    });
+    // An IDB open request cannot be cancelled. If it resolves after our
+    // timeout/blocked fallback, close the late connection immediately so it
+    // cannot obstruct reset or a later healthy boot.
+    void opening.then(db => {
+      if (abandoned || resetInProgress) {
+        db.close();
+        openConnections.delete(db);
+      }
+    }).catch(() => undefined);
   }
   return dbPromise;
 }
@@ -265,6 +318,27 @@ export async function loadGameState(): Promise<GameState | null> {
   return migrateGameState(result);
 }
 
+/**
+ * Boot is deliberately finite. IndexedDB can leave an open/get request
+ * pending forever without firing success or error; a missing or unreadable
+ * local save must therefore enter the existing hatch flow instead of keeping
+ * the entire application on its first-paint Loading sentinel.
+ */
+export async function loadGameStateForBoot(
+  loader: () => Promise<GameState | null> = loadGameState,
+  timeoutMs = BOOT_LOAD_TIMEOUT_MS,
+): Promise<GameState | null> {
+  const timeout = timeoutAfter(timeoutMs, 'Loading Becoming state timed out.');
+  try {
+    return await Promise.race([loader(), timeout.promise]);
+  } catch (error) {
+    console.warn('Becoming could not read local state during boot; opening the hatch flow.', error);
+    return null;
+  } finally {
+    timeout.cancel();
+  }
+}
+
 async function writeGameState(state: GameState): Promise<void> {
   const db = await getDB();
   const toSave = { ...state, lastSaved: Date.now() };
@@ -288,31 +362,41 @@ export function saveGameState(state: GameState): Promise<void> {
 type DatabaseDeleter = Pick<IDBFactory, 'deleteDatabase'>;
 
 export async function resetAllLocalData(factory: DatabaseDeleter = indexedDB): Promise<void> {
-  // A save whose debounce already fired cannot be cancelled by App. Let it
-  // finish before closing and deleting the database so it cannot recreate an
-  // old creature after deletion.
-  await saveQueue.catch(() => undefined);
-  if (dbPromise) {
-    try {
-      const db = await dbPromise;
-      db.close();
-    } catch {
-      // A failed open still needs the database deleted.
-    }
+  resetInProgress = true;
+  try {
+    // Never await dbPromise here: the exact outage being recovered from is an
+    // IDB open promise that never settles. Close every connection that did
+    // settle and make any late open close itself via resetInProgress.
+    for (const db of openConnections) db.close();
+    openConnections.clear();
     dbPromise = null;
+
+    // Closing the connection rejects normal in-flight writes. Bound the drain
+    // as a second defence against a browser that leaves an IDB operation
+    // pending forever; resetInProgress makes any late open close itself.
+    const drainTimeout = timeoutAfter(DB_OPEN_TIMEOUT_MS, 'Waiting for Becoming saves timed out.');
+    try {
+      await Promise.race([saveQueue.catch(() => undefined), drainTimeout.promise]).catch(() => undefined);
+    } finally {
+      drainTimeout.cancel();
+    }
+    for (const db of openConnections) db.close();
+    openConnections.clear();
+    dbPromise = null;
+
+    await new Promise<void>((resolve, reject) => {
+      const request = factory.deleteDatabase(DB_NAME);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error ?? new Error('Could not clear local Becoming data.'));
+      request.onblocked = () => {
+        console.warn('Becoming reset is waiting for another open tab to release IndexedDB.');
+      };
+    });
+    // IDB reports success only after deletion has completed. Do not verify by
+    // opening the database: that would recreate it before pagehide/reload.
+  } finally {
+    resetInProgress = false;
   }
-  await new Promise<void>((resolve, reject) => {
-    const request = factory.deleteDatabase(DB_NAME);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error('Could not clear local Becoming data.'));
-    request.onblocked = () => {
-      // This is progress information, not success. Reloading here races the
-      // pending deletion with the next openDB call and can strand boot on
-      // Loading forever. Open v0.12.6 tabs close via getDB.blocking above;
-      // otherwise the request remains pending until the old tab is closed.
-      console.warn('Becoming reset is waiting for another open tab to release IndexedDB.');
-    };
-  });
 }
 
 export function isHatchableBoot(state: GameState | null): boolean {
@@ -320,21 +404,17 @@ export function isHatchableBoot(state: GameState | null): boolean {
 }
 
 interface NewLifePersistence {
-  load: () => Promise<GameState | null>;
   reset: () => Promise<void>;
 }
 
 /**
- * Contract used by Settings: deletion is complete and a new load sees no
- * living save before App is allowed to reload into the existing hatch flow.
+ * Contract used by Settings: deletion is complete before App reloads into the
+ * existing hatch flow. It intentionally does not reopen IndexedDB to verify,
+ * because doing so can recreate the database during pagehide/reload.
  */
 export async function resetForNewLife(store?: NewLifePersistence): Promise<void> {
-  const persistence = store ?? { load: loadGameState, reset: resetAllLocalData };
+  const persistence = store ?? { reset: resetAllLocalData };
   await persistence.reset();
-  const remaining = await persistence.load();
-  if (!isHatchableBoot(remaining)) {
-    throw new Error('Becoming local data was not fully cleared.');
-  }
 }
 
 export async function loadMemoryBook(): Promise<MemoryBookEntry[]> {

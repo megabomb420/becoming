@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
 import {
   isHatchableBoot,
+  loadGameStateForBoot,
   migrateGameState,
   resetAllLocalData,
   resetForNewLife,
@@ -53,7 +54,22 @@ const memoryPersistence = {
 };
 assert.equal(isHatchableBoot(await memoryPersistence.load()), false, 'the fixture must begin as a living room save');
 await resetForNewLife(memoryPersistence);
-assert.equal(isHatchableBoot(await memoryPersistence.load()), true, 'the same reset contract used by Settings must make the next boot hatchable');
+assert.equal(
+  isHatchableBoot(await loadGameStateForBoot(memoryPersistence.load, 10)),
+  true,
+  'the same reset contract used by Settings must make the next boot hatchable',
+);
+
+assert.equal(
+  isHatchableBoot(await loadGameStateForBoot(async () => null, 10)),
+  true,
+  'a missing database must enter the hatch flow',
+);
+assert.equal(
+  isHatchableBoot(await loadGameStateForBoot(() => new Promise(() => undefined), 10)),
+  true,
+  'an IndexedDB open that never resolves must not stall boot',
+);
 
 let deletionRequest: {
   onsuccess: null | (() => void);
@@ -64,8 +80,7 @@ let deletionRequest: {
 const blockedReset = resetAllLocalData({
   deleteDatabase: () => deletionRequest as unknown as IDBOpenDBRequest,
 });
-await Promise.resolve();
-await Promise.resolve();
+while (!deletionRequest.onblocked) await Promise.resolve();
 let resetSettled = false;
 void blockedReset.then(() => { resetSettled = true; });
 deletionRequest.onblocked?.();

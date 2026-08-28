@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.6
+> **Version:** 0.12.7
 > **Last Updated:** 2026-08-28
 
 ---
@@ -131,7 +131,7 @@ becoming/
 | Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
 | Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
-| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; writes are ordered; migration repairs old saves without lowering a living creature or dropping identity and placed objects |
+| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; writes are ordered; migration repairs old saves without lowering a living creature or dropping identity and placed objects; blocked or hung boot reads leave `Loading…` for the hatch flow within four seconds |
 | Memory Book | ✅ | Emergent biography from significant memories |
 | Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
@@ -535,6 +535,17 @@ A 2026-08-28 live playtest exposed two data-loss paths in 0.12.5: Start over cou
 
 Deterministic checks cover a hatched save passing through the same reset contract used by Settings, blocked deletion not resolving early, a 0.12.4/0.12.5-shaped Moth save retaining `hatched`, identity, development and placed stone/ball state after migration, and box inspection selecting a walk target beside the real box. `npm test` and `npm run build` pass. A cloud-browser smoke test could not reach the local Vite address, so a final physical-device replay of the three 2026-08-28 acceptance cases is still recommended after deployment; this is not recorded as iPhone/browser proof.
 
+### v0.12.7 — Finite boot and completed reset
+
+A second 2026-08-28 production playtest proved that a browser can leave `indexedDB.open('becoming-db')` pending without success or error. Because App awaited that promise directly, the first-paint `Loading…` sentinel could remain forever even though the service worker and assets were healthy.
+
+0.12.7 makes temporary boot state finite without adding a parallel boot machine:
+- The single `openDB` path handles blocked opens, closes on `versionchange`, tracks live connections, and times out after 2.5 seconds. An underlying request that completes late is immediately closed.
+- App's complete boot load has a four-second ceiling. Missing, empty, blocked, half-created, rejected, or indefinitely pending persistence resolves as no save and mounts the existing `EggHatching` flow. A readable valid save still migrates and enters the room normally.
+- Start over marks reset before any persistence work, closes all settled connections, does not await a hung open, bounds the old-save drain, waits for `deleteDatabase.onsuccess`, and only then reloads. It never verifies deletion by reopening IndexedDB, while App suppresses the `pagehide` save for the whole reset/reload transition.
+
+Deterministic checks now include missing state → hatch, a loader that never settles → hatch within its test deadline, the Settings reset contract followed by a hatchable boot, blocked deletion not resolving early, and the existing living-save migration preservation case. `npm run check` passes, including TypeScript, the production PWA build, all system suites, and Worker/security checks.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -559,7 +570,7 @@ Deterministic checks cover a hatched save passing through the same reset contrac
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Physical-device replay** — on the deployed 0.12.6 build, load the Moth save, place stone/ball, accept a PWA update, run `go look in the box`, then cancel and complete Settings start-over. Automated contracts cover all three paths, but record the iPhone/browser result separately from the code checks. Also live-prove DeepSeek-only bubbles and outdoor visits.
+1. **Physical-device replay** — on the deployed 0.12.7 build, confirm the previously blocked profile leaves `Loading…` for hatching within four seconds, then load a valid Moth save, place stone/ball, accept a PWA update, run `go look in the box`, and cancel/complete Settings start-over. Automated contracts cover these paths, but record the iPhone/browser result separately from the code checks. Also live-prove DeepSeek-only bubbles and outdoor visits.
 2. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
 3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
@@ -591,13 +602,13 @@ Deterministic checks cover a hatched save passing through the same reset contrac
 - **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak and short outdoor visits reuse that cadence; they do not add a second timer.
 - **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
 - **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, and accidents advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, death, sickness pressure, or manipulative absence mechanics.
-- **Reset is a completed persistence transition, not a navigation trick.** Settings may reload only after queued writes finish, the live IndexedDB connection closes, deletion reports success, and a confirming load sees no living save. During that reload, `pagehide` must not recreate the deleted creature. Missing state returns to the original EggHatching flow; an IndexedDB read error shows recovery copy and must not expose naming.
+- **Reset is a completed persistence transition, not a navigation trick.** Settings marks reset first, closes every settled IndexedDB connection, bounds any hung save/open drain, waits for deletion success, and only then reloads. It must not verify by reopening the deleted database, and `pagehide` must not recreate it. Boot itself is finite: a readable living save enters Room, while missing, empty, blocked, half-created, or indefinitely pending persistence returns to the original EggHatching flow within four seconds.
 
 ---
 
 ## 9. How to Reset / Start Fresh
 
-In the app, open **Settings**, scroll to **Begin another life / Zacznij inne życie**, and choose **Start over / Zacznij od nowa**. Save a private backup first if the creature may be needed later. Cancel changes nothing. Confirming waits for queued writes, closes and deletes `becoming-db`, verifies that no living save remains, suppresses the unload save, then reloads into the existing egg/hatch/name flow. A blocked deletion is not treated as success.
+In the app, open **Settings**, scroll to **Begin another life / Zacznij inne życie**, and choose **Start over / Zacznij od nowa**. Save a private backup first if the creature may be needed later. Cancel changes nothing. Confirming suppresses new saves, closes all live `becoming-db` connections, drains or abandons hung persistence work, waits for `deleteDatabase.onsuccess`, then reloads into the existing egg/hatch/name flow. It does not reopen the deleted database before reload, and a blocked deletion is not treated as success.
 
 To manually clear from console:
 ```js
