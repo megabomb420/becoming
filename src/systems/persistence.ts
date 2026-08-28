@@ -38,8 +38,8 @@ const SAVE_FORMAT = 'becoming-save';
 const SAVE_FORMAT_VERSION = 1;
 const MAX_IMPORT_LENGTH = 2_000_000;
 const DB_OPEN_TIMEOUT_MS = 4_000;
-const BOOT_LOAD_TIMEOUT_MS = 5_000;
-const BOOT_OPEN_ATTEMPTS = 2;
+const BOOT_LOAD_TIMEOUT_MS = 4_000;
+const BOOT_OPEN_ATTEMPTS = 8;
 
 let dbPromise: Promise<IDBPDatabase<BecomingDB>> | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
@@ -56,7 +56,7 @@ function closeSettledDatabaseConnections(): void {
   openConnections.clear();
 }
 
-export function closeDatabaseConnections(): void {
+function abandonLocalDatabaseOpens(): void {
   if (pendingOpen) {
     pendingOpen.abandoned = true;
     pendingOpen.cancelDeadline();
@@ -66,10 +66,35 @@ export function closeDatabaseConnections(): void {
   dbPromise = null;
 }
 
+export function closeDatabaseConnections(): void {
+  abandonLocalDatabaseOpens();
+}
+
+/** Close this page's IDB handles and ask other Becoming tabs to do the same. */
+export function releaseDatabaseForReload(): void {
+  abandonLocalDatabaseOpens();
+  lifecycleChannel?.postMessage('close-connections');
+}
+
 if (lifecycleChannel) {
   lifecycleChannel.onmessage = event => {
-    if (event.data === 'close-connections') closeDatabaseConnections();
+    if (event.data === 'close-connections') abandonLocalDatabaseOpens();
   };
+}
+
+export async function databasePresence(factory: Pick<IDBFactory, 'databases'> | IDBFactory = indexedDB): Promise<'present' | 'absent' | 'unknown'> {
+  if (typeof factory.databases !== 'function') return 'unknown';
+  try {
+    const timeout = timeoutAfter(1_200, 'Listing IndexedDB databases timed out.');
+    try {
+      const listed = await Promise.race([factory.databases(), timeout.promise]);
+      return listed.some(entry => entry.name === DB_NAME) ? 'present' : 'absent';
+    } finally {
+      timeout.cancel();
+    }
+  } catch {
+    return 'unknown';
+  }
 }
 
 function timeoutAfter(ms: number, message: string): { promise: Promise<never>; cancel: () => void } {
@@ -351,17 +376,31 @@ export async function loadGameState(): Promise<GameState | null> {
   return migrateGameState(result);
 }
 
+export interface BootLoadHooks {
+  delay?: (ms: number) => Promise<void>;
+  presence?: () => Promise<'present' | 'absent' | 'unknown'>;
+}
+
+function bootRetryDelay(attempt: number): number {
+  return Math.min(400 * 2 ** attempt, 3_000);
+}
+
 /**
- * Boot is deliberately finite. A confirmed successful read may return null
- * and enter hatching. A timeout/error is not null: callers must show recovery
- * rather than letting an unreadable living database masquerade as a new life.
+ * Boot retries until a read succeeds or indexedDB.databases() confirms the
+ * Becoming database is gone. A timeout is never treated as an empty save, and
+ * it is never a reason to invent an egg while the record may still exist.
  */
 export async function loadGameStateForBoot(
   loader: () => Promise<GameState | null> = loadGameState,
   timeoutMs = BOOT_LOAD_TIMEOUT_MS,
   attempts = BOOT_OPEN_ATTEMPTS,
+  hooks: BootLoadHooks = {},
 ): Promise<GameState | null> {
   let lastError: unknown = new Error('Loading Becoming state failed.');
+  const presence = hooks.presence ?? databasePresence;
+  const delay = hooks.delay ?? ((ms: number) => new Promise<void>(resolve => {
+    setTimeout(resolve, ms);
+  }));
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const timeout = timeoutAfter(timeoutMs, 'Loading Becoming state timed out.');
     try {
@@ -371,6 +410,8 @@ export async function loadGameStateForBoot(
       // The next attempt must create a new IDB request, never await the same
       // dead promise. A late success from this generation closes itself.
       closeDatabaseConnections();
+      if (await presence() === 'absent') return null;
+      if (attempt < attempts - 1) await delay(bootRetryDelay(attempt));
     } finally {
       timeout.cancel();
     }

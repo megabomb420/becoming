@@ -71,12 +71,23 @@ assert.equal(
   'a missing database must enter the hatch flow',
 );
 assert.equal(
-  await loadGameStateForBoot(() => new Promise(() => undefined), 10).then(
+  await loadGameStateForBoot(() => new Promise(() => undefined), 10, 3, {
+    presence: async () => 'absent',
+    delay: async () => undefined,
+  }),
+  null,
+  'a hung open plus confirmed missing becoming-db must enter the hatch flow',
+);
+assert.equal(
+  await loadGameStateForBoot(() => new Promise(() => undefined), 10, 2, {
+    presence: async () => 'present',
+    delay: async () => undefined,
+  }).then(
     () => 'resolved',
     () => 'rejected',
   ),
   'rejected',
-  'an IndexedDB open that never resolves must leave Loading without becoming a fresh egg',
+  'a hung open while the database still exists must not become an egg',
 );
 
 // The first real IDB open never emits success/error, as observed on the
@@ -104,7 +115,7 @@ const firstOpenStalls = new Proxy(healthyIndexedDB, {
 Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: firstOpenStalls });
 let recoveredAfterRetry: GameState | null;
 try {
-  recoveredAfterRetry = await loadGameStateForBoot(undefined, 10, 2);
+  recoveredAfterRetry = await loadGameStateForBoot(undefined, 10, 2, { delay: async () => undefined });
 } finally {
   Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: healthyIndexedDB });
 }
@@ -113,6 +124,70 @@ assert.ok(recoveredAfterRetry, 'the retry must rehydrate an existing living reco
 assert.equal(recoveredAfterRetry.identity.id, blockedLife.identity.id);
 assert.equal(recoveredAfterRetry.development.hatched, true);
 assert.equal(isHatchableBoot(recoveredAfterRetry), false, 'a slow first open must never become an egg');
+
+closeDatabaseConnections();
+const threeThenLive = createHatchedCreature(createNewCreature('Moth', 9902));
+await saveGameState(threeThenLive);
+closeDatabaseConnections();
+openCalls = 0;
+const firstThreeStall = new Proxy(healthyIndexedDB, {
+  get(target, property) {
+    if (property === 'open') {
+      return (name: string, version?: number) => {
+        openCalls += 1;
+        if (openCalls <= 3) return new FakeIDBOpenDBRequest();
+        return version === undefined ? target.open(name) : target.open(name, version);
+      };
+    }
+    const value = Reflect.get(target, property, target);
+    return typeof value === 'function' ? value.bind(target) : value;
+  },
+});
+Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: firstThreeStall });
+let recoveredAfterBusy: GameState | null;
+try {
+  recoveredAfterBusy = await loadGameStateForBoot(undefined, 10, 4, { delay: async () => undefined, presence: async () => 'present' });
+} finally {
+  Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: healthyIndexedDB });
+}
+assert.ok(openCalls >= 4, 'a busy save must keep issuing new opens instead of parking');
+assert.ok(recoveredAfterBusy, 'leaving the busy screen means the living record rehydrated');
+assert.equal(recoveredAfterBusy.identity.id, threeThenLive.identity.id);
+
+// App treats busy as a round, not a destination: keep calling a new boot until
+// the living record rehydrates. Parking on Try again fails this assertion.
+async function simulateAppBoot(
+  loader: () => Promise<GameState | null>,
+  presence: () => Promise<'present' | 'absent' | 'unknown'> = async () => 'present',
+): Promise<'room' | 'egg'> {
+  for (let round = 0; round < 6; round += 1) {
+    try {
+      const saved = await loadGameStateForBoot(loader, 10, 1, {
+        delay: async () => undefined,
+        presence,
+      });
+      return saved && !isHatchableBoot(saved) ? 'room' : 'egg';
+    } catch {
+      // Same path as App auto-retry / Try again: a new open, not a dead end.
+    }
+  }
+  throw new Error('boot remained on the busy screen');
+}
+let busyRounds = 0;
+assert.equal(
+  await simulateAppBoot(() => {
+    busyRounds += 1;
+    if (busyRounds >= 3) return Promise.resolve(threeThenLive);
+    return new Promise(() => undefined);
+  }),
+  'room',
+  'a reproduced busy/hung open must leave that screen into the same living room',
+);
+assert.equal(
+  await simulateAppBoot(async () => null, async () => 'absent'),
+  'egg',
+  'confirmed missing becoming-db must leave boot into the egg, not stay on Try again',
+);
 
 // A completed reset is the explicit transition back to a truly empty DB.
 await resetAllLocalData();
@@ -134,11 +209,21 @@ const updateEnd = appSource.indexOf('const handleUpdateFailed');
 const updateContract = appSource.slice(updateStart, updateEnd);
 assert.ok(updateStart >= 0 && updateEnd > updateStart, 'App must expose a bounded PWA update preparation path');
 assert.ok(
-  updateContract.indexOf('await saveGameState') < updateContract.indexOf('closeDatabaseConnections()'),
-  'PWA update must save in-memory life before closing IndexedDB',
+  updateContract.indexOf('await saveGameState') >= 0
+  && updateContract.indexOf('releaseDatabaseForReload()') > updateContract.indexOf('await saveGameState'),
+  'PWA update must save in-memory life before releasing IndexedDB for reload',
 );
 assert.match(appSource, /updatingRef\.current\) return/, 'pagehide must not reopen IndexedDB during update reload');
 assert.match(appSource, /onClick=\{\(\) => void runBoot\(\)\}/, 'Try again must run a new boot/open attempt without reloading the same dead page state');
+assert.match(appSource, /closeDatabaseConnections\(\);/, 'Try again / auto-retry must drop the previous hung open before a new attempt');
+assert.match(appSource, /retryTimerRef\.current = setTimeout\(\(\) => \{\s*if \(bootRunRef\.current === run\) void runBoot\(\);/, 'busy boot must auto-retry instead of parking');
+assert.match(appSource, /setBootError\(true\)/);
+assert.match(appSource, /Opening the local save/);
+assert.match(appSource, /The save is still there/);
+assert.doesNotMatch(appSource, /Loading…/);
+assert.doesNotMatch(appSource, /will not open a new egg without a confirmed empty save/);
+assert.doesNotMatch(appSource, /The local save has not opened yet/);
+assert.match(appSource, /releaseDatabaseForReload/);
 
 let deletionRequest: {
   onsuccess: null | (() => void);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, OfflineActivity } from './types';
-import { closeDatabaseConnections, isHatchableBoot, loadGameStateForBoot, resetForNewLife, saveGameState } from './systems/persistence';
+import { closeDatabaseConnections, isHatchableBoot, loadGameStateForBoot, releaseDatabaseForReload, resetForNewLife, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
 import { advanceNeeds } from './systems/needsSystem';
@@ -21,7 +21,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.9';
+const APP_VERSION = '0.12.10';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -31,9 +31,11 @@ function App() {
   const gameStateRef = useRef<GameState | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const needsTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const resettingRef = useRef(false);
   const updatingRef = useRef(false);
   const bootRunRef = useRef(0);
+  const recoveringRef = useRef(false);
   const hasGameState = gameState !== null;
   const weatherMode = gameState?.world.settings.mode;
   const selectedWeatherLocationKey = gameState?.world.settings.location
@@ -46,12 +48,26 @@ function App() {
 
   const runBoot = useCallback(async () => {
     const run = ++bootRunRef.current;
-    setLoading(true);
-    setBootError(false);
+    clearTimeout(retryTimerRef.current);
+    // Try again and auto-retry must not await the previous hung open.
+    closeDatabaseConnections();
     setShowEgg(false);
-    try {
-      const saved = await loadGameStateForBoot();
+    if (!recoveringRef.current) {
+      setBootError(false);
+      setLoading(true);
+    }
+    // Pulse-only opening is finite. After one open budget, keep retrying in
+    // place with Try again visible rather than looking like infinite Loading.
+    const offerRetry = setTimeout(() => {
       if (bootRunRef.current !== run) return;
+      recoveringRef.current = true;
+      setBootError(true);
+    }, 4_000);
+    try {
+      const saved = await loadGameStateForBoot(undefined, 4_000, 3);
+      if (bootRunRef.current !== run) return;
+      recoveringRef.current = false;
+      setBootError(false);
       if (saved && !isHatchableBoot(saved)) {
         // CRITICAL: If the creature has already hatched, never show the egg again.
         // The hatched flag is a permanent lifecycle transition.
@@ -69,20 +85,24 @@ function App() {
         setGameState(ready);
         setShowEgg(false);
       } else {
-        // No living save (fresh install, completed reset, or unhatched save):
-        // reconnect the one existing egg/name flow.
+        // Confirmed empty: missing DB or an unhatched record. Never invent a life.
         gameStateRef.current = null;
         setShowEgg(true);
       }
+      setLoading(false);
     } catch (error) {
       if (bootRunRef.current !== run) return;
-      // Unavailable is not empty. Never let a slow/blocked existing database
-      // become a new egg that could overwrite the living record on retry.
+      // Busy is not empty and not terminal. Keep retrying a fresh open until
+      // the record rehydrates or indexedDB.databases() confirms it is gone.
       console.warn('Becoming could not read local state during boot.', error);
-      gameStateRef.current = null;
+      recoveringRef.current = true;
       setBootError(true);
+      setLoading(false);
+      retryTimerRef.current = setTimeout(() => {
+        if (bootRunRef.current === run) void runBoot();
+      }, 2_000);
     } finally {
-      if (bootRunRef.current === run) setLoading(false);
+      clearTimeout(offerRetry);
     }
   }, []);
 
@@ -90,7 +110,10 @@ function App() {
   // recovery action below calls this same path without reloading the page.
   useEffect(() => {
     void runBoot();
-    return () => { bootRunRef.current += 1; };
+    return () => {
+      bootRunRef.current += 1;
+      clearTimeout(retryTimerRef.current);
+    };
   }, [runBoot]);
 
   // Auto-save
@@ -110,7 +133,7 @@ function App() {
       if (!resettingRef.current && latest?.development.hatched) await saveGameState(latest);
       // The new page must own the next open. pagehide is suppressed while
       // updating so it cannot recreate a connection after this close.
-      closeDatabaseConnections();
+      releaseDatabaseForReload();
     } catch (error) {
       updatingRef.current = false;
       throw error;
@@ -311,28 +334,27 @@ function App() {
     }
   }, []);
 
-  if (loading) {
-    return (
-      <>
-        <div className="h-screen w-screen bg-room-dark flex items-center justify-center">
-          <div className="text-warm-200/40 text-sm font-serif animate-pulse">{detectUiLanguage() === 'pl' ? 'Ładowanie...' : 'Loading...'}</div>
-        </div>
-        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
-      </>
-    );
-  }
-
-  if (bootError) {
+  if (loading || bootError) {
     const polish = detectUiLanguage() === 'pl';
     return (
       <>
         <div className="h-screen w-screen bg-room-dark flex items-center justify-center px-6">
           <div className="max-w-sm text-center font-serif">
-            <p className="text-warm-100/80 text-base">{polish ? 'Lokalny zapis jest nadal zajęty.' : 'The local save is still busy.'}</p>
-            <p className="text-warm-200/50 text-xs mt-2">{polish ? 'Aplikacja nie otworzy jajka bez potwierdzonego pustego zapisu.' : 'The app will not open a new egg without a confirmed empty save.'}</p>
-            <button type="button" onClick={() => void runBoot()} className="mt-5 min-h-11 rounded-xl border border-warm-300/25 bg-warm-300/15 px-5 py-2 text-warm-100 text-xs">
-              {polish ? 'Spróbuj ponownie' : 'Try again'}
-            </button>
+            <p className={`text-warm-100/80 text-base ${bootError ? '' : 'animate-pulse'}`}>
+              {polish ? 'Otwieram lokalny zapis…' : 'Opening the local save…'}
+            </p>
+            {bootError && (
+              <>
+                <p className="text-warm-200/50 text-xs mt-2">
+                  {polish
+                    ? 'Zapis nadal istnieje. Zamykam zajęte połączenia i próbuję ponownie. Zamknij inne karty Becoming, jeśli to trwa.'
+                    : 'The save is still there. Closing busy connections and retrying. Close other Becoming tabs if this continues.'}
+                </p>
+                <button type="button" onClick={() => void runBoot()} className="mt-5 min-h-11 rounded-xl border border-warm-300/25 bg-warm-300/15 px-5 py-2 text-warm-100 text-xs">
+                  {polish ? 'Spróbuj ponownie' : 'Try again'}
+                </button>
+              </>
+            )}
           </div>
         </div>
         <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
