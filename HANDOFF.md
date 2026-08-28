@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.10
+> **Version:** 0.12.11
 > **Last Updated:** 2026-08-28
 
 ---
@@ -131,7 +131,7 @@ becoming/
 | Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
 | Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
-| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; the first room waits for a durable write; migration preserves living identity and placed objects; only a successful empty read or `indexedDB.databases()` confirming `becoming-db` is gone enters hatching. A hung, blocked, or busy open retries a new connection with backoff until the living record rehydrates. Busy is never an egg and never a parked Try again screen |
+| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; the first room waits for a durable write; migration preserves living identity and placed objects; only a successful empty read or `indexedDB.databases()` confirming `becoming-db` is gone enters hatching. A blocked or hung open unregisters/claims the service worker, closes connections, then opens again with backoff. Busy is a few-second opening state, never an egg and never a parked screen |
 | Memory Book | ✅ | Emergent biography from significant memories |
 | Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
@@ -156,7 +156,7 @@ becoming/
 | Creature creations | ✅ | Paper + pencil, box dens, stone keepsakes, and a shared ball game grow into persistent works kept in the room and Memory Book |
 | Private backup | ✅ | Export and restore the complete creature as a validated local JSON file with no login or cloud upload |
 | Polish + English UI | ✅ | Device-aware default plus an explicit two-language switch keeps the room, settings, backup, chat shell, and AI language aligned |
-| Visible PWA updates | ✅ | The bilingual update card confirms the latest living state has reached IndexedDB, closes this page's connections, asks other Becoming tabs to close theirs, suppresses the `pagehide` reopen, and only then asks the service worker to skip waiting and reload; a failed save pauses the update. The next boot retries until Room or a confirmed empty save |
+| Visible PWA updates | ✅ | The bilingual update card confirms the latest living state has reached IndexedDB, unregisters the controlling service worker, closes IndexedDB, then reloads. It does not skipWaiting while a worker can still hold the save. The next boot retries until Room or a confirmed empty save |
 | Life while away | ✅ | Up to 12 absence episodes preserve sleep, exploration, quiet time, and room activity for greetings, memories, and later chat |
 | Touch boundaries | ✅ | Caution, independence, bond, and rapid-touch pressure decide when the creature accepts holding or asks for space |
 | Shared sayings | ✅ | Safe short phrases repeated two or three times can become persistent inside language visible in Memory Book and available to chat |
@@ -581,7 +581,18 @@ Live 0.12.7–0.12.9 after PWA “Update now” progressed through infinite `Loa
 - **Busy is not terminal.** After one open budget the pulse-only opening copy yields Try again while retries continue. Catching a failed boot schedules another `runBoot()` on a timer. Try again increments the boot generation, drops the previous hung promise, and starts a new open. The 0.12.9 dead-end copy is gone.
 - Existing record always wins over timeout. The only egg path is a successful empty read or a confirmed missing database.
 
-The persistence suite now also: hangs the first open while `databases()` reports absent → egg; hangs while the database is still present → reject, not egg; stalls three real opens then recovers the same `identity.id` on the fourth; reproduces busy App-style rounds that must leave that screen into Room; reset → egg, then Ash survives the next boot. App source asserts auto-retry, close-before-retry, `releaseDatabaseForReload` on update, and the absence of `Loading…` / parked busy copy. `npm test && npm run check` pass.
+The persistence suite now also: hangs the first open while `databases()` reports absent → egg; hangs while the database is still present → reject, not egg; stalls three real opens then recovers the same `identity.id` on the fourth; reproduces busy App-style rounds that must leave that screen into Room; reset → egg, then Ash survives the next boot. App source asserts auto-retry, close-before-retry, `releaseDatabaseForReload` on update, and the absence of `Loading…` / parked busy copy. `npm test && npm run check` pass. Live 0.12.10 then proved the retry UI itself was a dead end: one tab after “Update now” stayed on Opening/busy because the service worker still held IndexedDB. v0.12.11 supersedes that recovery.
+
+### v0.12.11 — Release the worker, then open
+
+0.12.10 retried new IndexedDB opens with backoff but never released the controlling service worker. After skipWaiting/reload a single tab could sit on “Opening the local save…” / “The save is still there…” for more than 20 seconds. Try again issued the same hung environment.
+
+0.12.11 keeps hatch → room → care → talk:
+- **Blocked or hung open:** force-claim (`SKIP_WAITING` / `CLIENTS_CLAIM`), unregister the controlling worker, close connections, *then* open. Retry with short backoff.
+- **Update now:** flush the in-memory life, `releaseDatabaseBlockers()`, reload. It does not skipWaiting while a worker can keep IndexedDB blocked.
+- Success + record → Room. `indexedDB.databases()` confirming `becoming-db` is gone → egg. The opening screen lasts at most a few seconds; it is not a terminal state.
+
+The persistence suite holds a second IndexedDB connection (the “other holder”), makes production opens hang until that connection is released by SW unregister, and asserts boot still reaches the living save — or, after reset, the egg. `npm test && npm run check` pass.
 
 ---
 
@@ -607,7 +618,7 @@ The persistence suite now also: hangs the first open while `databases()` reports
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Physical-device replay** — on deployed 0.12.10, replay the visible PWA “Update now” card on the original iPhone profile. The contract is: after update, boot leaves Opening/busy into the existing Room (same life) or a confirmed empty egg, and never parks on Try again. Also live-prove DeepSeek-only bubbles and outdoor visits.
+1. **Physical-device replay** — on deployed 0.12.11, replay the visible PWA “Update now” card on the original iPhone profile. After update, boot must leave Opening into the existing Room (same life) or a confirmed empty egg within a few seconds, without parking on a retry screen. Also live-prove DeepSeek-only bubbles and outdoor visits.
 2. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
 3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
@@ -639,7 +650,7 @@ The persistence suite now also: hangs the first open while `databases()` reports
 - **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak and short outdoor visits reuse that cadence; they do not add a second timer.
 - **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
 - **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, and accidents advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, death, sickness pressure, or manipulative absence mechanics.
-- **Reset is a completed persistence transition, not a navigation trick.** Settings marks reset first, closes or abandons every pending and settled IndexedDB connection, bounds any hung save/open drain, waits for deletion success, and only then reloads. It must not verify by reopening the deleted database, and `pagehide` must not recreate it. Boot is three-valued and must not stop on busy: a readable living save enters Room; a successful empty read or `indexedDB.databases()` confirming `becoming-db` is gone enters EggHatching; a hung, blocked, or timed-out open closes connections and retries a new request until one of those two outcomes. Timeout never means empty. Try again is a new open, never a parked screen.
+- **Reset is a completed persistence transition, not a navigation trick.** Settings marks reset first, closes or abandons every pending and settled IndexedDB connection, bounds any hung save/open drain, waits for deletion success, and only then reloads. It must not verify by reopening the deleted database, and `pagehide` must not recreate it. Boot is three-valued and must not stop on busy: a readable living save enters Room; a successful empty read or `indexedDB.databases()` confirming `becoming-db` is gone enters EggHatching. A hung or blocked open unregisters/claims the service worker, closes connections, then issues a new open until one of those two outcomes. Timeout never means empty. The opening screen is not a destination.
 
 ---
 
