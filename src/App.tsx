@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, OfflineActivity } from './types';
-import { loadGameState, resetAllLocalData, saveGameState } from './systems/persistence';
+import { isHatchableBoot, loadGameState, resetForNewLife, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
 import { advanceNeeds } from './systems/needsSystem';
@@ -21,15 +21,17 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.5';
+const APP_VERSION = '0.12.6';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEgg, setShowEgg] = useState(false);
+  const [bootError, setBootError] = useState(false);
   const gameStateRef = useRef<GameState | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const needsTimerRef = useRef<ReturnType<typeof setInterval>>();
+  const resettingRef = useRef(false);
   const hasGameState = gameState !== null;
   const weatherMode = gameState?.world.settings.mode;
   const selectedWeatherLocationKey = gameState?.world.settings.location
@@ -42,33 +44,44 @@ function App() {
 
   // Load saved state
   useEffect(() => {
-    loadGameState().then(saved => {
-      if (saved) {
+    let cancelled = false;
+    void loadGameState().then(saved => {
+      if (cancelled) return;
+      if (saved && !isHatchableBoot(saved)) {
         // CRITICAL: If the creature has already hatched, never show the egg again.
         // The hatched flag is a permanent lifecycle transition.
-        if (saved.development.hatched) {
-          // Simulate offline time
-          const now = Date.now();
-          const awayMs = now - saved.lastSaved;
-          let returningState = saved;
-          let offlineActivities: OfflineActivity[] = [];
-          if (awayMs > 60000) {
-            const { state: updated, activities } = simulateOfflineTime(saved, awayMs, now);
-            returningState = updated;
-            offlineActivities = activities;
-          }
-          setGameState(registerReturn(returningState, awayMs, now, offlineActivities));
-          setShowEgg(false);
-        } else {
-          // Not yet hatched — show the egg
-          setShowEgg(true);
+        const now = Date.now();
+        const awayMs = now - saved.lastSaved;
+        let returningState = saved;
+        let offlineActivities: OfflineActivity[] = [];
+        if (awayMs > 60000) {
+          const { state: updated, activities } = simulateOfflineTime(saved, awayMs, now);
+          returningState = updated;
+          offlineActivities = activities;
         }
+        const ready = registerReturn(returningState, awayMs, now, offlineActivities);
+        gameStateRef.current = ready;
+        setGameState(ready);
+        setShowEgg(false);
       } else {
-        // No saved state — new game, show egg
+        // No living save (fresh install, completed reset, or unhatched save):
+        // reconnect the one existing egg/name flow.
+        gameStateRef.current = null;
         setShowEgg(true);
       }
+    }).catch(error => {
+      if (cancelled) return;
+      // A failed IndexedDB read must not leave #root on the loading sentinel.
+      // Keep the save untouched and do not expose naming, which could replace
+      // a creature that is merely temporarily unreadable.
+      console.warn('Becoming could not read local state during boot.', error);
+      gameStateRef.current = null;
+      setBootError(true);
+    }).finally(() => {
+      if (cancelled) return;
       setLoading(false);
     });
+    return () => { cancelled = true; };
   }, []);
 
   // Auto-save
@@ -77,6 +90,14 @@ function App() {
     saveTimerRef.current = setTimeout(() => {
       saveGameState(state);
     }, 1000);
+  }, []);
+
+  const flushLatestState = useCallback(async () => {
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = undefined;
+    const latest = gameStateRef.current;
+    if (resettingRef.current || !latest?.development.hatched) return;
+    await saveGameState(latest);
   }, []);
 
   // Open-Meteo is a source, never a gameplay controller. This lifecycle only
@@ -165,6 +186,7 @@ function App() {
   // window where a quick app switch could otherwise lose the last action.
   useEffect(() => {
     const saveLatest = () => {
+      if (resettingRef.current) return;
       const latest = gameStateRef.current;
       if (latest?.development.hatched) void saveGameState(latest);
     };
@@ -235,12 +257,25 @@ function App() {
     saveGameState(hatched);
   }, []);
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
+    const previous = gameStateRef.current;
+    resettingRef.current = true;
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = undefined;
-    void resetAllLocalData().finally(() => {
+    // Prevent pagehide from recreating the just-deleted creature during the
+    // reload that follows a successful reset.
+    gameStateRef.current = null;
+    try {
+      await resetForNewLife();
       window.location.reload();
-    });
+    } catch (error) {
+      resettingRef.current = false;
+      gameStateRef.current = previous;
+      console.warn('Becoming could not complete Start over.', error);
+      window.alert(detectUiLanguage() === 'pl'
+        ? 'Nie udało się zacząć od nowa. Obecny stworek nie został usunięty.'
+        : 'Could not start over. The current creature was not removed.');
+    }
   }, []);
 
   if (loading) {
@@ -249,7 +284,25 @@ function App() {
         <div className="h-screen w-screen bg-room-dark flex items-center justify-center">
           <div className="text-warm-200/40 text-sm font-serif animate-pulse">{detectUiLanguage() === 'pl' ? 'Ładowanie...' : 'Loading...'}</div>
         </div>
-        <PwaUpdateNotice language={detectUiLanguage()} />
+        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={flushLatestState} />
+      </>
+    );
+  }
+
+  if (bootError) {
+    const polish = detectUiLanguage() === 'pl';
+    return (
+      <>
+        <div className="h-screen w-screen bg-room-dark flex items-center justify-center px-6">
+          <div className="max-w-sm text-center font-serif">
+            <p className="text-warm-100/80 text-base">{polish ? 'Nie udało się otworzyć lokalnego zapisu.' : 'The local save could not be opened.'}</p>
+            <p className="text-warm-200/50 text-xs mt-2">{polish ? 'Dane nie zostały usunięte. Spróbuj ponownie wczytać aplikację.' : 'No data was reset. Try loading the app again.'}</p>
+            <button type="button" onClick={() => window.location.reload()} className="mt-5 min-h-11 rounded-xl border border-warm-300/25 bg-warm-300/15 px-5 py-2 text-warm-100 text-xs">
+              {polish ? 'Wczytaj ponownie' : 'Reload'}
+            </button>
+          </div>
+        </div>
+        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={flushLatestState} />
       </>
     );
   }
@@ -260,7 +313,7 @@ function App() {
         <div className="h-screen w-screen">
           <EggHatching onHatch={handleHatch} onNameChosen={handleNameChosen} />
         </div>
-        <PwaUpdateNotice language={detectUiLanguage()} />
+        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={flushLatestState} />
       </>
     );
   }
@@ -278,7 +331,7 @@ function App() {
       <div className="h-screen w-screen overflow-hidden relative">
         <Room state={safeState} onStateChange={handleStateChange} onReset={handleReset} version={APP_VERSION} />
       </div>
-      <PwaUpdateNotice language={uiLanguage(safeState.conversation.language)} />
+      <PwaUpdateNotice language={uiLanguage(safeState.conversation.language)} onBeforeUpdate={flushLatestState} />
     </>
   );
 }

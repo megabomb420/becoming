@@ -2,8 +2,8 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.5
-> **Last Updated:** 2026-08-27
+> **Version:** 0.12.6
+> **Last Updated:** 2026-08-28
 
 ---
 
@@ -115,7 +115,7 @@ becoming/
 | Feature | Status | Notes |
 |---|---|---|
 | PWA installability | ✅ | Manifest, service worker, offline shell, icons |
-| Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` flag prevents regression |
+| Birth / hatching | ✅ | Tap-to-hatch egg, naming; `hatched` prevents regression; a completed Start over returns through this same flow |
 | Creature rendering | ✅ | Canvas-based with breathing, blinking, expressive eyes/ears/tail, and distinct walking, observing, investigating, eating, playing, and settling body language |
 | Readable needs system | ✅ | 9 consistently directed needs (100 settled → 0 urgent), compact room signals, optional descriptive care sheet, body-language cues, and no raw percentages or permanent bars |
 | Hidden personality | ✅ | Seeded traits that now evolve through care, play, touch, exploration, and conversation |
@@ -131,7 +131,7 @@ becoming/
 | Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
 | Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
-| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; migration repairs old saves and retains weather consent, rounded place, cache, stimuli and learned preferences |
+| Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; writes are ordered; migration repairs old saves without lowering a living creature or dropping identity and placed objects |
 | Memory Book | ✅ | Emergent biography from significant memories |
 | Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
@@ -156,7 +156,7 @@ becoming/
 | Creature creations | ✅ | Paper + pencil, box dens, stone keepsakes, and a shared ball game grow into persistent works kept in the room and Memory Book |
 | Private backup | ✅ | Export and restore the complete creature as a validated local JSON file with no login or cloud upload |
 | Polish + English UI | ✅ | Device-aware default plus an explicit two-language switch keeps the room, settings, backup, chat shell, and AI language aligned |
-| Visible PWA updates | ✅ | A bilingual update card replaces silently stale service-worker sessions and preserves all local creature state |
+| Visible PWA updates | ✅ | The bilingual update card confirms the latest living state has reached IndexedDB before asking the service worker to reload; a failed save pauses the update |
 | Life while away | ✅ | Up to 12 absence episodes preserve sleep, exploration, quiet time, and room activity for greetings, memories, and later chat |
 | Touch boundaries | ✅ | Caution, independence, bond, and rapid-touch pressure decide when the creature accepts holding or asks for space |
 | Shared sayings | ✅ | Safe short phrases repeated two or three times can become persistent inside language visible in Memory Book and available to chat |
@@ -523,6 +523,18 @@ A live playtest on 2026-08-27 showed that 0.12.4 still put canned lines in the r
 
 DeepSeek-only bubbles and outdoor visits remain live-verification items until a real save proves them in the room.
 
+### v0.12.6 — Stop-ship persistence and inspect repair
+
+A 2026-08-28 live playtest exposed two data-loss paths in 0.12.5: Start over could resolve a blocked IndexedDB deletion as if it had succeeded and then reload into permanent `Loading…`; a service-worker update could reload before the latest in-memory room state was durably ordered behind older writes. The same pass confirmed that box inspection was grounded but its generic chat micro-reaction visually masked the walk.
+
+0.12.6 repairs the existing paths rather than adding a second boot or interaction system:
+- `saveGameState()` serializes IndexedDB writes. The update card first cancels the debounce, awaits a write of the latest living state, and only then asks the service worker to reload. If that write cannot be confirmed, the update is paused and the bilingual card says so. Its copy no longer promises unconditional preservation.
+- Start over disables the `pagehide` flush, waits for any already-started save, closes the live database, and waits for `deleteDatabase.onsuccess`. `onblocked` is no longer success. The reset contract then opens the database once and proves there is no living save before reload reconnects the existing egg → hatch → name flow.
+- A boot read rejection exits `Loading…` into a bilingual reload error without exposing naming or overwriting the unreadable save.
+- Object inspect uses the same exported approach-target helper as Room object care. Recognised world commands no longer run a competing 2.4-second generic micro-reaction, so `go look in the box` visibly owns notice → walk → react → grounded reply.
+
+Deterministic checks cover a hatched save passing through the same reset contract used by Settings, blocked deletion not resolving early, a 0.12.4/0.12.5-shaped Moth save retaining `hatched`, identity, development and placed stone/ball state after migration, and box inspection selecting a walk target beside the real box. `npm test` and `npm run build` pass. A cloud-browser smoke test could not reach the local Vite address, so a final physical-device replay of the three 2026-08-28 acceptance cases is still recommended after deployment; this is not recorded as iPhone/browser proof.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -547,7 +559,7 @@ DeepSeek-only bubbles and outdoor visits remain live-verification items until a 
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Live-prove DeepSeek-only bubbles and outdoor visits** — replay the Moth save path: load, idle ~60s, PWA update, `go outside and tell me what the weather is like`, `go look in the box`, Settings start-over. Do not mark those rows fully working until the room does them.
+1. **Physical-device replay** — on the deployed 0.12.6 build, load the Moth save, place stone/ball, accept a PWA update, run `go look in the box`, then cancel and complete Settings start-over. Automated contracts cover all three paths, but record the iPhone/browser result separately from the code checks. Also live-prove DeepSeek-only bubbles and outdoor visits.
 2. **Balance paths and weather on real saves** — tune signal speed, weather affinity cadence, hybrid frequency, outdoor-visit cadence, chapters, daily moments, and return greetings after multi-day and multi-season mobile play.
 3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
@@ -579,17 +591,18 @@ DeepSeek-only bubbles and outdoor visits remain live-verification items until a 
 - **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak and short outdoor visits reuse that cadence; they do not add a second timer.
 - **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
 - **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, and accidents advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, death, sickness pressure, or manipulative absence mechanics.
+- **Reset is a completed persistence transition, not a navigation trick.** Settings may reload only after queued writes finish, the live IndexedDB connection closes, deletion reports success, and a confirming load sees no living save. During that reload, `pagehide` must not recreate the deleted creature. Missing state returns to the original EggHatching flow; an IndexedDB read error shows recovery copy and must not expose naming.
 
 ---
 
 ## 9. How to Reset / Start Fresh
 
-In the app, open **Settings**, scroll to **Begin another life / Zacznij inne życie**, and choose **Start over / Zacznij od nowa**. Save a private backup first if the creature may be needed later. Reset clears IndexedDB and reloads the page.
+In the app, open **Settings**, scroll to **Begin another life / Zacznij inne życie**, and choose **Start over / Zacznij od nowa**. Save a private backup first if the creature may be needed later. Cancel changes nothing. Confirming waits for queued writes, closes and deletes `becoming-db`, verifies that no living save remains, suppresses the unload save, then reloads into the existing egg/hatch/name flow. A blocked deletion is not treated as success.
 
 To manually clear from console:
 ```js
-indexedDB.deleteDatabase('becoming-db');
-location.reload();
+const request = indexedDB.deleteDatabase('becoming-db');
+request.onsuccess = () => location.reload();
 ```
 
 ---

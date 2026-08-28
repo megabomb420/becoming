@@ -5,6 +5,7 @@ import { chooseObjectReaction } from '../src/systems/relationshipSystem';
 import { beginConversationTurn } from '../src/systems/conversationSystem';
 import {
   applyWorldObjectReaction,
+  beginWorldObjectApproach,
   beginComeHere,
   groundedWorldReply,
   offerObjectFromInventory,
@@ -99,6 +100,14 @@ assert.deepEqual(parseWorldIntent('go look in the box'), { kind: 'use_object', o
 assert.deepEqual(parseWorldIntent('Look inside the box'), { kind: 'use_object', objectType: 'box' });
 assert.equal(parseWorldIntent('Lubię deszcz za oknem.'), null, 'a weather mention is not automatically a command');
 
+const box = { id: 'box-live', type: 'box' as const, x: 78, y: 68, state: {}, interactions: 0, placedByUser: true, beingUsedByCreature: false };
+const boxRoom = { ...base, position: { x: 24, y: 60 }, roomObjects: [box] };
+const boxApproach = beginWorldObjectApproach(boxRoom, box);
+assert.equal(boxApproach.state.creatureBehavior, 'walking', 'inspect must enter the same walking state as object care');
+assert.equal(boxApproach.state.facing, 'right');
+assert.equal(boxApproach.target.y, box.y);
+assert.ok(Math.abs(boxApproach.target.x - box.x) <= 11, 'inspect walk target must be beside the real box position');
+
 const outdoorNow = NOW + 80_000;
 const weatherLocation = {
   source: 'city' as const,
@@ -181,5 +190,6 @@ assert.doesNotMatch(roomSource, /setTimeout\(\(\) => setSpeech\(null\)/, 'the la
 assert.match(cssSource, /min-height: calc\(7\.25rem \+ env\(safe-area-inset-top\)\)/, 'the mobile header must reserve safe-area space');
 assert.match(roomSource, /beginOutdoorVisit/);
 assert.match(roomSource, /shouldEndOutdoorVisit/);
+assert.match(roomSource, /beginWorldObjectApproach/);
 
 console.log('World action and room-first conversation checks passed.');

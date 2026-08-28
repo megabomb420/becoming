@@ -341,6 +341,28 @@ export function beginComeHere(state: GameState, target: { x: number; y: number }
   };
 }
 
+export function beginWorldObjectApproach(state: GameState, object: RoomObject): {
+  state: GameState;
+  target: { x: number; y: number };
+} {
+  const nearSameX = Math.abs(object.x - state.position.x) < 3;
+  const approachOffset = nearSameX
+    ? (object.x < 50 ? 11 : -11)
+    : (object.x > state.position.x ? -11 : 11);
+  const target = {
+    x: Math.max(12, Math.min(88, object.x + approachOffset)),
+    y: Math.max(48, Math.min(78, object.y)),
+  };
+  return {
+    target,
+    state: {
+      ...state,
+      facing: target.x > state.position.x ? 'right' : target.x < state.position.x ? 'left' : state.facing,
+      creatureBehavior: 'walking',
+    },
+  };
+}
+
 const LABELS: Record<ObjectType, { pl: string; en: string }> = {
   food_bowl: { pl: 'miski', en: 'food bowl' }, water_bowl: { pl: 'wody', en: 'water' },
   litter_box: { pl: 'kuwety', en: 'litter box' }, wash_basin: { pl: 'miski do mycia', en: 'wash basin' },

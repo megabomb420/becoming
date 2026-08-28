@@ -101,6 +101,7 @@ import { isLlmAvailable, requestCreatureReply, shouldCreatureSelfSpeak } from '.
 import {
   applyWorldObjectReaction,
   applyConversationMicroReaction,
+  beginWorldObjectApproach,
   createRoomObject,
   groundedWorldReply,
   offerObjectFromInventory,
@@ -613,11 +614,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     activeObjectRef.current = object.id;
     setIsMoving(false);
     const currentPos = creaturePosRef.current;
-    const nearSameX = Math.abs(object.x - currentPos.x) < 3;
-    const approachOffset = nearSameX
-      ? (object.x < 50 ? 11 : -11)
-      : (object.x > currentPos.x ? -11 : 11);
-    const target = clampToWalkable({ x: object.x + approachOffset, y: object.y });
+    const { target } = beginWorldObjectApproach({ ...currentState, position: currentPos }, object);
     const travelDistance = dist(currentPos, target);
     const travelTime = Math.max(900, Math.min(2600, 650 + travelDistance * 28));
     const noticeDelay = Math.max(380, Math.min(850,
@@ -646,9 +643,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       setCreaturePos(target);
       showCreatureCue({ icon: '→', label: polish ? `idzie do: ${objectLabel(object.type, true)}` : `goes to the ${objectLabel(object.type, false)}`, tone: 'movement' });
       onStateChange(prev => ({
-        ...prev,
-        facing: target.x > prev.position.x ? 'right' : target.x < prev.position.x ? 'left' : prev.facing,
-        creatureBehavior: 'walking',
+        ...beginWorldObjectApproach(prev, object).state,
         currentActivity: polish ? `podchodzi do ${objectLabel(object.type, true)}` : `approaching the ${objectLabel(object.type, false)}`,
       }));
 
@@ -1434,6 +1429,17 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     stateRef.current = turn.state;
     onStateChange(turn.state);
 
+    if (intent) {
+      // The object pipeline owns notice → walk → react. A generic conversation
+      // micro-reaction used to mask its walking body language for 2.4 seconds.
+      clearTimeout(microReactionTimerRef.current);
+      setMicroBehavior(null);
+      setMicroFacing(null);
+      setShowChat(false);
+      runWorldIntent(intent);
+      return;
+    }
+
     const micro = applyConversationMicroReaction(turn.state, text);
     setMicroBehavior(micro.behavior);
     if (micro.object) setMicroFacing(micro.object.x >= creaturePosRef.current.x ? 'right' : 'left');
@@ -1443,12 +1449,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       setMicroBehavior(null);
       setMicroFacing(null);
     }, 2400);
-
-    if (intent) {
-      setShowChat(false);
-      runWorldIntent(intent);
-      return;
-    }
 
     setIsThinking(true);
     setMindState('connecting');

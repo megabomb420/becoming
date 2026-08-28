@@ -170,7 +170,8 @@ assert.doesNotMatch(roomSource, /Quiet here\.|What now\?/);
 assert.match(roomSource, /kind:\s*'self'/, 'rare self-speak must reuse /chat');
 assert.match(roomSource, /groundedWorldReply/);
 assert.match(roomSource, /resetArmed|Really start over|Na pewno zacząć/, 'start-over must show an in-sheet confirm');
-assert.match(readFileSync('src/App.tsx', 'utf8'), /resetAllLocalData|deleteDatabase/);
+assert.match(readFileSync('src/App.tsx', 'utf8'), /resetForNewLife/);
+assert.match(readFileSync('src/systems/persistence.ts', 'utf8'), /deleteDatabase/);
 assert.equal(migrateConversationState({ lastCreatureMessage: 'Quiet here.' }).lastCreatureMessage, null);
 assert.equal(migrateConversationState({ lastCreatureMessage: 'What now?' }).lastCreatureMessage, null);
 

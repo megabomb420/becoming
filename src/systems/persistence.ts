@@ -39,6 +39,7 @@ const SAVE_FORMAT_VERSION = 1;
 const MAX_IMPORT_LENGTH = 2_000_000;
 
 let dbPromise: Promise<IDBPDatabase<BecomingDB>> | null = null;
+let saveQueue: Promise<void> = Promise.resolve();
 
 function getDB(): Promise<IDBPDatabase<BecomingDB>> {
   if (!dbPromise) {
@@ -47,6 +48,16 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
         db.createObjectStore('gameState');
         db.createObjectStore('memoryBook');
         db.createObjectStore('snapshots', { keyPath: 'timestamp' });
+      },
+      blocking(_currentVersion, _blockedVersion, event) {
+        // A reset from this or another open tab must be allowed to finish.
+        // Keeping an old connection alive here leaves deleteDatabase blocked
+        // and the next boot waiting forever for the same database.
+        (event.target as IDBDatabase | null)?.close();
+        dbPromise = null;
+      },
+      terminated() {
+        dbPromise = null;
       },
     });
   }
@@ -254,7 +265,7 @@ export async function loadGameState(): Promise<GameState | null> {
   return migrateGameState(result);
 }
 
-export async function saveGameState(state: GameState): Promise<void> {
+async function writeGameState(state: GameState): Promise<void> {
   const db = await getDB();
   const toSave = { ...state, lastSaved: Date.now() };
   await db.put('gameState', toSave, 'current');
@@ -263,7 +274,24 @@ export async function saveGameState(state: GameState): Promise<void> {
   }
 }
 
-export async function resetAllLocalData(): Promise<void> {
+/**
+ * Serialize writes so an older in-flight save can never finish after a newer
+ * pagehide/update flush and silently restore stale identity or room state.
+ */
+export function saveGameState(state: GameState): Promise<void> {
+  const snapshot = structuredClone(state);
+  const operation = saveQueue.catch(() => undefined).then(() => writeGameState(snapshot));
+  saveQueue = operation;
+  return operation;
+}
+
+type DatabaseDeleter = Pick<IDBFactory, 'deleteDatabase'>;
+
+export async function resetAllLocalData(factory: DatabaseDeleter = indexedDB): Promise<void> {
+  // A save whose debounce already fired cannot be cancelled by App. Let it
+  // finish before closing and deleting the database so it cannot recreate an
+  // old creature after deletion.
+  await saveQueue.catch(() => undefined);
   if (dbPromise) {
     try {
       const db = await dbPromise;
@@ -274,11 +302,39 @@ export async function resetAllLocalData(): Promise<void> {
     dbPromise = null;
   }
   await new Promise<void>((resolve, reject) => {
-    const request = indexedDB.deleteDatabase(DB_NAME);
+    const request = factory.deleteDatabase(DB_NAME);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error ?? new Error('Could not clear local Becoming data.'));
-    request.onblocked = () => resolve();
+    request.onblocked = () => {
+      // This is progress information, not success. Reloading here races the
+      // pending deletion with the next openDB call and can strand boot on
+      // Loading forever. Open v0.12.6 tabs close via getDB.blocking above;
+      // otherwise the request remains pending until the old tab is closed.
+      console.warn('Becoming reset is waiting for another open tab to release IndexedDB.');
+    };
   });
+}
+
+export function isHatchableBoot(state: GameState | null): boolean {
+  return state === null || state.development.hatched === false;
+}
+
+interface NewLifePersistence {
+  load: () => Promise<GameState | null>;
+  reset: () => Promise<void>;
+}
+
+/**
+ * Contract used by Settings: deletion is complete and a new load sees no
+ * living save before App is allowed to reload into the existing hatch flow.
+ */
+export async function resetForNewLife(store?: NewLifePersistence): Promise<void> {
+  const persistence = store ?? { load: loadGameState, reset: resetAllLocalData };
+  await persistence.reset();
+  const remaining = await persistence.load();
+  if (!isHatchableBoot(remaining)) {
+    throw new Error('Becoming local data was not fully cleared.');
+  }
 }
 
 export async function loadMemoryBook(): Promise<MemoryBookEntry[]> {
