@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
 import { chooseObjectReaction } from '../src/systems/relationshipSystem';
-import { beginConversationTurn } from '../src/systems/conversationSystem';
+import { beginConversationTurn, getSleepingTalkReply, isCannedRoomSpeech } from '../src/systems/conversationSystem';
 import {
   applyWorldObjectReaction,
   beginWorldObjectApproach,
@@ -232,8 +232,28 @@ assert.match(roomSource, /beginWorldObjectApproach/);
 assert.doesNotMatch(roomSource, /Put creature to sleep/);
 assert.doesNotMatch(roomSource, /handleSleepToggle/);
 assert.match(roomSource, /settleIfSleepy/);
+assert.match(roomSource, /getSleepingTalkReply/, 'talk must not call DeepSeek while they sleep');
+const sendStart = roomSource.indexOf('const sendConversationMessage');
+const sendBody = roomSource.slice(sendStart, roomSource.indexOf('const handleRoomSubmit'));
+assert.ok(sendBody.includes('getSleepingTalkReply'), 'the send path must check sleep before the mind');
+assert.ok(
+  sendBody.indexOf('getSleepingTalkReply') < sendBody.indexOf('requestCreatureReply(turn.state)'),
+  'a sleeping murmur must happen before any mind request',
+);
+
+const sleeper = {
+  ...base,
+  sleepState: 'sleeping' as const,
+  conversation: { ...base.conversation, language: 'pl' as const },
+};
+assert.match(getSleepingTalkReply(sleeper) || '', /śnie/i);
+assert.equal(getSleepingTalkReply({ ...sleeper, sleepState: 'awake' }), null);
+assert.equal(isCannedRoomSpeech(getSleepingTalkReply(sleeper)), false, 'a rest murmur is not stripped canned idle');
+assert.equal(getSleepingTalkReply({ ...sleeper, conversation: { ...sleeper.conversation, language: 'en' } }), 'Mmm. I am in my rest.');
 const weatherLayer = readFileSync('src/components/WeatherLayer.tsx', 'utf8');
 assert.match(weatherLayer, /expanded/);
 assert.match(weatherLayer, /!expanded && \(/);
+const chatSource = readFileSync('src/components/ChatInterface.tsx', 'utf8');
+assert.match(chatSource, /state\.sleepState === 'sleeping'/, 'opening chat must not greet while they sleep');
 
 console.log('World action and room-first conversation checks passed.');

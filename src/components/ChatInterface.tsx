@@ -68,6 +68,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
+    if (state.sleepState === 'sleeping') return;
     if (initRef.current) return;
     initRef.current = true;
     const opening = initialMessage || (messages.length === 0 ? getConversationOpening(state) : null);
@@ -79,7 +80,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       window.clearTimeout(timer);
       initRef.current = false;
     };
-  }, [initialMessage, onStateChange]);
+  }, [initialMessage, onStateChange, state.sleepState]);
 
   const handleSend = async () => {
     if (!input.trim() || isThinking) return;

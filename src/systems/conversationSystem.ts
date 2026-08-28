@@ -45,6 +45,14 @@ export function isCannedRoomSpeech(text: string | null | undefined): boolean {
     || /^(it is quiet today|cicho tu dzisiaj)[.?!]?$/i.test(trimmed);
 }
 
+/** They are not a night-shift chatbot. Talk waits until they wake. */
+export function getSleepingTalkReply(state: GameState): string | null {
+  if (state.sleepState !== 'sleeping') return null;
+  return state.conversation.language === 'pl'
+    ? 'Mmm. Jestem w swoim śnie.'
+    : 'Mmm. I am in my rest.';
+}
+
 export function migrateConversationState(value?: Partial<ConversationState> | null): ConversationState {
   const fallback = createConversationState();
   if (!value) return fallback;

@@ -102,7 +102,7 @@ import {
   wantsOutdoors,
   WINDOW_PLACE,
 } from '../systems/environmentSystem';
-import { appendCreatureMessage, beginConversationTurn } from '../systems/conversationSystem';
+import { appendCreatureMessage, beginConversationTurn, getSleepingTalkReply } from '../systems/conversationSystem';
 import { isLlmAvailable, requestCreatureReply, shouldCreatureSelfSpeak } from '../systems/llmConversation';
 import {
   applyWorldObjectReaction,
@@ -1468,11 +1468,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     if (!text || isThinking) return;
 
     const intent = parseWorldIntent(text);
-    const turn = beginConversationTurn(stateRef.current, text, Date.now(), { worldAction: Boolean(intent) });
-    stateRef.current = turn.state;
-    onStateChange(turn.state);
-
     if (intent) {
+      const turn = beginConversationTurn(stateRef.current, text, Date.now(), { worldAction: true });
+      stateRef.current = turn.state;
+      onStateChange(turn.state);
       // The object pipeline owns notice → walk → react. A generic conversation
       // micro-reaction used to mask its walking body language for 2.4 seconds.
       clearTimeout(microReactionTimerRef.current);
@@ -1482,6 +1481,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       runWorldIntent(intent);
       return;
     }
+
+    const sleepingReply = getSleepingTalkReply(stateRef.current);
+    if (sleepingReply) {
+      // Words do not steal their night. Touch and "wake up" still can.
+      setShowChat(false);
+      triggerSpeech(sleepingReply, false);
+      return;
+    }
+
+    const turn = beginConversationTurn(stateRef.current, text, Date.now());
+    stateRef.current = turn.state;
+    onStateChange(turn.state);
 
     const micro = applyConversationMicroReaction(turn.state, text);
     setMicroBehavior(micro.behavior);
