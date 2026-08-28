@@ -13,6 +13,7 @@ const PwaUpdateNotice: React.FC<PwaUpdateNoticeProps> = ({ language, onBeforeUpd
   const [updateError, setUpdateError] = React.useState(false);
   const {
     needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
   } = useRegisterSW({
     immediate: true,
     onRegisterError: error => console.warn('PWA update check failed.', error),
@@ -26,10 +27,7 @@ const PwaUpdateNotice: React.FC<PwaUpdateNoticeProps> = ({ language, onBeforeUpd
     setUpdateError(false);
     try {
       await onBeforeUpdate?.();
-      // Do not skipWaiting here: a controlling worker can keep IndexedDB
-      // blocked across that reload. Unregister already ran; a plain reload
-      // opens the save without that lock.
-      window.location.reload();
+      await updateServiceWorker(true);
     } catch (error) {
       console.warn('PWA update could not safely reload.', error);
       onUpdateFailed?.();

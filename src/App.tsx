@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameState, OfflineActivity } from './types';
-import { closeDatabaseConnections, isHatchableBoot, loadGameStateForBoot, releaseDatabaseBlockers, resetForNewLife, saveGameState } from './systems/persistence';
+import { closeDatabaseConnections, closeDatabaseForReload, isHatchableBoot, loadGameStateForBoot, resetForNewLife, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
 import { advanceNeeds } from './systems/needsSystem';
@@ -21,7 +21,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.11';
+const APP_VERSION = '0.12.12';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -49,22 +49,20 @@ function App() {
   const runBoot = useCallback(async () => {
     const run = ++bootRunRef.current;
     clearTimeout(retryTimerRef.current);
-    // Try again and auto-retry must not await the previous hung open.
-    closeDatabaseConnections();
+    // Do not close or re-open IndexedDB here. Chrome queues a second open
+    // behind a still-pending first request and never delivers either.
     setShowEgg(false);
     if (!recoveringRef.current) {
       setBootError(false);
       setLoading(true);
     }
-    // Pulse-only opening is finite. After one open budget, keep retrying in
-    // place with Try again visible rather than looking like infinite Loading.
     const offerRetry = setTimeout(() => {
       if (bootRunRef.current !== run) return;
       recoveringRef.current = true;
       setBootError(true);
     }, 2_000);
     try {
-      const saved = await loadGameStateForBoot(undefined, 2_000, 6);
+      const saved = await loadGameStateForBoot(undefined, 2_000, 4);
       if (bootRunRef.current !== run) return;
       recoveringRef.current = false;
       setBootError(false);
@@ -92,8 +90,6 @@ function App() {
       setLoading(false);
     } catch (error) {
       if (bootRunRef.current !== run) return;
-      // Busy is not empty and not terminal. Keep retrying a fresh open until
-      // the record rehydrates or indexedDB.databases() confirms it is gone.
       console.warn('Becoming could not read local state during boot.', error);
       recoveringRef.current = true;
       setBootError(true);
@@ -131,9 +127,9 @@ function App() {
     const latest = gameStateRef.current;
     try {
       if (!resettingRef.current && latest?.development.hatched) await saveGameState(latest);
-      // Drop the controlling SW before reload so skipWaiting cannot keep
-      // IndexedDB blocked on the next boot.
-      await releaseDatabaseBlockers();
+      // Chrome hangs if the next document opens becoming-db while this
+      // connection is still closing. Wait for close, then reload.
+      await closeDatabaseForReload();
     } catch (error) {
       updatingRef.current = false;
       throw error;
@@ -347,8 +343,8 @@ function App() {
               <>
                 <p className="text-warm-200/50 text-xs mt-2">
                   {polish
-                    ? 'Zwalniam blokadę zapisu i otwieram ponownie.'
-                    : 'Releasing the save lock and opening again.'}
+                    ? 'Czekam na ten sam zapis — bez drugiego otwarcia.'
+                    : 'Waiting on the same save — not a second open.'}
                 </p>
                 <button type="button" onClick={() => void runBoot()} className="mt-5 min-h-11 rounded-xl border border-warm-300/25 bg-warm-300/15 px-5 py-2 text-warm-100 text-xs">
                   {polish ? 'Spróbuj ponownie' : 'Try again'}
@@ -357,7 +353,6 @@ function App() {
             )}
           </div>
         </div>
-        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
       </>
     );
   }

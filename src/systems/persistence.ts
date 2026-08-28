@@ -40,12 +40,12 @@ const MAX_IMPORT_LENGTH = 2_000_000;
 const DB_OPEN_TIMEOUT_MS = 2_000;
 const BOOT_LOAD_TIMEOUT_MS = 2_000;
 const BOOT_OPEN_ATTEMPTS = 8;
+const CLOSE_WAIT_MS = 200;
 
 let dbPromise: Promise<IDBPDatabase<BecomingDB>> | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
 let resetInProgress = false;
 const openConnections = new Set<IDBPDatabase<BecomingDB>>();
-let pendingOpen: { abandoned: boolean; cancelDeadline: () => void } | null = null;
 
 const lifecycleChannel = typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined'
   ? new BroadcastChannel('becoming-db-lifecycle')
@@ -56,66 +56,40 @@ function closeSettledDatabaseConnections(): void {
   openConnections.clear();
 }
 
-function abandonLocalDatabaseOpens(): void {
-  if (pendingOpen) {
-    pendingOpen.abandoned = true;
-    pendingOpen.cancelDeadline();
-    pendingOpen = null;
-  }
+export function closeDatabaseConnections(): void {
   closeSettledDatabaseConnections();
   dbPromise = null;
 }
 
-export function closeDatabaseConnections(): void {
-  abandonLocalDatabaseOpens();
-}
-
-/** Close this page's IDB handles and ask other Becoming tabs to do the same. */
-export function releaseDatabaseForReload(): void {
-  abandonLocalDatabaseOpens();
-  lifecycleChannel?.postMessage('close-connections');
-}
-
 /**
- * A controlling service worker can keep IndexedDB blocked across skipWaiting
- * and reload. Force-claim, then unregister, so the next open is not waiting
- * on that worker. No-ops where service workers do not exist.
+ * Chrome queues IndexedDB opens. Closing and immediately opening (or reloading
+ * into an open) hangs. Wait for the close event, then a short gap, before the
+ * next document may open becoming-db.
  */
-export async function releaseControllingServiceWorker(): Promise<void> {
-  const container = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined;
-  if (!container || typeof container.getRegistration !== 'function') return;
-  const timeout = timeoutAfter(1_200, 'Releasing the service worker timed out.');
-  try {
-    const registration = await Promise.race([
-      Promise.resolve(container.getRegistration()),
-      timeout.promise,
-    ]);
-    if (!registration) return;
-    const skip = { type: 'SKIP_WAITING' };
-    try { registration.waiting?.postMessage(skip); } catch { /* ignore */ }
-    try { registration.active?.postMessage({ type: 'CLIENTS_CLAIM' }); } catch { /* ignore */ }
-    try { container.controller?.postMessage(skip); } catch { /* ignore */ }
-    await Promise.race([
-      Promise.resolve(registration.unregister()),
-      timeout.promise,
-    ]).catch(() => undefined);
-  } catch {
-    // IndexedDB open still proceeds; a missing worker is not a failed boot.
-  } finally {
-    timeout.cancel();
-  }
-}
-
-/** Unregister/claim the SW, then close IDB. Call this before a retry open. */
-export async function releaseDatabaseBlockers(): Promise<void> {
-  await releaseControllingServiceWorker();
-  abandonLocalDatabaseOpens();
+export async function closeDatabaseForReload(): Promise<void> {
+  const closing = [...openConnections].map(db => new Promise<void>(resolve => {
+    const timer = setTimeout(resolve, CLOSE_WAIT_MS);
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    try {
+      db.addEventListener('close', done, { once: true });
+      db.close();
+    } catch {
+      done();
+    }
+  }));
+  openConnections.clear();
+  dbPromise = null;
   lifecycleChannel?.postMessage('close-connections');
+  await Promise.all(closing);
+  await new Promise<void>(resolve => setTimeout(resolve, 50));
 }
 
 if (lifecycleChannel) {
   lifecycleChannel.onmessage = event => {
-    if (event.data === 'close-connections') abandonLocalDatabaseOpens();
+    if (event.data === 'close-connections') closeDatabaseConnections();
   };
 }
 
@@ -146,9 +120,8 @@ function timeoutAfter(ms: number, message: string): { promise: Promise<never>; c
 
 function getDB(): Promise<IDBPDatabase<BecomingDB>> {
   if (!dbPromise) {
-    const timeout = timeoutAfter(DB_OPEN_TIMEOUT_MS, 'Opening Becoming IndexedDB timed out.');
-    const thisOpen = { abandoned: false, cancelDeadline: timeout.cancel };
-    pendingOpen = thisOpen;
+    // Chrome cannot abort IDBOpenDBRequest. Timing this out and calling open()
+    // again queues a second request behind the first forever. One open only.
     const opening = openDB<BecomingDB>(DB_NAME, DB_VERSION, {
       upgrade(db) {
         // A half-created v1 database is recoverable. Only create stores that
@@ -158,56 +131,30 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
         if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots', { keyPath: 'timestamp' });
       },
       blocked() {
-        // Do not abandon this in-flight open. Release the holder (SW / other
-        // tab), then let this request complete once that connection drops.
         console.warn('Opening Becoming IndexedDB is waiting for another connection.');
         closeSettledDatabaseConnections();
         lifecycleChannel?.postMessage('close-connections');
-        void releaseControllingServiceWorker();
       },
       blocking(_currentVersion, _blockedVersion, event) {
-        // A reset from this or another open tab must be allowed to finish.
-        // Keeping an old connection alive here leaves deleteDatabase blocked
-        // and the next boot waiting forever for the same database.
         (event.target as IDBDatabase | null)?.close();
-        // `blocking` is idb's versionchange handler. Any cached wrapper for
-        // this one database is stale once a version change/delete begins.
-        closeDatabaseConnections();
+        closeSettledDatabaseConnections();
+        dbPromise = null;
       },
       terminated() {
         dbPromise = null;
       },
     });
-
-    const openDeadline = timeout.promise.catch(error => {
-      thisOpen.abandoned = true;
-      if (pendingOpen === thisOpen) pendingOpen = null;
-      throw error;
+    const attempt = opening.then(db => {
+      if (resetInProgress) {
+        db.close();
+        throw new Error('Becoming IndexedDB open was superseded.');
+      }
+      openConnections.add(db);
+      return db;
     });
-    const attempt = Promise.race([opening, openDeadline])
-      .then(db => {
-        if (resetInProgress || thisOpen.abandoned) {
-          db.close();
-          throw new Error('Becoming IndexedDB open was superseded.');
-        }
-        if (pendingOpen === thisOpen) pendingOpen = null;
-        openConnections.add(db);
-        return db;
-      })
-      .finally(() => timeout.cancel());
-
     dbPromise = attempt;
     void attempt.catch(() => {
       if (dbPromise === attempt) dbPromise = null;
-    });
-    void opening.then(db => {
-      if (resetInProgress || thisOpen.abandoned) {
-        db.close();
-        openConnections.delete(db);
-      }
-    }).catch(() => {
-      if (dbPromise === attempt) dbPromise = null;
-      if (pendingOpen === thisOpen) pendingOpen = null;
     });
   }
   return dbPromise;
@@ -414,10 +361,55 @@ export async function loadGameState(): Promise<GameState | null> {
   return migrateGameState(result);
 }
 
+/** Read becoming-db from a dedicated worker so a hung main-thread open is not the only client. */
+export async function readGameStateFromWorker(): Promise<GameState | null | undefined> {
+  if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') {
+    return undefined;
+  }
+  const source = `self.onmessage=function(){var req=indexedDB.open(${JSON.stringify(DB_NAME)});var t=setTimeout(function(){self.postMessage({t:1});self.close()},1500);req.onerror=function(){clearTimeout(t);self.postMessage({e:1});self.close()};req.onsuccess=function(){var db=req.result;if(!db.objectStoreNames.contains('gameState')){clearTimeout(t);db.close();self.postMessage({n:1});self.close();return}var g=db.transaction('gameState','readonly').objectStore('gameState').get('current');g.onsuccess=function(){clearTimeout(t);self.postMessage({s:g.result||null});db.close();self.close()};g.onerror=function(){clearTimeout(t);self.postMessage({e:1});db.close();self.close()}}};`;
+  return new Promise(resolve => {
+    let worker: Worker;
+    try {
+      worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
+    } catch {
+      resolve(undefined);
+      return;
+    }
+    const kill = setTimeout(() => {
+      try { worker.terminate(); } catch { /* ignore */ }
+      resolve(undefined);
+    }, 2_000);
+    worker.onmessage = event => {
+      clearTimeout(kill);
+      try { worker.terminate(); } catch { /* ignore */ }
+      const data = event.data as { t?: number; e?: number; n?: number; s?: GameState | null };
+      if (data.t || data.e) {
+        resolve(undefined);
+        return;
+      }
+      if (data.n || data.s == null) {
+        resolve(null);
+        return;
+      }
+      try {
+        resolve(migrateGameState(data.s));
+      } catch {
+        resolve(undefined);
+      }
+    };
+    worker.onerror = () => {
+      clearTimeout(kill);
+      try { worker.terminate(); } catch { /* ignore */ }
+      resolve(undefined);
+    };
+    worker.postMessage('open');
+  });
+}
+
 export interface BootLoadHooks {
   delay?: (ms: number) => Promise<void>;
   presence?: () => Promise<'present' | 'absent' | 'unknown'>;
-  releaseBlocker?: () => Promise<void>;
+  readFallback?: () => Promise<GameState | null | undefined>;
 }
 
 function bootRetryDelay(attempt: number): number {
@@ -425,11 +417,10 @@ function bootRetryDelay(attempt: number): number {
 }
 
 /**
- * Boot retries until a read succeeds or indexedDB.databases() confirms the
- * Becoming database is gone. A timeout is never treated as an empty save, and
- * it is never a reason to invent an egg while the record may still exist.
- * A blocked/hung open releases the service worker and other connections
- * before the next open.
+ * Start one read and keep it. A timeout is UI-only: Chrome's IDB open queue
+ * poisons if we abandon that request and call open() again. Confirmed missing
+ * becoming-db becomes an egg. A fallback reader may return the record while
+ * the original open is still pending. Timeout never becomes an empty save.
  */
 export async function loadGameStateForBoot(
   loader: () => Promise<GameState | null> = loadGameState,
@@ -442,16 +433,25 @@ export async function loadGameStateForBoot(
   const delay = hooks.delay ?? ((ms: number) => new Promise<void>(resolve => {
     setTimeout(resolve, ms);
   }));
-  const releaseBlocker = hooks.releaseBlocker ?? releaseDatabaseBlockers;
+  const readFallback = Object.prototype.hasOwnProperty.call(hooks, 'readFallback')
+    ? hooks.readFallback
+    : readGameStateFromWorker;
+  const load = loader();
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const timeout = timeoutAfter(timeoutMs, 'Loading Becoming state timed out.');
     try {
-      return await Promise.race([loader(), timeout.promise]);
+      return await Promise.race([load, timeout.promise]);
     } catch (error) {
       lastError = error;
-      // SW first, then close, then a new open. Never await the hung promise.
-      await releaseBlocker();
       if (await presence() === 'absent') return null;
+      if (readFallback) {
+        try {
+          const fallback = await readFallback();
+          if (fallback !== undefined) return fallback;
+        } catch {
+          // Keep waiting on the original open.
+        }
+      }
       if (attempt < attempts - 1) await delay(bootRetryDelay(attempt));
     } finally {
       timeout.cancel();
