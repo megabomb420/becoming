@@ -3,13 +3,15 @@ import { detectUiLanguage, uiText } from '../systems/uiLanguage';
 
 interface EggHatchingProps {
   onHatch: () => void;
-  onNameChosen: (name: string) => void;
+  onNameChosen: (name: string) => Promise<void>;
 }
 
 const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
   const [stage, setStage] = useState<'egg' | 'wobbling' | 'cracking' | 'hatched' | 'naming'>('egg');
   const [tapCount, setTapCount] = useState(0);
   const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const submittedRef = useRef(false);
   const ui = useMemo(() => detectUiLanguage(), []);
   const t = (english: string, polish: string) => uiText(ui, english, polish);
@@ -49,13 +51,22 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
     }
   };
 
-  const handleSubmitName = () => {
+  const handleSubmitName = async () => {
     if (submittedRef.current) return;
     const trimmed = name.trim();
     if (!trimmed) return;
     submittedRef.current = true;
-    onNameChosen(trimmed);
-    onHatch();
+    setSaving(true);
+    setSaveError(false);
+    try {
+      await onNameChosen(trimmed);
+      onHatch();
+    } catch (error) {
+      console.warn('Becoming could not persist the newly hatched creature.', error);
+      submittedRef.current = false;
+      setSaveError(true);
+      setSaving(false);
+    }
   };
 
   const hint = stage === 'egg'
@@ -129,14 +140,18 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
             maxLength={12}
             className="mt-7 min-h-12 w-full bg-[#252a20]/62 border border-white/10 rounded-2xl px-4 py-3 text-[#ece8da] text-center text-lg font-serif placeholder:text-[#d8d2bf]/48 focus:outline-none focus:border-[#c7a66c]/45"
             autoFocus
-            onKeyDown={event => event.key === 'Enter' && handleSubmitName()}
+            disabled={saving}
+            onKeyDown={event => event.key === 'Enter' && void handleSubmitName()}
           />
+          {saveError && (
+            <p className="mt-3 text-xs text-[#d9b7a6]">{t('This life could not be saved yet. Try again.', 'Nie udało się jeszcze zapisać tego życia. Spróbuj ponownie.')}</p>
+          )}
           <button
-            onClick={handleSubmitName}
-            disabled={!name.trim()}
+            onClick={() => void handleSubmitName()}
+            disabled={!name.trim() || saving}
             className="mt-3 min-h-12 w-full rounded-2xl bg-[#ece8da] text-[#171913] text-sm font-serif disabled:opacity-25 active:scale-[.98] transition-transform"
           >
-            {t('Meet them', 'Poznajcie się')}
+            {saving ? t('Keeping this life…', 'Zapisuję to życie…') : t('Meet them', 'Poznajcie się')}
           </button>
         </section>
       )}

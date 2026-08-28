@@ -21,12 +21,13 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.7';
+const APP_VERSION = '0.12.8';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEgg, setShowEgg] = useState(false);
+  const [bootError, setBootError] = useState(false);
   const gameStateRef = useRef<GameState | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const needsTimerRef = useRef<ReturnType<typeof setInterval>>();
@@ -68,6 +69,13 @@ function App() {
         gameStateRef.current = null;
         setShowEgg(true);
       }
+    }).catch(error => {
+      if (cancelled) return;
+      // Unavailable is not empty. Never let a slow/blocked existing database
+      // become a new egg that could overwrite the living record on retry.
+      console.warn('Becoming could not read local state during boot.', error);
+      gameStateRef.current = null;
+      setBootError(true);
     }).finally(() => {
       if (cancelled) return;
       setLoading(false);
@@ -237,15 +245,17 @@ function App() {
     setShowEgg(false);
   }, []);
 
-  const handleNameChosen = useCallback((name: string) => {
+  const handleNameChosen = useCallback(async (name: string) => {
     const creature = createNewCreature(name);
     const hatched = createHatchedCreature({
       ...creature,
       conversation: { ...creature.conversation, language: detectUiLanguage() },
     });
+    // The first room is proof of a durable life, not optimistic UI. If the
+    // write cannot complete, EggHatching stays mounted and offers a retry.
+    await saveGameState(hatched);
     gameStateRef.current = hatched;
     setGameState(hatched);
-    saveGameState(hatched);
   }, []);
 
   const handleReset = useCallback(async () => {
@@ -274,6 +284,24 @@ function App() {
       <>
         <div className="h-screen w-screen bg-room-dark flex items-center justify-center">
           <div className="text-warm-200/40 text-sm font-serif animate-pulse">{detectUiLanguage() === 'pl' ? 'Ładowanie...' : 'Loading...'}</div>
+        </div>
+        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={flushLatestState} />
+      </>
+    );
+  }
+
+  if (bootError) {
+    const polish = detectUiLanguage() === 'pl';
+    return (
+      <>
+        <div className="h-screen w-screen bg-room-dark flex items-center justify-center px-6">
+          <div className="max-w-sm text-center font-serif">
+            <p className="text-warm-100/80 text-base">{polish ? 'Lokalny zapis jeszcze się nie otworzył.' : 'The local save has not opened yet.'}</p>
+            <p className="text-warm-200/50 text-xs mt-2">{polish ? 'Istniejące życie nie zostało zastąpione. Spróbuj ponownie.' : 'The existing life was not replaced. Try again.'}</p>
+            <button type="button" onClick={() => window.location.reload()} className="mt-5 min-h-11 rounded-xl border border-warm-300/25 bg-warm-300/15 px-5 py-2 text-warm-100 text-xs">
+              {polish ? 'Spróbuj ponownie' : 'Try again'}
+            </button>
+          </div>
         </div>
         <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={flushLatestState} />
       </>

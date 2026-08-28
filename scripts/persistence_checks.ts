@@ -1,11 +1,14 @@
+import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
 import {
+  closeDatabaseConnections,
   isHatchableBoot,
   loadGameStateForBoot,
   migrateGameState,
   resetAllLocalData,
   resetForNewLife,
+  saveGameState,
 } from '../src/systems/persistence';
 import { GameState } from '../src/types';
 
@@ -66,10 +69,22 @@ assert.equal(
   'a missing database must enter the hatch flow',
 );
 assert.equal(
-  isHatchableBoot(await loadGameStateForBoot(() => new Promise(() => undefined), 10)),
-  true,
-  'an IndexedDB open that never resolves must not stall boot',
+  await loadGameStateForBoot(() => new Promise(() => undefined), 10).then(
+    () => 'resolved',
+    () => 'rejected',
+  ),
+  'rejected',
+  'an IndexedDB open that never resolves must leave Loading without becoming a fresh egg',
 );
+
+const ash = createHatchedCreature(createNewCreature('Ash', 8128));
+await saveGameState(ash);
+closeDatabaseConnections();
+const ashAfterReload = await loadGameStateForBoot(undefined, 100);
+assert.ok(ashAfterReload, 'a durably saved hatch must exist on the next boot');
+assert.equal(ashAfterReload.development.hatched, true, 'reload must keep the hatch transition');
+assert.equal(ashAfterReload.identity.id, ash.identity.id, 'reload must keep the same creature identity');
+assert.equal(ashAfterReload.identity.name, 'Ash', 'reload must return to Ash rather than a new egg');
 
 let deletionRequest: {
   onsuccess: null | (() => void);

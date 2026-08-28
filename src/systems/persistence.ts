@@ -37,13 +37,19 @@ const BASE_INVENTORY: ObjectType[] = [
 const SAVE_FORMAT = 'becoming-save';
 const SAVE_FORMAT_VERSION = 1;
 const MAX_IMPORT_LENGTH = 2_000_000;
-const DB_OPEN_TIMEOUT_MS = 2_500;
-const BOOT_LOAD_TIMEOUT_MS = 4_000;
+const DB_OPEN_TIMEOUT_MS = 8_000;
+const BOOT_LOAD_TIMEOUT_MS = 10_000;
 
 let dbPromise: Promise<IDBPDatabase<BecomingDB>> | null = null;
 let saveQueue: Promise<void> = Promise.resolve();
 let resetInProgress = false;
 const openConnections = new Set<IDBPDatabase<BecomingDB>>();
+
+export function closeDatabaseConnections(): void {
+  for (const db of openConnections) db.close();
+  openConnections.clear();
+  dbPromise = null;
+}
 
 function timeoutAfter(ms: number, message: string): { promise: Promise<never>; cancel: () => void } {
   let timer: ReturnType<typeof setTimeout>;
@@ -57,9 +63,7 @@ function timeoutAfter(ms: number, message: string): { promise: Promise<never>; c
 
 function getDB(): Promise<IDBPDatabase<BecomingDB>> {
   if (!dbPromise) {
-    let abandoned = false;
-    let rejectBlocked: (error: Error) => void = () => undefined;
-    const blocked = new Promise<never>((_, reject) => { rejectBlocked = reject; });
+    let openTimedOut = false;
     const timeout = timeoutAfter(DB_OPEN_TIMEOUT_MS, 'Opening Becoming IndexedDB timed out.');
     const opening = openDB<BecomingDB>(DB_NAME, DB_VERSION, {
       upgrade(db) {
@@ -70,7 +74,10 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
         if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots', { keyPath: 'timestamp' });
       },
       blocked() {
-        rejectBlocked(new Error('Opening Becoming IndexedDB was blocked by another connection.'));
+        // A blocked open can still succeed as soon as the previous page
+        // releases its version. Keep waiting up to the finite boot deadline;
+        // treating this event as an empty database can replace a living save.
+        console.warn('Opening Becoming IndexedDB is waiting for another connection.');
       },
       blocking(_currentVersion, _blockedVersion, event) {
         // A reset from this or another open tab must be allowed to finish.
@@ -79,18 +86,20 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
         (event.target as IDBDatabase | null)?.close();
         // `blocking` is idb's versionchange handler. Any cached wrapper for
         // this one database is stale once a version change/delete begins.
-        for (const connection of openConnections) connection.close();
-        openConnections.clear();
-        dbPromise = null;
+        closeDatabaseConnections();
       },
       terminated() {
         dbPromise = null;
       },
     });
 
-    const attempt = Promise.race([opening, blocked, timeout.promise])
+    const openDeadline = timeout.promise.catch(error => {
+      openTimedOut = true;
+      throw error;
+    });
+    const attempt = Promise.race([opening, openDeadline])
       .then(db => {
-        if (resetInProgress || abandoned) {
+        if (resetInProgress) {
           db.close();
           throw new Error('Becoming IndexedDB opened while a reset was in progress.');
         }
@@ -101,18 +110,25 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
 
     dbPromise = attempt;
     void attempt.catch(() => {
-      abandoned = true;
-      if (dbPromise === attempt) dbPromise = null;
+      if (dbPromise === attempt) {
+        // An IDB request cannot be cancelled. Preserve a slow request after
+        // the UI deadline so a retry can consume its eventual successful open
+        // instead of starting another competing request or deleting a save.
+        dbPromise = openTimedOut ? opening : null;
+      }
     });
-    // An IDB open request cannot be cancelled. If it resolves after our
-    // timeout/blocked fallback, close the late connection immediately so it
-    // cannot obstruct reset or a later healthy boot.
     void opening.then(db => {
-      if (abandoned || resetInProgress) {
+      if (resetInProgress) {
         db.close();
         openConnections.delete(db);
+        if (dbPromise === opening) dbPromise = null;
+        return;
       }
-    }).catch(() => undefined);
+      openConnections.add(db);
+      if (dbPromise === opening) dbPromise = Promise.resolve(db);
+    }).catch(() => {
+      if (dbPromise === opening || dbPromise === attempt) dbPromise = null;
+    });
   }
   return dbPromise;
 }
@@ -319,10 +335,9 @@ export async function loadGameState(): Promise<GameState | null> {
 }
 
 /**
- * Boot is deliberately finite. IndexedDB can leave an open/get request
- * pending forever without firing success or error; a missing or unreadable
- * local save must therefore enter the existing hatch flow instead of keeping
- * the entire application on its first-paint Loading sentinel.
+ * Boot is deliberately finite. A confirmed successful read may return null
+ * and enter hatching. A timeout/error is not null: callers must show recovery
+ * rather than letting an unreadable living database masquerade as a new life.
  */
 export async function loadGameStateForBoot(
   loader: () => Promise<GameState | null> = loadGameState,
@@ -331,9 +346,6 @@ export async function loadGameStateForBoot(
   const timeout = timeoutAfter(timeoutMs, 'Loading Becoming state timed out.');
   try {
     return await Promise.race([loader(), timeout.promise]);
-  } catch (error) {
-    console.warn('Becoming could not read local state during boot; opening the hatch flow.', error);
-    return null;
   } finally {
     timeout.cancel();
   }
@@ -367,9 +379,7 @@ export async function resetAllLocalData(factory: DatabaseDeleter = indexedDB): P
     // Never await dbPromise here: the exact outage being recovered from is an
     // IDB open promise that never settles. Close every connection that did
     // settle and make any late open close itself via resetInProgress.
-    for (const db of openConnections) db.close();
-    openConnections.clear();
-    dbPromise = null;
+    closeDatabaseConnections();
 
     // Closing the connection rejects normal in-flight writes. Bound the drain
     // as a second defence against a browser that leaves an IDB operation
@@ -380,9 +390,7 @@ export async function resetAllLocalData(factory: DatabaseDeleter = indexedDB): P
     } finally {
       drainTimeout.cancel();
     }
-    for (const db of openConnections) db.close();
-    openConnections.clear();
-    dbPromise = null;
+    closeDatabaseConnections();
 
     await new Promise<void>((resolve, reject) => {
       const request = factory.deleteDatabase(DB_NAME);
