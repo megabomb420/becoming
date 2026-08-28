@@ -447,3 +447,16 @@ export function estimateNightRestMs(
   }
   return overlap;
 }
+
+/** Wake hours on their clock while the user was away. Complements night rest. */
+export function estimateWakeMs(
+  start: number,
+  end: number,
+  offsetAt: (timestamp: number) => number = defaultTimezoneOffset,
+  world: WorldEnvironment | null = null,
+  schedule: RestSchedule = 'diurnal',
+) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+  const elapsed = end - start;
+  return Math.max(0, elapsed - estimateNightRestMs(start, end, offsetAt, world, schedule));
+}

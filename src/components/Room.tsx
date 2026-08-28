@@ -490,8 +490,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   // deterministic and idempotent, so StrictMode cannot duplicate a moment.
   useEffect(() => {
     if (!state.development.hatched || state.development.cognitiveLevel < 12) return;
-    onStateChange(prev => ensureDailyMoment(prev));
-  }, [onStateChange, state.development.hatched, state.development.cognitiveLevel, state.development.chronologicalAge]);
+    onStateChange(prev => ensureDailyMoment(prev, clockNow));
+  }, [clockNow, onStateChange, state.development.hatched, state.development.cognitiveLevel, state.development.chronologicalAge, state.sleepState]);
 
   const triggerSpeech = useCallback((text: string, remember = true) => {
     if (!text.trim()) return;
@@ -905,7 +905,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             return;
           }
         }
-        if (wantsOutdoors(currentState) && !outdoorVisitBlocked(currentState) && Date.now() - (currentState.world.lastOutdoorAt || 0) > OUTDOOR_COOLDOWN_MS) {
+        if (wantsOutdoors(currentState, isCreatureRestPhase(time, schedule)) && !outdoorVisitBlocked(currentState) && Date.now() - (currentState.world.lastOutdoorAt || 0) > OUTDOOR_COOLDOWN_MS) {
           if (dist(currentPos, WINDOW_PLACE) > 8) {
             walkToIdlePosition(WINDOW_PLACE);
             return;

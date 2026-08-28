@@ -19,6 +19,7 @@ import { migrateGameState } from '../src/systems/persistence';
 import {
   creatureMaySleep,
   estimateNightRestMs,
+  estimateWakeMs,
   isCreatureRestPhase,
   getLocalDateKey,
   getRoomLighting,
@@ -150,6 +151,17 @@ const returned = simulateOfflineTime({ ...needsState, needsUpdatedAt: returnStar
 const sleepActivity = returned.activities.find(activity => activity.type === 'slept');
 assert.ok(sleepActivity && sleepActivity.duration >= 8 * 60 && sleepActivity.duration <= 9 * 60);
 assert.equal(returned.state.sleepState, 'awake', 'a daytime return must not look mysteriously asleep');
+assert.ok(estimateWakeMs(returnStart, returnNow, () => 0) >= 12 * HOUR, 'a day-and-night absence includes their wake');
+const shyAway = simulateOfflineTime({
+  ...needsState,
+  personality: { ...needsState.personality, curiosity: 8, independence: 8 },
+  needsUpdatedAt: returnStart,
+  lastSaved: returnStart,
+}, 26 * HOUR, returnNow, () => 0);
+assert.ok(
+  shyAway.activities.some(activity => activity.type !== 'slept'),
+  'their day still happens while you are gone, even without a bold temperament',
+);
 const nightNow = Date.UTC(2026, 7, 23, 1, 0);
 const nightAway = simulateOfflineTime(
   { ...needsState, needsUpdatedAt: nightNow - 3 * HOUR, lastSaved: nightNow - 3 * HOUR },

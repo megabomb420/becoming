@@ -32,6 +32,25 @@ import { evaluateTouchBoundary, migrateTouchBoundaryState } from '../src/systems
 import { echoSharedPhrase, getAdoptedSharedPhrases, getSharedLanguageReply, migrateSharedLanguageState } from '../src/systems/sharedLanguageSystem';
 import { generateCreatureSpeech } from '../src/systems/languageSystem';
 
+function withUtcCity(world: WorldEnvironment): WorldEnvironment {
+  return {
+    ...world,
+    settings: {
+      ...world.settings,
+      mode: 'city',
+      location: {
+        source: 'city',
+        name: 'UTC',
+        latitude: 51.5,
+        longitude: 0,
+        timezone: 'UTC',
+        countryCode: 'GB',
+        country: 'UTC',
+      },
+    },
+  };
+}
+
 const evidenceStart = 1_800_000_000_000;
 let mentioned = createHatchedCreature(createNewCreature('Mentioned', 99117));
 mentioned = {
@@ -121,8 +140,27 @@ for (let index = 0; index < 20; index += 1) {
   const line = generateCreatureSpeech(newbornVoice, { trigger: index % 2 ? 'idle' : 'food', emotionalState: 'neutral' });
   assert.ok(line && !/\b(?:mip|naa|brr|pu)\b/i.test(line), 'room voice must use the same natural age ladder as chat');
 }
-let state = ensureDailyMoment(selfDirected, 1_800_000_020_000);
+const momentDay = Date.UTC(2027, 0, 16, 14, 0);
+const momentNight = Date.UTC(2027, 0, 16, 1, 30);
+const momentBase = {
+  ...selfDirected,
+  world: withUtcCity(selfDirected.world),
+  lifePath: { ...selfDirected.lifePath, pendingMoment: null, lastDailyMomentDay: 0 },
+};
+assert.equal(ensureDailyMoment(momentBase, momentNight).lifePath.pendingMoment, null, 'ordinary lives do not get a dilemma in their rest');
+let state = ensureDailyMoment(momentBase, momentDay);
 assert.ok(state.lifePath.pendingMoment);
+assert.notEqual(state.lifePath.pendingMoment?.title, '2:17 AM', 'a diurnal wake does not get a night-life hour');
+const nightLife = {
+  ...momentBase,
+  lifePath: {
+    ...momentBase.lifePath,
+    primary: 'party_animal' as const,
+    phase: 'committed' as const,
+    scores: { ...momentBase.lifePath.scores, party_animal: 52 },
+  },
+};
+assert.ok(ensureDailyMoment(nightLife, momentNight).lifePath.pendingMoment, 'a settled night life can meet a moment after dark');
 assert.ok(state.lifePath.pendingMoment?.titlePl);
 assert.ok(state.lifePath.pendingMoment?.choices.every(item => item.labelPl && item.resultPl));
 const choice = state.lifePath.pendingMoment!.choices[0];
@@ -225,25 +263,6 @@ assert.equal(migratedInner.selfAwareness.stage, 'unaware');
 const migratedContinuity = migrateContinuityState(null);
 assert.deepEqual(migratedContinuity.chapters, []);
 assert.deepEqual(migratedContinuity.openLoops, []);
-
-function withUtcCity(world: WorldEnvironment): WorldEnvironment {
-  return {
-    ...world,
-    settings: {
-      ...world.settings,
-      mode: 'city',
-      location: {
-        source: 'city',
-        name: 'UTC',
-        latitude: 51.5,
-        longitude: 0,
-        timezone: 'UTC',
-        countryCode: 'GB',
-        country: 'UTC',
-      },
-    },
-  };
-}
 
 let present = createHatchedCreature(createNewCreature('Presence', 515));
 present = {

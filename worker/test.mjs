@@ -240,7 +240,31 @@ const composed = systemPrompt(thinPayload);
 assert.match(composed, /ROLE LOCK/);
 assert.equal('lifePath' in thinPayload, false);
 assert.equal('care' in thinPayload, false);
+assert.equal('clock' in thinPayload.creature, false);
 assert.doesNotMatch(composed, /PATH_PROMPT|life path describes accumulated tendencies/i);
+assert.doesNotMatch(composed, /CLOCK is this creature's solar day/);
+
+const clockedPayload = cleanPayload({
+  creature: {
+    name: 'Clock',
+    stage: 'sentences',
+    language: 'pl',
+    mood: 'calm',
+    clock: { phase: 'night', schedule: 'diurnal', rest: true, sleeping: true, hack: 'no' },
+  },
+  messages: [{ role: 'user', content: 'Hej' }],
+});
+assert.deepEqual(clockedPayload.creature.clock, {
+  phase: 'night',
+  schedule: 'diurnal',
+  rest: true,
+  sleeping: true,
+});
+assert.match(systemPrompt(clockedPayload), /CLOCK is this creature's solar day/);
+assert.equal(cleanPayload({
+  creature: { name: 'BadClock', stage: 'sentences', language: 'en', clock: { phase: 'hack', schedule: 'ai' } },
+  messages: [{ role: 'user', content: 'Hi' }],
+}).creature.clock, undefined);
 
 const selfPayload = cleanPayload({
   creature: { name: 'Self', stage: 'sentences', language: 'pl', mood: 'hungry' },

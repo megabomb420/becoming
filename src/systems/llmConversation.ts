@@ -46,6 +46,13 @@ export interface LifePathMindOverlay {
   doesNotWant?: string[];
 }
 
+export interface CreatureClockOverlay {
+  phase: string;
+  schedule: 'diurnal' | 'nocturnal';
+  rest: boolean;
+  sleeping: boolean;
+}
+
 export interface CreatureMindRequest {
   creature: {
     name: string;
@@ -53,6 +60,7 @@ export interface CreatureMindRequest {
     stage: string;
     mood: string;
     language: string;
+    clock?: CreatureClockOverlay;
   };
   messages: ApiMessage[];
   promptKind?: 'self';
@@ -302,13 +310,27 @@ function weatherAffinity(state: GameState) {
   return preference.affinity > 0 ? 'likes' as const : 'dislikes' as const;
 }
 
-function buildWeatherOverlay(state: GameState) {
+function creatureClock(state: GameState, now: number): CreatureClockOverlay {
+  const time = getTimeOfDay(now, state.world);
+  const schedule = getRestSchedule(state.lifePath);
+  return {
+    phase: time.phase,
+    schedule,
+    rest: isCreatureRestPhase(time, schedule),
+    sleeping: state.sleepState === 'sleeping',
+  };
+}
+
+function buildWeatherOverlay(state: GameState, now: number) {
   const current = state.world.current;
   const affinity = weatherAffinity(state);
-  const wantOut = wantsOutdoors(state);
+  const rest = creatureClock(state, now).rest;
+  const wantOut = wantsOutdoors(state, rest);
   const outdoors = state.world.place === 'outdoors';
-  if (!current || (!affinity && !wantOut && !outdoors)) return undefined;
-  const overlay: NonNullable<CreatureMindRequest['weather']> = { condition: current.condition };
+  if (!affinity && !wantOut && !outdoors) return undefined;
+  const overlay: NonNullable<CreatureMindRequest['weather']> = {
+    condition: current?.condition ?? 'unknown',
+  };
   if (affinity) overlay.affinity = affinity;
   if (wantOut && !outdoors) overlay.wantOut = true;
   if (outdoors) overlay.place = 'outdoors';
@@ -318,14 +340,16 @@ function buildWeatherOverlay(state: GameState) {
 export function shouldCreatureSelfSpeak(state: GameState, now = Date.now()): boolean {
   if (state.sleepState === 'sleeping' || state.development.stage === 'egg') return false;
   if (careIsNeeded(careContext(state))) return true;
-  if (isCreatureRestPhase(getTimeOfDay(now, state.world), getRestSchedule(state.lifePath))) return false;
-  return Boolean(buildWeatherOverlay(state));
+  const clock = creatureClock(state, now);
+  if (clock.rest) return false;
+  return Boolean(buildWeatherOverlay(state, now));
 }
 
 export function buildCreatureMindRequest(
   state: GameState,
-  options: { kind?: CreatureMindRequestKind } = {},
+  options: { kind?: CreatureMindRequestKind; now?: number } = {},
 ): CreatureMindRequest {
+  const now = options.now ?? Date.now();
   const care = careContext(state);
   const facts = compactFacts(state);
   const habits = compactHabits(state);
@@ -344,10 +368,11 @@ export function buildCreatureMindRequest(
   const body: CreatureMindRequest = {
     creature: {
       name: (state.identity.name || 'the creature').slice(0, 40),
-      ageDays: Number((Math.max(0, Date.now() - state.identity.birthTimestamp) / 86_400_000).toFixed(1)),
+      ageDays: Number((Math.max(0, now - state.identity.birthTimestamp) / 86_400_000).toFixed(1)),
       stage: state.development.stage,
       mood: state.emotionalState.slice(0, 32),
       language: state.conversation.language,
+      clock: creatureClock(state, now),
     },
     messages: toModelHistory(state.conversation.messages),
   };
@@ -367,7 +392,7 @@ export function buildCreatureMindRequest(
   if (sharedLanguage.length) body.sharedLanguage = sharedLanguage;
   if (facts.length) body.facts = facts;
   if (habits.length) body.habits = habits;
-  const weather = buildWeatherOverlay(state);
+  const weather = buildWeatherOverlay(state, now);
   if (weather) body.weather = weather;
   return body;
 }

@@ -12,6 +12,7 @@ import {
   PersonalityTraits,
 } from '../types';
 import { parseUserStatement } from './socialLearningSystem';
+import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
 
 export const LIFE_PATH_IDS: LifePathId[] = [
   'stoner',
@@ -631,10 +632,13 @@ export function evolveLifePathFromObject(state: GameState, type: ObjectType, out
   return { ...state, lifePath: recalculate({ ...current, scores, evidence }, now) };
 }
 
-const MOMENT_TEMPLATES: Array<Omit<DailyMoment, 'id' | 'day'>> = [
+type MomentTemplate = Omit<DailyMoment, 'id' | 'day'> & { when?: 'night_life' };
+
+const MOMENT_TEMPLATES: MomentTemplate[] = [
   {
     title: '2:17 AM',
     titlePl: '2:17 w nocy',
+    when: 'night_life',
     prompt: 'The room is quiet, but the mind is not. What should happen next?',
     promptPl: 'W pokoju jest cicho, ale w głowie nie. Co wydarzy się dalej?',
     choices: [
@@ -668,6 +672,7 @@ const MOMENT_TEMPLATES: Array<Omit<DailyMoment, 'id' | 'day'>> = [
   {
     title: 'The Bottle',
     titlePl: 'Butelka',
+    when: 'night_life',
     prompt: 'Something left from a party catches the light. It carries a story and a warning.',
     promptPl: 'Pozostałość po imprezie łapie światło. Niesie historię i ostrzeżenie.',
     choices: [
@@ -712,6 +717,7 @@ const MOMENT_TEMPLATES: Array<Omit<DailyMoment, 'id' | 'day'>> = [
   {
     title: 'No Invitation',
     titlePl: 'Bez zaproszenia',
+    when: 'night_life',
     prompt: 'Everyone seems to be somewhere else tonight.',
     promptPl: 'Wygląda na to, że dziś wieczorem wszyscy są gdzieś indziej.',
     choices: [
@@ -744,14 +750,21 @@ function hydrateDailyMoment(moment: DailyMoment | null): DailyMoment | null {
 
 export function ensureDailyMoment(state: GameState, now = Date.now()): GameState {
   if (!state.development.hatched || state.development.cognitiveLevel < 12) return state;
+  if (state.sleepState === 'sleeping') return state;
+  const schedule = getRestSchedule(state.lifePath);
+  if (isCreatureRestPhase(getTimeOfDay(now, state.world), schedule)) return state;
   const path = state.lifePath;
   if (path.pendingMoment) return state;
   const day = Math.max(1, Math.floor(state.development.chronologicalAge / 86_400_000) + 1);
   if (path.lastDailyMomentDay >= day) return state;
+  const pool = schedule === 'nocturnal'
+    ? MOMENT_TEMPLATES
+    : MOMENT_TEMPLATES.filter(template => template.when !== 'night_life');
   const primaryIndex = path.primary ? LIFE_PATH_IDS.indexOf(path.primary) : 0;
-  const index = Math.abs(state.identity.seed + day * 31 + primaryIndex * 17) % MOMENT_TEMPLATES.length;
-  const template = MOMENT_TEMPLATES[index];
-  const pendingMoment: DailyMoment = { ...template, id: `moment-${day}-${index}`, day };
+  const index = Math.abs(state.identity.seed + day * 31 + primaryIndex * 17) % pool.length;
+  const template = pool[index];
+  const { when: _when, ...authored } = template;
+  const pendingMoment: DailyMoment = { ...authored, id: `moment-${day}-${index}`, day };
   if (path.resolvedMomentIds.includes(pendingMoment.id)) {
     return { ...state, lifePath: { ...path, lastDailyMomentDay: day } };
   }

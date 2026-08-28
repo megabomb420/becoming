@@ -40,7 +40,9 @@ assert.equal(unwrittenBody.sharedLanguage, undefined);
 assert.equal(unwrittenBody.facts, undefined);
 assert.equal(unwrittenBody.habits, undefined);
 assert.equal(unwrittenBody.weather, undefined);
-assert.deepEqual(Object.keys(unwrittenBody.creature).sort(), ['ageDays', 'language', 'mood', 'name', 'stage']);
+assert.deepEqual(Object.keys(unwrittenBody.creature).sort(), ['ageDays', 'clock', 'language', 'mood', 'name', 'stage']);
+assert.equal(unwrittenBody.creature.clock?.schedule, 'diurnal');
+assert.equal(typeof unwrittenBody.creature.clock?.rest, 'boolean');
 assert.ok(unwrittenBody.messages.length >= 1);
 assert.equal(shouldCreatureSelfSpeak(unwritten), false);
 assert.equal(shouldCreatureSelfSpeak({ ...unwritten, sleepState: 'sleeping' }), false);
@@ -158,6 +160,29 @@ const outdoors = {
 const outdoorBody = buildCreatureMindRequest(withMessage(outdoors, 'Co tam?'));
 assert.equal(outdoorBody.weather?.place, 'outdoors');
 assert.equal(outdoorBody.weather?.condition, 'rain');
+
+const nightClock = buildCreatureMindRequest({
+  ...unwritten,
+  world: {
+    ...unwritten.world,
+    settings: {
+      ...unwritten.world.settings,
+      mode: 'city',
+      location: {
+        source: 'city',
+        name: 'UTC',
+        latitude: 51.5,
+        longitude: 0,
+        timezone: 'UTC',
+        countryCode: 'GB',
+        country: 'UTC',
+      },
+    },
+  },
+}, { now: Date.UTC(2026, 7, 27, 1, 30) });
+assert.equal(nightClock.creature.clock?.phase, 'night');
+assert.equal(nightClock.creature.clock?.rest, true, 'an ordinary mind at night is in its rest');
+assert.equal(nightClock.creature.clock?.schedule, 'diurnal');
 
 const spokenOffer = beginConversationTurn(comfortable, 'Masz, dam ci jabłko.', NOW + 50_000, { worldAction: true }).state;
 assert.deepEqual(spokenOffer.personality, comfortable.personality, 'a world command must not rewrite personality');

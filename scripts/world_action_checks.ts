@@ -228,6 +228,7 @@ assert.doesNotMatch(roomSource, /setTimeout\(\(\) => setSpeech\(null\)/, 'the la
 assert.match(cssSource, /min-height: calc\(7\.25rem \+ env\(safe-area-inset-top\)\)/, 'the mobile header must reserve safe-area space');
 assert.match(roomSource, /beginOutdoorVisit/);
 assert.match(roomSource, /shouldEndOutdoorVisit/);
+assert.match(roomSource, /wantsOutdoors\(currentState, isCreatureRestPhase/, 'autonomous outside must use their rest, not only weather affinity');
 assert.match(roomSource, /beginWorldObjectApproach/);
 assert.doesNotMatch(roomSource, /Put creature to sleep/);
 assert.doesNotMatch(roomSource, /handleSleepToggle/);

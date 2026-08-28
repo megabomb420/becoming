@@ -675,16 +675,34 @@ export function getWeatherIcon(condition: WeatherCondition) {
   return icons[condition];
 }
 
-export function wantsOutdoors(state: GameState) {
+/**
+ * Their wake, not a weather grind. A solar or last-known sky is enough.
+ * Callers pass restPhase from the creature's clock so this file does not
+ * import timeSystem (timeSystem already reads weather stimulus).
+ */
+export function wantsOutdoors(state: GameState, restPhase = false) {
+  if (restPhase || state.sleepState === 'sleeping') return false;
+  if (state.world.place === 'outdoors') return false;
+  if (state.world.settings.mode === 'disabled') return false;
+  if (outdoorVisitBlocked(state)) return false;
   const current = state.world.current;
-  const mode = state.world.settings.mode;
-  if (!current || (mode !== 'device' && mode !== 'city')) return false;
-  const preference = state.world.preferences[current.condition];
-  if (!preference || preference.exposures < 2 || preference.affinity < 8) return false;
-  return current.condition === 'clear'
-    || current.condition === 'partly_cloudy'
-    || current.condition === 'snow'
-    || preference.affinity >= 12;
+  if (current?.condition === 'storm' && state.personality.caution > state.personality.curiosity + 12) return false;
+  const preference = current ? state.world.preferences[current.condition] : null;
+  const likesSky = Boolean(
+    current
+    && preference
+    && preference.exposures >= 2
+    && preference.affinity >= 8
+    && (
+      current.condition === 'clear'
+      || current.condition === 'partly_cloudy'
+      || current.condition === 'snow'
+      || preference.affinity >= 12
+    ),
+  );
+  if (likesSky) return true;
+  const awakeEnough = state.development.hatched && state.development.cognitiveLevel >= 18;
+  return awakeEnough && state.needs.stimulation < 38;
 }
 
 export function outdoorVisitBlocked(state: GameState): 'unavailable' | 'sleeping' | 'need' | 'wary' | null {

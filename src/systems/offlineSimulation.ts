@@ -2,7 +2,7 @@ import { GameState, Memory, ObjectType, OfflineActivity, ReturnTrace, ReturnTrac
 import { generateDreamAfterSleep } from './innerLifeSystem';
 import { advanceNeeds, applyNeedDelta, getSleepBlocker } from './needsSystem';
 import { getRestSchedule } from './lifePathSystem';
-import { estimateNightRestMs, getTimeOfDay, isCreatureRestPhase, shouldBeDrowsy } from './timeSystem';
+import { estimateNightRestMs, estimateWakeMs, getTimeOfDay, isCreatureRestPhase, shouldBeDrowsy } from './timeSystem';
 import { endOutdoorVisit } from './environmentSystem';
 
 const TRACE_MINIMUM_MS = 10 * 60_000;
@@ -154,14 +154,16 @@ export function simulateOfflineTime(
 
   // Independent activity makes absence feel lived-in without using randomness
   // that would make the same restored save produce different outcomes.
+  const wakeMs = estimateWakeMs(needsFrom, now, timezoneOffsetAt, currentState.world, schedule);
   const explores = awayMinutes > 30
     && currentState.personality.curiosity * currentState.personality.independence > 2_400;
-  if (explores) {
+  const livedTheirDay = !explores && wakeMs >= 30 * 60_000;
+  if (explores || livedTheirDay) {
     const discoveries = ['looked at objects', 'moved something', 'sat quietly', 'explored room'];
     const index = Math.abs(Math.floor((currentState.identity.seed + leftAt / 60_000) % discoveries.length));
     activities.push({
       type: discoveries[index],
-      duration: Math.min(90, awayMinutes * 0.18),
+      duration: Math.min(90, Math.max(8, (livedTheirDay ? wakeMs : safeAwayMs) / 60_000 * 0.18)),
       timestamp: leftAt + safeAwayMs * 0.58,
     });
     currentState = applyNeedDelta(currentState, { stimulation: 8, energy: -3 }, now);

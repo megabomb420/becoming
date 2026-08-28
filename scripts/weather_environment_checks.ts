@@ -314,6 +314,7 @@ const indoorBase: GameState = {
 };
 assert.equal(indoorBase.world.place ?? 'indoor', 'indoor');
 assert.equal(wantsOutdoors(indoorBase), true);
+assert.equal(wantsOutdoors(indoorBase, true), false, 'their rest must not send them outside');
 assert.equal(outdoorVisitBlocked(indoorBase), null);
 
 const noLiveWeather = outdoorVisitBlocked(needsStart);
@@ -349,7 +350,16 @@ assert.equal(cameIn.world.place, 'indoor');
 assert.equal(wantsOutdoors({
   ...indoorBase,
   world: { ...indoorBase.world, preferences: createWorldEnvironment().preferences },
-}), false, 'unearned weather affinity must not want out');
+  personality: { ...indoorBase.personality, curiosity: 20 },
+  needs: { ...indoorBase.needs, stimulation: 80 },
+}), false, 'a settled indoor life does not wander out without restlessness or a liked sky');
+assert.equal(wantsOutdoors({
+  ...indoorBase,
+  world: { ...indoorBase.world, preferences: createWorldEnvironment().preferences, current: null },
+  personality: { ...indoorBase.personality, curiosity: 20 },
+  needs: { ...indoorBase.needs, stimulation: 22 },
+  development: { ...indoorBase.development, cognitiveLevel: 40, hatched: true },
+}), true, 'a solar sky is enough to want air on their wake');
 
 const disabledWhileOut = disableWeather(steppedOut.world);
 assert.equal(disabledWhileOut.place, 'indoor');

@@ -4,6 +4,7 @@ import { closeDatabaseConnections, closeDatabaseForReload, isHatchableBoot, load
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
 import { advanceNeeds, applyCircadianSleep } from './systems/needsSystem';
+import { ensureDailyMoment } from './systems/lifePathSystem';
 import EggHatching from './components/EggHatching';
 import Room from './components/Room';
 import { registerReturn } from './systems/presenceSystem';
@@ -20,7 +21,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.17';
+const APP_VERSION = '0.13.0';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -260,7 +261,7 @@ function App() {
         if (!prev) return prev;
         const now = Date.now();
         const advanced = advanceNeeds(prev, now);
-        const updated = applyCircadianSleep(advanced, now);
+        const updated = ensureDailyMoment(applyCircadianSleep(advanced, now), now);
         queueSave(updated);
         return updated;
       });
