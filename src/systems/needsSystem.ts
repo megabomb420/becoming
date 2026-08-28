@@ -1,6 +1,7 @@
 import { GameState, Memory, Needs, RoomMess, RoomMessType } from '../types';
 import { generateDreamAfterSleep } from './innerLifeSystem';
-import { creatureMaySleep, getTimeOfDay } from './timeSystem';
+import { getRestSchedule } from './lifePathSystem';
+import { creatureMaySleep, getTimeOfDay, isCreatureWakePhase } from './timeSystem';
 import { getEnvironmentalNeedMultiplier } from './environmentSystem';
 
 export type NeedUpdateMode = 'active' | 'offline';
@@ -457,8 +458,20 @@ export function putToSleep(state: GameState, now = Date.now()): GameState {
 export function settleIfSleepy(state: GameState, now = Date.now()): GameState {
   if (state.sleepState === 'sleeping') return state;
   if (getSleepBlocker(state)) return state;
-  if (!creatureMaySleep(getTimeOfDay(now, state.world), state.needs.energy)) return state;
+  const schedule = getRestSchedule(state.lifePath);
+  if (!creatureMaySleep(getTimeOfDay(now, state.world), state.needs.energy, schedule)) return state;
   return putToSleep(state, now);
+}
+
+/** Their solar clock, not the player's hours. Wake on their morning; sleep on their night. */
+export function applyCircadianSleep(state: GameState, now = Date.now()): GameState {
+  const time = getTimeOfDay(now, state.world);
+  const schedule = getRestSchedule(state.lifePath);
+  if (state.sleepState === 'sleeping') {
+    if (isCreatureWakePhase(time, schedule) && state.needs.energy >= 20) return wakeUp(state, now);
+    return state;
+  }
+  return settleIfSleepy(state, now);
 }
 
 export function wakeUp(state: GameState, now = Date.now()): GameState {

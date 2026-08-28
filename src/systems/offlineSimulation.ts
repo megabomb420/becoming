@@ -1,6 +1,7 @@
 import { GameState, Memory, ObjectType, OfflineActivity, ReturnTrace, ReturnTraceKind, RoomObject } from '../types';
 import { generateDreamAfterSleep } from './innerLifeSystem';
 import { advanceNeeds, applyNeedDelta } from './needsSystem';
+import { getRestSchedule } from './lifePathSystem';
 import { estimateNightRestMs, getTimeOfDay, shouldBeDrowsy } from './timeSystem';
 import { endOutdoorVisit } from './environmentSystem';
 
@@ -136,7 +137,8 @@ export function simulateOfflineTime(
     state = endOutdoorVisit(state, now);
   }
 
-  const naturalNightRestMs = estimateNightRestMs(needsFrom, now, timezoneOffsetAt, state.world);
+  const schedule = getRestSchedule(state.lifePath);
+  const naturalNightRestMs = estimateNightRestMs(needsFrom, now, timezoneOffsetAt, state.world, schedule);
   const wasSleeping = state.sleepState === 'sleeping';
   const sleepStart = state.sleepStartTimestamp ?? leftAt;
   const manualSleepMs = wasSleeping ? Math.min(Math.max(0, now - sleepStart), 8 * 60 * 60_000) : 0;
@@ -192,7 +194,7 @@ export function simulateOfflineTime(
   const shortUnfinishedSleep = wasSleeping && manualSleepMs > 0 && manualSleepMs < 8 * 60 * 60_000;
   const sleepState: GameState['sleepState'] = shortUnfinishedSleep
     ? 'sleeping'
-    : shouldBeDrowsy(time, currentState.needs.energy) ? 'drowsy' : 'awake';
+    : shouldBeDrowsy(time, currentState.needs.energy, schedule) ? 'drowsy' : 'awake';
 
   currentState = {
     ...currentState,

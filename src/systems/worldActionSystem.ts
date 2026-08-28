@@ -15,7 +15,8 @@ import {
   wakeUp,
   washCreature,
 } from './needsSystem';
-import { getCircadianDisposition, getTimeOfDay } from './timeSystem';
+import { getRestSchedule } from './lifePathSystem';
+import { creatureMaySleep, getTimeOfDay } from './timeSystem';
 import { learnWord, updateDevelopment } from './developmentSystem';
 import { ObjectReaction, recordBondEvent, recordObjectExperience } from './relationshipSystem';
 import { evolveLifePathFromObject } from './lifePathSystem';
@@ -278,8 +279,9 @@ export function performImmediateWorldAction(
     if (state.sleepState === 'sleeping') return { state, result: { intent, status: 'already_satisfied' } };
     const blocker = getSleepBlocker(state);
     if (blocker) return { state, result: { intent, status: 'blocked', reason: blocker } };
-    const disposition = getCircadianDisposition(getTimeOfDay(now, state.world), state.needs.energy, false);
-    if (disposition === 'active' && state.needs.energy > 72) {
+    const time = getTimeOfDay(now, state.world);
+    const schedule = getRestSchedule(state.lifePath);
+    if (!creatureMaySleep(time, state.needs.energy, schedule)) {
       return { state, result: { intent, status: 'refused', reason: 'not_tired' } };
     }
     // They may settle. The room walks to a blanket or curls up; this is not a command.

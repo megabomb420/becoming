@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.12.13
+> **Version:** 0.12.14
 > **Last Updated:** 2026-08-28
 
 ---
@@ -129,7 +129,7 @@ becoming/
 | Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
 | Living world weather | ✅ | Opt-in Open-Meteo weather, rounded device coordinates or manual city search, 45-minute IndexedDB cache, last-known offline fallback, and atmospheric room rendering. Outdoor visits are wired in 0.12.5 but not yet live-proven |
 | Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
-| Sleep / wake cycle | ✅ | Sleep restores energy through the same timestamp-based needs model; urgent food, water, or toilet needs can sensibly block sleep |
+| Sleep / wake cycle | ✅ | Ordinary lives sleep on their solar night and wake on their solar day, independent of when the player is around. A committed party/alcohol/degen life inverts that clock. Exhaustion or urgent hunger/toilet can still interrupt. Touch and chat can wake them; they are not commanded to bed |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
 | Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; the first room waits for a durable write; migration preserves living identity and placed objects; only a successful empty read or `indexedDB.databases()` confirming `becoming-db` is gone enters hatching. Chrome is given one `indexedDB.open` at a time — a timeout never abandons that request to queue another. A worker fallback may read the record while the main open is pending. Busy is never an egg |
 | Memory Book | ✅ | Emergent biography from significant memories |
@@ -609,6 +609,10 @@ The persistence suite: one loader call whose late success recovers the same `ide
 ### v0.12.13 — Sleep is chosen, not commanded
 
 The dock moon/sun control treated rest as a player order. A living creature cannot be forced to lie down. 0.12.13 removes that button. They settle when tired or it is night: they walk to a blanket if one is in the room, nest, then sleep, or curl up where they are. Urgent hunger or toilet still keeps them up. Asking “go to sleep” in chat is a suggestion they may refuse; it does not snap them unconscious. Touch wakes them.
+
+### v0.12.14 — Their night, not the player's
+
+Sleep follows the creature's sun, not the user's shift. An ordinary life sleeps through solar night and dusk, and wakes at dawn/day. A settled party animal, alcoholic, or degen inverts: day rest, night awake. Leanings and recovery stay diurnal. Opening the app at 3am does not make them nocturnal. Urgent body needs still block rest; collapse (energy gone) can drop them even on their day.
 
 ---
 

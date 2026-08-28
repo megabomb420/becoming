@@ -8,6 +8,7 @@ import {
   getNeedUrgency,
   getSleepBlocker,
   getVisibleNeedSignals,
+  applyCircadianSleep,
   settleIfSleepy,
   touchCreature,
   useToilet,
@@ -18,6 +19,7 @@ import { migrateGameState } from '../src/systems/persistence';
 import {
   creatureMaySleep,
   estimateNightRestMs,
+  isCreatureRestPhase,
   getLocalDateKey,
   getRoomLighting,
   getTimeOfDay,
@@ -152,8 +154,12 @@ assert.equal(returned.state.needsUpdatedAt, returnNow);
 
 const night = getTimeOfDay(Date.UTC(2026, 7, 23, 1, 0), 0);
 const noon = getTimeOfDay(Date.UTC(2026, 7, 23, 12, 0), 0);
-assert.equal(creatureMaySleep(night, 40), true, 'a tired night body may choose sleep');
-assert.equal(creatureMaySleep(noon, 90), false, 'a rested midday body must not be put to sleep');
+assert.equal(isCreatureRestPhase(night, 'diurnal'), true);
+assert.equal(isCreatureRestPhase(noon, 'diurnal'), false);
+assert.equal(creatureMaySleep(night, 90), true, 'an ordinary life sleeps at night even when energy is fine');
+assert.equal(creatureMaySleep(noon, 90), false, 'an ordinary life stays up through the day');
+assert.equal(creatureMaySleep(noon, 90, 'nocturnal'), true, 'a night life sleeps through the day');
+assert.equal(creatureMaySleep(night, 90, 'nocturnal'), false, 'a night life is awake after dark');
 const exhausted = { ...needsState, needs: { ...needsState.needs, energy: 18 } };
 assert.equal(settleIfSleepy(exhausted).sleepState, 'sleeping', 'exhaustion lets them choose sleep without a command');
 assert.equal(
@@ -161,6 +167,25 @@ assert.equal(
   'awake',
   'urgent hunger must keep them from settling',
 );
-assert.equal(settleIfSleepy({ ...needsState, needs: { ...needsState.needs, energy: 90 } }).sleepState, 'awake');
+assert.equal(
+  settleIfSleepy({ ...needsState, needs: { ...needsState.needs, energy: 90 } }, Date.UTC(2026, 7, 23, 12, 0)).sleepState,
+  creatureMaySleep(getTimeOfDay(Date.UTC(2026, 7, 23, 12, 0), needsState.world), 90) ? 'sleeping' : 'awake',
+);
+const noonStamp = Date.UTC(2026, 7, 23, 12, 0);
+const sleepingAtNoon = {
+  ...needsState,
+  sleepState: 'sleeping' as const,
+  currentActivity: 'sleeping' as const,
+  sleepStartTimestamp: noonStamp - 8 * HOUR,
+  needs: { ...needsState.needs, energy: 82 },
+  lastSaved: noonStamp,
+  needsUpdatedAt: noonStamp,
+};
+const noonTime = getTimeOfDay(noonStamp, sleepingAtNoon.world);
+assert.equal(
+  applyCircadianSleep(sleepingAtNoon, noonStamp).sleepState,
+  isCreatureRestPhase(noonTime, 'diurnal') ? 'sleeping' : 'awake',
+  'ordinary lives follow their own solar day, not the player',
+);
 
 console.log('Needs, urgency, care actions, migration, offline return, local-day, timezone, DST, and day-phase checks passed.');

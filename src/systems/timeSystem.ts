@@ -376,25 +376,42 @@ export function getRoomLighting(time: TimeOfDay, world: WorldEnvironment | null 
 }
 
 export type CircadianDisposition = 'waking' | 'active' | 'quiet' | 'winding_down' | 'ready_to_sleep' | 'sleeping';
+export type RestSchedule = 'diurnal' | 'nocturnal';
 
-export function getCircadianDisposition(time: TimeOfDay, energy: number, sleeping: boolean): CircadianDisposition {
+export function isCreatureRestPhase(time: TimeOfDay, schedule: RestSchedule = 'diurnal'): boolean {
+  if (schedule === 'nocturnal') return time.phase === 'day' || time.phase === 'dawn';
+  return time.phase === 'night' || time.phase === 'dusk';
+}
+
+export function isCreatureWakePhase(time: TimeOfDay, schedule: RestSchedule = 'diurnal'): boolean {
+  return !isCreatureRestPhase(time, schedule);
+}
+
+export function getCircadianDisposition(
+  time: TimeOfDay,
+  energy: number,
+  sleeping: boolean,
+  schedule: RestSchedule = 'diurnal',
+): CircadianDisposition {
   if (sleeping) return 'sleeping';
+  if (isCreatureRestPhase(time, schedule) || energy < 20) return 'ready_to_sleep';
+  if (schedule === 'nocturnal') {
+    if (time.phase === 'dusk') return 'waking';
+    if (time.phase === 'golden_hour') return energy < 50 ? 'winding_down' : 'quiet';
+    return 'active';
+  }
   if (time.phase === 'dawn') return energy < 55 ? 'waking' : 'quiet';
-  if (time.phase === 'day') return energy < 24 ? 'ready_to_sleep' : 'active';
   if (time.phase === 'golden_hour') return energy < 55 ? 'winding_down' : 'quiet';
-  if (time.phase === 'dusk') return energy < 68 ? 'winding_down' : 'quiet';
-  return energy < 78 ? 'ready_to_sleep' : 'quiet';
+  return 'active';
 }
 
-export function shouldBeDrowsy(time: TimeOfDay, energy: number) {
-  return (time.phase === 'night' && energy < 78)
-    || (time.phase === 'dusk' && time.phaseProgress > 0.35 && energy < 62)
-    || energy < 20;
+export function shouldBeDrowsy(time: TimeOfDay, energy: number, schedule: RestSchedule = 'diurnal') {
+  return energy < 20 || isCreatureRestPhase(time, schedule);
 }
 
-/** The creature may choose rest. This is not a player command. */
-export function creatureMaySleep(time: TimeOfDay, energy: number) {
-  return getCircadianDisposition(time, energy, false) === 'ready_to_sleep' || shouldBeDrowsy(time, energy);
+/** Their night, not the player's. Exhaustion can still drop them in the day. */
+export function creatureMaySleep(time: TimeOfDay, energy: number, schedule: RestSchedule = 'diurnal') {
+  return isCreatureRestPhase(time, schedule) || energy < 20;
 }
 
 function circularMinuteDistance(a: number, b: number) {
@@ -409,6 +426,7 @@ export function estimateNightRestMs(
   end: number,
   offsetAt: (timestamp: number) => number = defaultTimezoneOffset,
   world: WorldEnvironment | null = null,
+  schedule: RestSchedule = 'diurnal',
 ) {
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
   const step = 15 * MINUTE;
@@ -420,9 +438,11 @@ export function estimateNightRestMs(
     const time = getTimeOfDay(midpoint, world ?? offsetAt(midpoint), offsetAt(midpoint));
     const sunriseAfterSunset = time.sunriseMinute + 1440;
     const solarMidnight = (time.sunsetMinute + (sunriseAfterSunset - time.sunsetMinute) / 2) % 1440;
-    if (time.phase === 'night' && circularMinuteDistance(time.minuteOfDay, solarMidnight) <= 4.5 * 60) {
-      overlap += next - cursor;
-    }
+    const solarNoon = (time.sunriseMinute + time.sunsetMinute) / 2;
+    const inCore = schedule === 'nocturnal'
+      ? (time.phase === 'day' || time.phase === 'dawn') && circularMinuteDistance(time.minuteOfDay, solarNoon) <= 4.5 * 60
+      : time.phase === 'night' && circularMinuteDistance(time.minuteOfDay, solarMidnight) <= 4.5 * 60;
+    if (inCore) overlap += next - cursor;
     cursor = next;
   }
   return overlap;

@@ -849,6 +849,20 @@ export function getRankedLifePaths(state: Pick<GameState, 'lifePath' | 'personal
     .slice(0, count);
 }
 
+const NOCTURNAL_PATHS = new Set<LifePathId>(['party_animal', 'alcoholic', 'degen']);
+
+/**
+ * Their clock, not the player's. Ordinary lives follow the sun. A settled
+ * night life (party, drink, chase) inverts: sleep through the day, wake for night.
+ * Recovery and early leanings stay diurnal. Visit hours never enter this.
+ */
+export function getRestSchedule(path: LifePathState): 'diurnal' | 'nocturnal' {
+  if (path.phase === 'unformed' || path.phase === 'leaning' || path.phase === 'recovering') return 'diurnal';
+  const nightPrimary = Boolean(path.primary && NOCTURNAL_PATHS.has(path.primary) && path.scores[path.primary] >= 45);
+  const nightSecondary = Boolean(path.secondary && NOCTURNAL_PATHS.has(path.secondary) && path.scores[path.secondary] >= 45);
+  return nightPrimary || nightSecondary ? 'nocturnal' : 'diurnal';
+}
+
 export function getLifePathPhaseLabel(phase: LifePathPhase, language: 'en' | 'pl' = 'en') {
   const labels: Record<LifePathPhase, { en: string; pl: string }> = {
     unformed: { en: 'still forming', pl: 'wciąż się kształtuje' },

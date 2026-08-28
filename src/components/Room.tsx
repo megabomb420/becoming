@@ -54,6 +54,7 @@ import {
   getLifePathTitle,
   getLifePathVisual,
   getRankedLifePaths,
+  getRestSchedule,
   resolveDailyMoment,
 } from '../systems/lifePathSystem';
 import {
@@ -863,8 +864,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       if (!goal && currentState.needs.hygiene < 48) goal = closestOfType(['wash_basin']);
       const now = Date.now();
       const time = getTimeOfDay(now, currentState.world);
-      const disposition = getCircadianDisposition(time, currentState.needs.energy, false);
-      if (!goal && creatureMaySleep(time, currentState.needs.energy) && !getSleepBlocker(currentState)) {
+      const schedule = getRestSchedule(currentState.lifePath);
+      const disposition = getCircadianDisposition(time, currentState.needs.energy, false, schedule);
+      if (!goal && creatureMaySleep(time, currentState.needs.energy, schedule) && !getSleepBlocker(currentState)) {
         const blanket = closestOfType(['blanket']);
         if (blanket) {
           beginObjectInteraction(blanket, false);

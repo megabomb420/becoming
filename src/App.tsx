@@ -3,7 +3,7 @@ import { GameState, OfflineActivity } from './types';
 import { closeDatabaseConnections, closeDatabaseForReload, isHatchableBoot, loadGameStateForBoot, resetForNewLife, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
-import { advanceNeeds } from './systems/needsSystem';
+import { advanceNeeds, applyCircadianSleep } from './systems/needsSystem';
 import EggHatching from './components/EggHatching';
 import Room from './components/Room';
 import { registerReturn } from './systems/presenceSystem';
@@ -11,7 +11,6 @@ import { detectUiLanguage } from './systems/uiLanguage';
 import { uiLanguage } from './systems/uiLanguage';
 import PwaUpdateNotice from './components/PwaUpdateNotice';
 import { observeDevelopmentSignals } from './systems/developmentSystem';
-import { getTimeOfDay, shouldBeDrowsy } from './systems/timeSystem';
 import { fetchWeather } from './systems/weatherService';
 import {
   beginWeatherRefresh,
@@ -21,7 +20,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.12.13';
+const APP_VERSION = '0.12.14';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -261,10 +260,7 @@ function App() {
         if (!prev) return prev;
         const now = Date.now();
         const advanced = advanceNeeds(prev, now);
-        const time = getTimeOfDay(now, advanced.world);
-        const updated = prev.sleepState === 'sleeping'
-          ? advanced
-          : { ...advanced, sleepState: shouldBeDrowsy(time, advanced.needs.energy) ? 'drowsy' as const : 'awake' as const };
+        const updated = applyCircadianSleep(advanced, now);
         queueSave(updated);
         return updated;
       });

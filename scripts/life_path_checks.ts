@@ -5,6 +5,7 @@ import {
   evolveLifePath,
   evolveLifePathFromCreatureStatement,
   getLifePathTitle,
+  getRestSchedule,
   migrateLifePathState,
   resolveDailyMoment,
 } from '../src/systems/lifePathSystem';
@@ -341,5 +342,17 @@ for (let index = 0; index < 3; index += 1) {
 }
 assert.equal(shared.sharedLanguage.phrases.some(phrase => phrase.normalized.includes('system prompt')), false);
 assert.deepEqual(migrateSharedLanguageState(null).phrases, []);
+
+const ordinary = createHatchedCreature(createNewCreature('Diurnal', 12));
+assert.equal(getRestSchedule(ordinary.lifePath), 'diurnal');
+const partyNight = {
+  ...ordinary.lifePath,
+  primary: 'party_animal' as const,
+  phase: 'committed' as const,
+  scores: { ...ordinary.lifePath.scores, party_animal: 52 },
+};
+assert.equal(getRestSchedule(partyNight), 'nocturnal');
+assert.equal(getRestSchedule({ ...partyNight, phase: 'leaning' }), 'diurnal', 'early party leanings still follow the sun');
+assert.equal(getRestSchedule({ ...partyNight, phase: 'recovering' }), 'diurnal', 'recovery returns ordinary days');
 
 console.log('Life path, inner life, continuity, mirror, presence, absence, creation, backup, language, boundary, and shared-language checks passed.');
