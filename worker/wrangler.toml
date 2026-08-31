@@ -1,4 +1,5 @@
 name = "becoming-mind"
+account_id = "d357be58f5550eea081b0c8d80824abf"
 main = "src/index.js"
 compatibility_date = "2026-08-23"
 workers_dev = true
