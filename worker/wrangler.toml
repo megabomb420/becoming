@@ -5,4 +5,29 @@ workers_dev = true
 
 [vars]
 ALLOWED_ORIGINS = "https://megabomb420.github.io,http://127.0.0.1:7100,http://localhost:7100"
+DAILY_REQUEST_LIMIT = "240"
+TURNSTILE_ALLOWED_HOSTNAMES = "megabomb420.github.io"
+
+[[ratelimits]]
+name = "CHAT_BURST_LIMITER"
+namespace_id = "141001"
+simple = { limit = 6, period = 10 }
+
+[[ratelimits]]
+name = "CHAT_MINUTE_LIMITER"
+namespace_id = "141002"
+simple = { limit = 20, period = 60 }
+
+[[ratelimits]]
+name = "CHAT_IP_LIMITER"
+namespace_id = "141003"
+simple = { limit = 90, period = 60 }
+
+[[durable_objects.bindings]]
+name = "AI_DAILY_QUOTA"
+class_name = "DailyQuota"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DailyQuota"]
 

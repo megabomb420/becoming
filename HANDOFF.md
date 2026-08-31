@@ -2,8 +2,8 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.6
-> **Last Updated:** 2026-08-28
+> **Version:** 0.13.7
+> **Last Updated:** 2026-08-31
 
 ---
 
@@ -671,6 +671,10 @@ The radiating strokes were not fur. The creature is now built as mass: a dark un
 
 The creature is chibi: oversized head, glossy anime eyes with two catchlights, cheek blush, a small cel-shaded body, round moe ears, and one teardrop tail. Sleeping still does not wag.
 
+### v0.13.7 — A bounded public mind
+
+The public AI endpoint now requires a server-validated, action-bound Cloudflare Turnstile token in production. Native Cloudflare rate bindings limit bursts, per-client traffic, and aggregate IP traffic; a Durable Object enforces the daily provider budget across Worker instances. Exact origin, route, method, content type, encoding, request bytes, provider bytes, and security headers are enforced at the boundary. The client sends a locally generated opaque identifier only for fair limiting. DeepSeek and Turnstile secrets remain encrypted Worker secrets; GitHub receives only the public site key.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -687,7 +691,7 @@ The creature is chibi: oversized head, glossy anime eyes with two catchlights, c
 
 ### Architecture
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the room bubble stays empty rather than inventing a local line. World-command replies remain the grounded local fact.
-- **Public gateway protection is best-effort:** Role attacks and task abuse are filtered and rate-limited, but a determined hostile client can spoof browser headers. Durable Cloudflare rate limiting or Turnstile remains a future hardening option.
+- **Public gateway still needs monitoring:** Turnstile, native rate limits, and a Durable Object daily quota now bound anonymous access, but thresholds and false positives need production observation. This is defence in depth, not a promise that a public endpoint can never be abused.
 - **Coverage is targeted, not comprehensive:** Needs, care, weather parsing/privacy/cache, solar time, migration, offline time, dates, timezones, DST, and day phases are covered; older conversation, social-learning, age-floor, and drag-gesture cases still need broader unit coverage.
 
 ---
@@ -701,7 +705,7 @@ The creature is chibi: oversized head, glossy anime eyes with two catchlights, c
 
 ### Priority: Medium
 4. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
-5. **Durable abuse controls** — move best-effort in-memory rate limiting to Cloudflare-native rules/KV and evaluate a low-friction Turnstile challenge if public abuse appears.
+5. **Gateway observability** — watch Turnstile failures, native rate-limit decisions, daily quota usage, and DeepSeek errors in Cloudflare before tuning production thresholds.
 6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
 
 ### Priority: Low / Future
@@ -723,6 +727,7 @@ The creature is chibi: oversized head, glossy anime eyes with two catchlights, c
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
 - **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
 - **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
+- **Public AI is verified and bounded.** The browser obtains a short-lived, action-bound Turnstile token; the Worker validates it server-side and fail-closed, enforces exact routes/origins, native per-client and aggregate-IP limits, a Durable Object daily quota, strict request/provider byte bounds, and hardened response headers. The site key is public; the Turnstile and DeepSeek secrets stay encrypted in Cloudflare.
 - **No death from neglect.** Long absences change the creature (more independent, different trust level) but never punish the player.
 - **Nocturnal Terrarium art direction.** Room is a quiet habitat, Chat is a voice-led presence, Memory Book is a material keepsake, Becoming is a narrative portrait, and Settings is a functional sheet. Decorative assets support these roles but never define the creature.
 - **Visible development is staged, not scored.** Meaningful firsts, small gestures, object initiative, and physical return traces communicate growth. The stored numeric model remains hidden.

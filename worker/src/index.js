@@ -1,7 +1,9 @@
 const MODEL = 'deepseek-v4-flash';
 const MAX_BODY_BYTES = 32_000;
-const MAX_REQUESTS_PER_MINUTE = 20;
-const MAX_REQUESTS_PER_DAY = 240;
+const MAX_PROVIDER_BYTES = 64_000;
+const FALLBACK_REQUESTS_PER_MINUTE = 20;
+const FALLBACK_REQUESTS_PER_DAY = 240;
+const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 const requestWindows = new Map();
 const ROLE_CANARY = 'moss-lantern-7Q4';
 
@@ -62,17 +64,29 @@ const STAGE_INSTRUCTIONS = {
   mature: 'Be articulate and reflective, personal, concise, and willing to disagree.',
 };
 
-function json(data, status, origin) {
+function securityHeaders() {
+  return {
+    'Cache-Control': 'no-store',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Referrer-Policy': 'no-referrer',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+  };
+}
+
+function json(data, status, origin, extraHeaders = {}) {
   const headers = {
     'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
+    ...securityHeaders(),
+    ...extraHeaders,
   };
   if (origin) {
     headers['Access-Control-Allow-Origin'] = origin;
     headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS';
-    headers['Access-Control-Allow-Headers'] = 'Content-Type';
+    headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Becoming-Client, CF-Turnstile-Response';
     headers.Vary = 'Origin';
   }
   return new Response(JSON.stringify(data), { status, headers });
@@ -87,7 +101,12 @@ function allowedOrigin(request, env) {
   return allowed.includes(origin) ? origin : null;
 }
 
-function limited(request) {
+function validClientId(request) {
+  const value = request.headers.get('X-Becoming-Client') || '';
+  return /^[a-zA-Z0-9_-]{20,64}$/.test(value) ? value : '';
+}
+
+function fallbackLimited(request) {
   const key = request.headers.get('CF-Connecting-IP') || 'unknown';
   const now = Date.now();
   if (requestWindows.size > 1_000) {
@@ -108,10 +127,66 @@ function limited(request) {
     current.startedAt = now;
     current.count = 0;
   }
-  if (current.dayCount >= MAX_REQUESTS_PER_DAY) return true;
+  if (current.dayCount >= FALLBACK_REQUESTS_PER_DAY) return true;
   current.count += 1;
   current.dayCount += 1;
-  return current.count > MAX_REQUESTS_PER_MINUTE;
+  return current.count > FALLBACK_REQUESTS_PER_MINUTE;
+}
+
+async function rateLimited(request, env) {
+  const address = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const client = validClientId(request);
+  const clientKey = `client:${client || address}`;
+  const checks = [
+    [env.CHAT_BURST_LIMITER, clientKey],
+    [env.CHAT_MINUTE_LIMITER, clientKey],
+    [env.CHAT_IP_LIMITER, `ip:${address}`],
+  ].filter(([binding]) => binding && typeof binding.limit === 'function');
+  if (!checks.length) return fallbackLimited(request);
+  try {
+    for (const [binding, key] of checks) {
+      const result = await binding.limit({ key });
+      if (!result.success) return true;
+    }
+  } catch {
+    return fallbackLimited(request);
+  }
+  return false;
+}
+
+async function dailyQuotaExceeded(request, env) {
+  if (!env.AI_DAILY_QUOTA || typeof env.AI_DAILY_QUOTA.idFromName !== 'function') return false;
+  const address = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const id = env.AI_DAILY_QUOTA.idFromName(address);
+  const response = await env.AI_DAILY_QUOTA.get(id).fetch('https://quota.internal/check');
+  return response.status === 429;
+}
+
+async function verifyTurnstile(request, env) {
+  if (!env.TURNSTILE_SECRET_KEY) return true;
+  const token = request.headers.get('CF-Turnstile-Response') || '';
+  if (!token || token.length > 2048) return false;
+  const body = new FormData();
+  body.append('secret', env.TURNSTILE_SECRET_KEY);
+  body.append('response', token);
+  const address = request.headers.get('CF-Connecting-IP');
+  if (address) body.append('remoteip', address);
+  body.append('idempotency_key', crypto.randomUUID());
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body, signal: controller.signal });
+    if (!response.ok) return false;
+    const result = await response.json();
+    const allowedHostnames = (env.TURNSTILE_ALLOWED_HOSTNAMES || '').split(',').map(value => value.trim()).filter(Boolean);
+    return result?.success === true
+      && result.action === 'becoming_chat'
+      && (!allowedHostnames.length || allowedHostnames.includes(result.hostname));
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function text(value, maxLength) {
@@ -490,20 +565,37 @@ function systemPrompt(payload) {
 
 async function chat(request, env, origin) {
   if (!env.DEEPSEEK_API_KEY) return json({ error: 'AI service is not configured.' }, 503, origin);
-  if (limited(request)) return json({ error: 'Too many messages. Try again in a minute.' }, 429, origin);
-  const declaredLength = Number(request.headers.get('Content-Length') || 0);
-  if (declaredLength > MAX_BODY_BYTES) return json({ error: 'Message context is too large.' }, 413, origin);
+  if (await rateLimited(request, env)) {
+    return json({ error: 'Too many messages. Try again in a minute.' }, 429, origin, { 'Retry-After': '60' });
+  }
+  if (!(await verifyTurnstile(request, env))) {
+    return json({ error: 'Human verification failed. Please try again.' }, 403, origin);
+  }
+  const contentType = request.headers.get('Content-Type') || '';
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    return json({ error: 'Content-Type must be application/json.' }, 415, origin);
+  }
+  const contentEncoding = (request.headers.get('Content-Encoding') || 'identity').toLowerCase();
+  if (contentEncoding !== 'identity') return json({ error: 'Encoded request bodies are not accepted.' }, 415, origin);
+  const contentLength = request.headers.get('Content-Length');
+  if (contentLength && (!/^\d+$/.test(contentLength) || Number(contentLength) > MAX_BODY_BYTES)) {
+    return json({ error: 'Message context is too large.' }, 413, origin);
+  }
 
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return json({ error: 'Message context is too large.' }, 413, origin);
+  const bytes = await request.arrayBuffer();
+  if (bytes.byteLength > MAX_BODY_BYTES) return json({ error: 'Message context is too large.' }, 413, origin);
   let payload;
   try {
+    const raw = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     payload = cleanPayload(JSON.parse(raw));
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : 'Invalid request.' }, 400, origin);
   }
   if (payload.unsupportedLanguage) return json({ reply: supportedLanguageReply(payload), guarded: true, languageGuard: true }, 200, origin);
   if (payload.guardRequired) return json({ reply: guardedReply(payload), guarded: true }, 200, origin);
+  if (await dailyQuotaExceeded(request, env)) {
+    return json({ error: 'The daily AI allowance has been reached.' }, 429, origin, { 'Retry-After': '3600' });
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 25_000);
@@ -525,7 +617,14 @@ async function chat(request, env, origin) {
       }),
       signal: controller.signal,
     });
-    const result = await response.json();
+    const providerBytes = await response.arrayBuffer();
+    if (providerBytes.byteLength > MAX_PROVIDER_BYTES) return json({ error: 'The mind returned an invalid answer.' }, 502, origin);
+    let result;
+    try {
+      result = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(providerBytes));
+    } catch {
+      return json({ error: 'The mind returned an invalid answer.' }, 502, origin);
+    }
     if (!response.ok) {
       console.error('DeepSeek error', response.status, result?.error?.type || 'unknown');
       const status = response.status === 429 ? 429 : 502;
@@ -554,7 +653,8 @@ export { systemPrompt, cleanPayload, PATH_PROMPT, INFLUENCE_PROMPT, CARE_PROMPT 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method === 'GET' && url.pathname === '/health') return json({ ok: true, model: MODEL }, 200);
+    if (request.method === 'GET' && url.pathname === '/health' && !url.search) return json({ ok: true }, 200);
+    if (url.pathname !== '/chat' || url.search) return json({ error: 'Not found.' }, 404);
     const origin = allowedOrigin(request, env);
     if (!origin) return json({ error: 'Origin not allowed.' }, 403);
     if (request.method === 'OPTIONS') return new Response(null, {
@@ -562,12 +662,31 @@ export default {
       headers: {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Becoming-Client, CF-Turnstile-Response',
         'Access-Control-Max-Age': '86400',
+        ...securityHeaders(),
         Vary: 'Origin',
       },
     });
-    if (request.method !== 'POST' || url.pathname !== '/chat') return json({ error: 'Not found.' }, 404, origin);
+    if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405, origin, { Allow: 'POST, OPTIONS' });
     return chat(request, env, origin);
   },
 };
+
+export class DailyQuota {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async fetch() {
+    const today = Math.floor(Date.now() / 86_400_000);
+    const limit = Math.max(20, Math.min(2_000, Number(this.env.DAILY_REQUEST_LIMIT) || FALLBACK_REQUESTS_PER_DAY));
+    const stored = await this.state.storage.get('quota');
+    const quota = stored?.day === today ? stored : { day: today, count: 0 };
+    if (quota.count >= limit) return new Response(null, { status: 429 });
+    quota.count += 1;
+    await this.state.storage.put('quota', quota);
+    return new Response(null, { status: 204 });
+  }
+}

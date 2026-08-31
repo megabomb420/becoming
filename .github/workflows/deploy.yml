@@ -31,6 +31,7 @@ jobs:
         run: npm run check
         env:
           VITE_BECOMING_API_URL: ${{ vars.BECOMING_API_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

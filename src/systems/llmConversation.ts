@@ -14,8 +14,20 @@ import { getAbsenceSummary } from './presenceSystem';
 import { getAdoptedSharedPhrases } from './sharedLanguageSystem';
 import { wantsOutdoors } from './environmentSystem';
 import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
+import { getTurnstileToken } from './turnstile';
 
 const API_URL = String((import.meta as { env?: { VITE_BECOMING_API_URL?: string } }).env?.VITE_BECOMING_API_URL ?? '').replace(/\/$/, '');
+const CLIENT_ID_KEY = 'becoming-ai-client';
+const ephemeralClientId = crypto.randomUUID().replace(/-/g, '');
+
+function getClientId(): string {
+  try {
+    const existing = localStorage.getItem(CLIENT_ID_KEY);
+    if (existing && /^[a-zA-Z0-9_-]{20,64}$/.test(existing)) return existing;
+    localStorage.setItem(CLIENT_ID_KEY, ephemeralClientId);
+  } catch { /* private browsing or blocked storage */ }
+  return ephemeralClientId;
+}
 const MAX_CONTEXT_MESSAGES = 14;
 const REQUEST_TIMEOUT_MS = 25_000;
 const FLAWED_PATHS: LifePathId[] = ['stoner', 'party_animal', 'alcoholic', 'doomer', 'degen', 'rebel'];
@@ -414,9 +426,14 @@ export async function requestCreatureReply(
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    const turnstileToken = await getTurnstileToken();
     const response = await fetch(`${API_URL}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Becoming-Client': getClientId(),
+        ...(turnstileToken ? { 'CF-Turnstile-Response': turnstileToken } : {}),
+      },
       body: JSON.stringify(buildCreatureMindRequest(state, options)),
       signal: controller.signal,
     });

@@ -930,6 +930,17 @@
 .weather-wind-line { animation: weather-wind-cross 2.4s linear infinite; }
 .weather-curtain { animation: weather-curtain-sway var(--weather-wind, 1.8s) ease-in-out infinite; }
 
+.turnstile-challenge {
+  position: fixed;
+  z-index: 10000;
+  left: max(1rem, env(safe-area-inset-left));
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+  pointer-events: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .weather-rain,
   .weather-snow,
