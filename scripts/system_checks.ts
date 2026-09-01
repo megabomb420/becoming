@@ -11,3 +11,4 @@ import './creation_mastery_checks';
 import './persistence_checks';
 import './bowel_bladder_checks';
 import './cognition_gaps_checks';
+import './pointer_release_checks';
