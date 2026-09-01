@@ -1663,6 +1663,25 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <div className="absolute bottom-0 left-0 right-0 h-[35%] transition-opacity duration-700" style={{ background: `linear-gradient(180deg, ${lighting.floorTop} 0%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear, opacity 900ms ease', opacity: outdoors ? 0.22 : 1 }} />
         <div className="absolute top-[64.7%] left-0 right-0 h-[2px] bg-[#100f0d]/70 shadow-[0_-1px_0_rgba(224,203,176,0.05)] transition-opacity duration-700" style={{ opacity: outdoors ? 0.15 : 1 }} />
         <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)', opacity: outdoors ? 0.06 : 0.25 }} />
+        {/* Floorboard rows recede toward the wall, so the floor reads as a
+            plane the creature and objects actually stand on. */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-[35%] pointer-events-none transition-opacity duration-700"
+          style={{
+            background: 'repeating-linear-gradient(180deg, transparent 0 30px, rgba(8,7,6,.32) 31px 32px)',
+            maskImage: 'linear-gradient(180deg, transparent, black 42%)',
+            WebkitMaskImage: 'linear-gradient(180deg, transparent, black 42%)',
+            opacity: outdoors ? 0.05 : 0.22,
+          }}
+          aria-hidden="true"
+        />
+        {/* Soft occlusion where the wall meets the floor grounds the whole
+            terrarium instead of leaving a hard horizon line. */}
+        <div
+          className="absolute top-[59.5%] left-0 right-0 h-[6%] pointer-events-none transition-opacity duration-700"
+          style={{ background: 'linear-gradient(180deg, transparent, rgba(6,7,5,.36))', opacity: outdoors ? 0.12 : 1 }}
+          aria-hidden="true"
+        />
         <div
           className="window-spill"
           style={{
@@ -1736,6 +1755,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           }}
         >
           <span className={`relative block transition-transform duration-200 ${obj.state.returnTraceId === returnTrace?.id ? 'trace-halo' : ''} ${obj.beingUsedByCreature ? 'scale-110 drop-shadow-[0_0_12px_rgba(220,195,150,0.45)]' : 'hover:scale-105'}`}>
+            <span
+              className="room-object-ground"
+              style={{ transform: `translateX(-50%) scaleX(${(0.74 + Math.min(1, Math.max(0, (obj.y - 60) / 34)) * 0.5).toFixed(2)})` }}
+              aria-hidden="true"
+            />
             <ObjectIcon type={obj.type} status={obj.state.status} size={58} />
             {showInventory && (
               <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-warm-100/25 bg-room-dark/95 text-[11px] text-warm-100 shadow-lg" aria-hidden="true">↓</span>

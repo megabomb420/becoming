@@ -861,6 +861,18 @@
   mix-blend-mode: soft-light;
 }
 
+.room-object-ground {
+  position: absolute;
+  left: 50%;
+  bottom: -1%;
+  width: 3.9rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: rgba(4, 5, 4, 0.38);
+  filter: blur(6px);
+  pointer-events: none;
+}
+
 .window-spill {
   position: absolute;
   left: 50%;
