@@ -151,7 +151,7 @@ export function createRoomObject(
     id: `${type}-${now}-${Math.random().toString(36).slice(2, 7)}`,
     type,
     x: Math.max(10, Math.min(90, position.x)),
-    y: Math.max(54, Math.min(76, position.y)),
+    y: Math.max(60, Math.min(76, position.y)),
     state: offeredFromConversation ? { offeredFromConversation: true } : {},
     interactions: 0,
     placedByUser: true,

@@ -10,6 +10,7 @@ import {
 } from '../src/systems/needsSystem';
 import { beginConversationTurn } from '../src/systems/conversationSystem';
 import { parseImportedGameState, serializeGameState } from '../src/systems/persistence';
+import { simulateOfflineTime } from '../src/systems/offlineSimulation';
 
 let creature = createHatchedCreature(createNewCreature('Care', 2525));
 assert.equal(creature.roomMess.length, 0);
@@ -26,7 +27,7 @@ assert.deepEqual(accident.roomMess.map(mess => mess.type).sort(), ['pee', 'poop'
 assert.equal(accident.roomMess.length, 2);
 assert.ok(accident.needs.bladder > 60 && accident.needs.bowel > 70);
 assert.ok(accident.needs.hygiene < 45);
-assert.ok(accident.roomMess.every(mess => mess.x >= 14 && mess.x <= 86 && mess.y >= 57 && mess.y <= 76));
+assert.ok(accident.roomMess.every(mess => mess.x >= 14 && mess.x <= 86 && mess.y >= 60 && mess.y <= 76));
 
 const bounded = advanceNeeds({
   ...creature,
@@ -35,6 +36,26 @@ const bounded = advanceNeeds({
   roomMess: [],
 }, 1_820_000_100_000);
 assert.equal(bounded.roomMess.length, 2, 'one elapsed window must create at most one trace of each kind');
+
+// An already-urgent body should be able to leave traces during a long absence.
+// Offline protection must not silently erase bathroom accidents.
+const awayStart = 1_820_000_500_000;
+const awayFor = 8 * 60 * 60_000;
+const awayCreature = createHatchedCreature(createNewCreature('Away', 3636));
+const awayState = {
+  ...awayCreature,
+  needsUpdatedAt: awayStart,
+  lastSaved: awayStart,
+  needs: {
+    ...awayCreature.needs,
+    bladder: 2,
+    bowel: 2,
+  },
+};
+const offlineAccident = simulateOfflineTime(awayState, awayFor, awayStart + awayFor, () => 0).state;
+assert.ok(offlineAccident.roomMess.some(mess => mess.type === 'pee'), 'an urgent bladder during a long absence may leave a trace');
+assert.ok(offlineAccident.roomMess.some(mess => mess.type === 'poop'), 'an urgent bowel during a long absence may leave a trace');
+assert.ok(offlineAccident.needs.bladder > 60 && offlineAccident.needs.bowel > 70, 'the need must reset after the accident');
 
 let toiletState = createHatchedCreature(createNewCreature('Toilet', 2626));
 toiletState = {

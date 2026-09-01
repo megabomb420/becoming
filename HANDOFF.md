@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.9
+> **Version:** 0.13.10
 > **Last Updated:** 2026-09-01
 
 ---
@@ -686,6 +686,11 @@ The code pass closes the edge cases found around that proof. An urgent care need
 ### v0.13.9 — Outdoor visits breathe
 
 A normal installed-PWA playtest live-proved the missing autonomous case: on its wake, the creature chose the rainy outside and returned by itself. The old fixed 24-second visit made that return look like rain was ejecting it. Visits now last a bounded 32–48 seconds, with the exact duration gently coloured by the real condition, learned affinity, curiosity, calmness, and caution. Rain is still not a gate and never ends a visit by itself; urgent care, sleep, disabled weather, the creature's rest, or the visit deadline still bring it inside. This remains part of Room's existing seven-second cadence and adds no speech or second autonomy loop.
+
+### v0.13.10 — Bowel stays in the room; the floor breathes
+
+- **Bowel no longer vanishes during offline absences.** The offline need floor for bladder and bowel was removed so an already-urgent body can leave pee/poop floor traces while the player is away, then reset normally. Save migration, legacy import, and the care sheet already preserved the need and traces; the missing piece was offline simulation silently capping them above zero.
+- **Room layout is less chaotic.** Auto-place slots are spread wider, object placement is clamped to the floor plane (minY 60), and the auto-place picker now uses the slot farthest from existing objects. Floor traces are rendered slightly smaller and lower in the stack so they read as traces rather than extra objects. The selected-object "Use / Put away" popup is kept below the window and away from screen edges.
 
 ---
 

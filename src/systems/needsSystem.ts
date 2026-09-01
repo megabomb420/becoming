@@ -32,7 +32,7 @@ export function migrateRoomMess(value: unknown): RoomMess[] {
       id: typeof mess.id === 'string' ? mess.id : `legacy-mess-${index}`,
       type: mess.type,
       x: Math.max(12, Math.min(88, Number.isFinite(mess.x) ? Number(mess.x) : 50)),
-      y: Math.max(56, Math.min(77, Number.isFinite(mess.y) ? Number(mess.y) : 68)),
+      y: Math.max(60, Math.min(77, Number.isFinite(mess.y) ? Number(mess.y) : 68)),
       createdAt: Number.isFinite(mess.createdAt) ? Number(mess.createdAt) : Date.now(),
     }];
   }).slice(-6);
@@ -49,7 +49,7 @@ function createMess(state: GameState, type: RoomMessType, now: number, offset: n
     id: `mess-${type}-${now}-${offset}`,
     type,
     x: Math.max(14, Math.min(86, state.position.x + side * (5 + stableUnit(state.identity.seed, now + offset + 1) * 7))),
-    y: Math.max(57, Math.min(76, state.position.y + 4 + stableUnit(state.identity.seed, now + offset + 2) * 3)),
+    y: Math.max(60, Math.min(76, state.position.y + 4 + stableUnit(state.identity.seed, now + offset + 2) * 3)),
     createdAt: now,
   };
 }
@@ -101,8 +101,12 @@ const OFFLINE_FLOORS: Record<NeedKey, number> = {
   hunger: 20,
   hydration: 22,
   energy: 18,
-  bladder: 16,
-  bowel: 18,
+  // Bladder and bowel must keep decaying while the app is closed so that an
+  // already-urgent body can leave a floor trace during a long absence. Other
+  // needs keep their non-punitive floor; bathroom accidents are part of the
+  // room's lived-in state and must not be silently erased by offline math.
+  bladder: 0,
+  bowel: 0,
   hygiene: 22,
   comfort: 24,
   stimulation: 20,

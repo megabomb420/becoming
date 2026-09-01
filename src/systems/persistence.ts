@@ -230,7 +230,7 @@ export function migrateGameState(state: GameState): GameState {
   migrated.roomObjects = (migrated.roomObjects ?? []).map(obj => ({
       ...obj,
       x: Math.max(10, Math.min(90, Number.isFinite(obj.x) ? obj.x : 50)),
-      y: Math.max(54, Math.min(76, Number.isFinite(obj.y) ? obj.y : 64)),
+      y: Math.max(60, Math.min(76, Number.isFinite(obj.y) ? obj.y : 64)),
       placedByUser: obj.placedByUser ?? true,
       // An interrupted animation must not leave an object permanently locked.
       beingUsedByCreature: false,

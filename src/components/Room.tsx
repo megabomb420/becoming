@@ -214,17 +214,20 @@ const WALK_BOUNDS = { minX: 12, maxX: 88, minY: 48, maxY: 78 };
 
 // Objects live on the same floor plane as the creature. Keeping both systems
 // inside one coordinate space prevents the creature from walking below an
-// object that was dropped on a wall or behind the controls.
-const OBJECT_BOUNDS = { minX: 10, maxX: 90, minY: 54, maxY: 76 };
+// object that was dropped on a wall or behind the controls. The raised minY
+// keeps them clearly on the floor, below the window and out of the wall plane.
+const OBJECT_BOUNDS = { minX: 10, maxX: 90, minY: 60, maxY: 76 };
 
+// Spread slots across the floor so the first few placed objects do not stack
+// on top of each other. The center is left open for the creature to move.
 const AUTO_PLACE_SLOTS = [
-  { x: 26, y: 62 },
-  { x: 74, y: 62 },
-  { x: 38, y: 71 },
-  { x: 62, y: 71 },
-  { x: 50, y: 61 },
-  { x: 18, y: 72 },
-  { x: 82, y: 72 },
+  { x: 18, y: 64 },
+  { x: 82, y: 64 },
+  { x: 34, y: 72 },
+  { x: 66, y: 72 },
+  { x: 50, y: 68 },
+  { x: 22, y: 74 },
+  { x: 78, y: 74 },
 ];
 
 // Idle positions the creature prefers when nothing else to do
@@ -255,11 +258,18 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 function chooseAutoPlacePosition(state: GameState) {
-  return AUTO_PLACE_SLOTS.reduce((best, candidate) => {
-    const nearestAtBest = state.roomObjects.length === 0 ? 100 : Math.min(...state.roomObjects.map(obj => dist(best, obj)));
-    const nearestAtCandidate = state.roomObjects.length === 0 ? 100 : Math.min(...state.roomObjects.map(obj => dist(candidate, obj)));
-    return nearestAtCandidate > nearestAtBest ? candidate : best;
-  }, AUTO_PLACE_SLOTS[0]);
+  if (state.roomObjects.length === 0) return AUTO_PLACE_SLOTS[0];
+  const scored = AUTO_PLACE_SLOTS.map((slot, index) => ({
+    slot,
+    index,
+    nearest: Math.min(...state.roomObjects.map(obj => dist(slot, obj))),
+  }));
+  return scored.reduce((best, current) =>
+    current.nearest > best.nearest
+    || (current.nearest === best.nearest && current.index < best.index)
+      ? current
+      : best
+  ).slot;
 }
 
 interface DragSession {
@@ -1690,12 +1700,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           key={mess.id}
           aria-label={mess.type === 'pee' ? t('Clean the puddle', 'Posprzątaj kałużę') : t('Clean the poop', 'Posprzątaj kupę')}
           title={t('Clean', 'Posprzątaj')}
-          className={`room-mess-button absolute z-[18] grid h-12 w-12 place-items-center rounded-full transition-transform active:scale-95 ${showCare ? 'is-noticed' : ''}`}
+          className={`room-mess-button absolute z-[15] grid h-11 w-11 place-items-center rounded-full transition-transform active:scale-95 ${showCare ? 'is-noticed' : ''}`}
           style={{ left: `${mess.x}%`, top: `${mess.y}%`, transform: 'translate(-50%, -50%)' }}
           onPointerDown={event => event.stopPropagation()}
           onClick={event => { event.stopPropagation(); handleCleanMess(mess.id); }}
         >
-          <CareMark type={mess.type} size={52} className="room-mess-mark drop-shadow-[0_5px_5px_rgba(0,0,0,.25)]" />
+          <CareMark type={mess.type} size={44} className="room-mess-mark opacity-90 drop-shadow-[0_4px_4px_rgba(0,0,0,.28)]" />
         </button>
       ))}
 
@@ -1739,9 +1749,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       {selectedObject && !showInventory && draggingObjectId !== selectedObject.id && (
         <div
           className="absolute z-40 -translate-x-1/2 -translate-y-full animate-cue-pop"
-          style={{ left: `${Math.max(22, Math.min(78, selectedObject.x))}%`, top: `${Math.max(46, selectedObject.y - 7)}%` }}
+          style={{
+            left: `${Math.max(24, Math.min(76, selectedObject.x))}%`,
+            top: `${Math.max(52, selectedObject.y - 9)}%`,
+          }}
         >
-          <div className="flex items-center gap-1 rounded-2xl border border-warm-200/12 bg-[#211e1a]/96 p-1.5 shadow-2xl backdrop-blur-xl">
+          <div className="relative flex items-center gap-1 rounded-2xl border border-warm-200/12 bg-[#211e1a]/96 p-1.5 shadow-2xl backdrop-blur-xl">
             <span className="px-2 text-[10px] font-serif text-warm-100/60">{objectLabel(selectedObject.type, polish)}</span>
             <button
               type="button"
@@ -1758,6 +1771,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               {t('Put away', 'Odłóż')}
             </button>
             <button type="button" aria-label={t('Close', 'Zamknij')} onClick={() => setSelectedObjectId(null)} className="grid h-11 w-11 place-items-center text-sm text-warm-200/45">×</button>
+            <span className="absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-[#211e1a]/96 border-b border-r border-warm-200/12" aria-hidden="true" />
           </div>
         </div>
       )}
