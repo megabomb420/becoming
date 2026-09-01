@@ -677,7 +677,7 @@ The public AI endpoint now requires a server-validated, action-bound Cloudflare 
 
 ### v0.13.8 — The mind and the outside, honestly tested
 
-The controlled production pass used one real hatched IndexedDB save, `Clockproof`. On its Dublin wake, `go outside` worked first with the solar fallback and then with live `broken light`; the expanded sky visibly removed the mullion and curtains and the local reply stayed grounded in the current condition. On its New York night (`02:26`), circadian sleep took over. Both the room input and full chat murmured, neither user line entered conversation history or fact learning, and opening history added no fresh greeting.
+The controlled production pass used one real hatched IndexedDB test save. On its Dublin wake, `go outside` worked first with the solar fallback and then with live `broken light`; the expanded sky visibly removed the mullion and curtains and the local reply stayed grounded in the current condition. On its New York night (`02:26`), circadian sleep took over. Both the room input and full chat murmured, neither user line entered conversation history or fact learning, and opening history added no fresh greeting.
 
 That pass did **not** produce a successful DeepSeek reply: production Turnstile rejected the controlled browser. The failure left the room without a substitute line, which is live proof of the empty failure contract, not proof of clock-aware model speech. Autonomous restless outside also remains deterministic-test proven rather than live-watched.
 
