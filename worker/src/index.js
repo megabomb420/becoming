@@ -31,7 +31,9 @@ CLOCK has no moon, tides, or astrology. A user mention of a full moon is only so
 
 const WEATHER_PROMPT = `WEATHER is the actual condition, not a scene to invent. place "outdoors" means the creature is outside the room for a short visit; otherwise it is still inside. Do not describe walks, smells, or outdoor events that did not happen. If wantOut is true and the creature is inside, it may say it wants to go out. If place is outdoors, speak from there using only the real condition.`;
 
-const SELF_SPEAK_PROMPT = `No user just spoke. You may say one short in-character line only if CREATURE_STATE currently contains an uncomfortable bodily need, a weather feeling, or a desire to go outside. Do not invent sensory details that are not in CREATURE_STATE. If nothing is pressing, reply with an empty string and nothing else.`;
+const SELF_SPEAK_PROMPT = `No user just spoke. You may say one short in-character line only if CREATURE_STATE currently contains an uncomfortable bodily need, a weather feeling, a desire to go outside, or an aboutTo action. Do not invent sensory details that are not in CREATURE_STATE. If nothing is pressing, reply with an empty string and nothing else.`;
+
+const SITUATION_PROMPT = `SITUATION is the authoritative record of what this creature is doing right now, decided by local systems, never by this reply. place says where the body is; activity is the exact current action. If aboutTo is present, the creature has already decided to take that action — it will happen regardless of this reply — and the reply may say one short natural line about it, or reply with an empty string. Speak only from SITUATION, CLOCK and the given state: never claim a different time, place, action, or state than the one provided, and never describe actions that are not in SITUATION.`;
 
 const INFLUENCE_PROMPT = `Influence is gradual, personal, and fallible—not a binary morality gate. CREATURE_STATE.influence describes how open this creature is to pressure and how familiar its strongest temptation has become.
 - Very low viceDrift: a bad suggestion is new; curiosity, teasing, bargaining, or refusal are all possible.
@@ -457,12 +459,39 @@ function cleanClock(raw) {
   const phase = text(raw.phase, 16);
   const schedule = text(raw.schedule, 16);
   if (!phases.has(phase)) return undefined;
-  return {
+  const clock = {
     phase,
     schedule: schedules.has(schedule) ? schedule : 'diurnal',
     rest: raw.rest === true,
     sleeping: raw.sleeping === true,
   };
+  if (typeof raw.localTime === 'string' && /^[0-2]\d:[0-5]\d$/.test(raw.localTime)) {
+    clock.localTime = raw.localTime;
+  }
+  return clock;
+}
+
+const SITUATION_ACTIONS = new Set(['pee', 'poop', 'drink', 'eat', 'wash', 'sleep']);
+
+function cleanSituation(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const situation = {
+    place: raw.place === 'outdoors' ? 'outdoors' : 'indoor',
+  };
+  if (typeof raw.activity === 'string' && raw.activity.trim()) {
+    situation.activity = text(raw.activity, 60);
+  }
+  const aboutTo = raw.aboutTo;
+  if (aboutTo && typeof aboutTo === 'object' && !Array.isArray(aboutTo)) {
+    const action = text(aboutTo.action, 16);
+    if (SITUATION_ACTIONS.has(action)) {
+      const next = { action };
+      const target = text(aboutTo.target, 24);
+      if (ACTION_OBJECT_TYPES.has(target)) next.target = target;
+      situation.aboutTo = next;
+    }
+  }
+  return situation;
 }
 
 function cleanWeather(raw) {
@@ -559,6 +588,8 @@ function cleanPayload(input) {
   };
   const clock = cleanClock(creature.clock);
   if (clock) payload.creature.clock = clock;
+  const situation = cleanSituation(input?.situation);
+  if (situation) payload.situation = situation;
   const lifePath = cleanLifePath(input?.lifePath);
   if (lifePath) payload.lifePath = lifePath;
   const influence = cleanInfluence(input?.influence);
@@ -592,6 +623,7 @@ function systemPrompt(payload) {
   ];
   if (payload.promptKind !== 'self') blocks.push(WORLD_ACTION_PROMPT);
   if (payload.creature.clock) blocks.push(CLOCK_PROMPT);
+  if (payload.situation) blocks.push(SITUATION_PROMPT);
   if (payload.lifePath) blocks.push(PATH_PROMPT);
   if (payload.influence) blocks.push(INFLUENCE_PROMPT);
   if (payload.innerLife) blocks.push(INNER_LIFE_PROMPT);
@@ -604,6 +636,7 @@ function systemPrompt(payload) {
   if (payload.promptKind === 'self') blocks.push(SELF_SPEAK_PROMPT);
   blocks.push(`${STAGE_INSTRUCTIONS[payload.creature.stage]} ${language}`);
   const state = { creature: payload.creature };
+  if (payload.situation) state.situation = payload.situation;
   if (payload.lifePath) state.lifePath = payload.lifePath;
   if (payload.influence) state.influence = payload.influence;
   if (payload.innerLife) state.innerLife = payload.innerLife;

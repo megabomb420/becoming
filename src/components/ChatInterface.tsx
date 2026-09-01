@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GameState } from '../types';
-import { appendCreatureMessage, getConversationOpening, getSleepingTalkReply } from '../systems/conversationSystem';
+import { appendCreatureMessage, getConversationOpening, isRestingChatGate } from '../systems/conversationSystem';
 import { getDevelopmentDescription } from '../systems/developmentSystem';
 import { getLifePathTitle, getLifePathVisual } from '../systems/lifePathSystem';
 import { getRankedInterests } from '../systems/innerLifeSystem';
@@ -70,7 +70,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   useEffect(() => {
     // Opening history during their rest must not manufacture a fresh greeting.
     // The shared send path owns the murmur if the player actually speaks.
-    if (getSleepingTalkReply(state)) return;
+    if (isRestingChatGate(state)) return;
     if (initRef.current) return;
     initRef.current = true;
     const opening = initialMessage || (messages.length === 0 ? getConversationOpening(state) : null);

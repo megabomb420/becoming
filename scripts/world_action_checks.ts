@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
 import { chooseObjectReaction } from '../src/systems/relationshipSystem';
-import { beginConversationTurn, getSleepingTalkReply, isCannedRoomSpeech } from '../src/systems/conversationSystem';
+import { beginConversationTurn, isRestingChatGate } from '../src/systems/conversationSystem';
 import {
   applyWorldObjectReaction,
   beginWorldObjectApproach,
@@ -274,19 +274,19 @@ assert.match(roomSource, /beginWorldObjectApproach/);
 assert.doesNotMatch(roomSource, /Put creature to sleep/);
 assert.doesNotMatch(roomSource, /handleSleepToggle/);
 assert.match(roomSource, /settleIfSleepy/);
-assert.match(roomSource, /getSleepingTalkReply/, 'talk must not call DeepSeek while they sleep');
+assert.match(roomSource, /isRestingChatGate/, 'talk must not call DeepSeek while they sleep');
 assert.match(roomSource, /if \(quietTalkReply \|\| showChat \|\| initiatedTopic\) return;/, 'rest must not initiate a how-was-your-day');
 assert.match(roomSource, /if \(isDead\(state\) \|\| !greeting \|\| state\.presence\.pendingTrace \|\| initiatedTopic \|\| showChat \|\| quietTalkReply\) return;/, 'return greetings must wait for wake, not merely an awake body');
 const sendStart = roomSource.indexOf('const sendConversationMessage');
 const sendBody = roomSource.slice(sendStart, roomSource.indexOf('const handleRoomSubmit'));
-assert.ok(sendBody.includes('getSleepingTalkReply'), 'the send path must check sleep before the mind');
+assert.ok(sendBody.includes('isRestingChatGate'), 'the send path must check rest before the mind');
 assert.ok(
-  sendBody.indexOf('getSleepingTalkReply') < sendBody.indexOf('requestCreatureReply(turn.state)'),
-  'a sleeping murmur must happen before any mind request',
+  sendBody.indexOf('isRestingChatGate') < sendBody.indexOf('requestCreatureReply(turn.state)'),
+  'rest must close the conversation window before any mind request',
 );
 assert.ok(
-  sendBody.indexOf('getSleepingTalkReply') < sendBody.indexOf('beginConversationTurn(stateRef.current, text, Date.now())'),
-  'rest must murmur before fact learning or conversation evolution',
+  sendBody.indexOf('isRestingChatGate') < sendBody.indexOf('beginConversationTurn(stateRef.current, text, Date.now())'),
+  'rest must close before fact learning or conversation evolution',
 );
 
 const sleeper = {
@@ -312,17 +312,17 @@ const sleeper = {
 };
 const restNight = Date.UTC(2027, 5, 15, 1, 30);
 const restDay = Date.UTC(2027, 5, 15, 14, 0);
-assert.match(getSleepingTalkReply(sleeper, restNight) || '', /śnie/i);
-assert.equal(getSleepingTalkReply({ ...sleeper, sleepState: 'awake' }, restDay), null);
-assert.match(getSleepingTalkReply({ ...sleeper, sleepState: 'awake' }, restNight) || '', /pora snu/i, 'an ordinary night is rest, not a chat');
-assert.match(getSleepingTalkReply({ ...sleeper, sleepState: 'drowsy' }, restDay) || '', /pora snu|rest/i);
-assert.match(
-  getSleepingTalkReply({ ...sleeper, sleepState: 'drowsy', needs: { ...sleeper.needs, hunger: 4 } }, restNight) || '',
-  /pora snu|rest/i,
+assert.equal(isRestingChatGate(sleeper, restNight), true, 'a sleeping creature is a closed conversation window');
+assert.equal(isRestingChatGate({ ...sleeper, sleepState: 'awake' }, restDay), false, 'an awake day creature can talk');
+assert.equal(isRestingChatGate({ ...sleeper, sleepState: 'awake' }, restNight), true, 'an ordinary night is rest, not a chat');
+assert.equal(isRestingChatGate({ ...sleeper, sleepState: 'drowsy' }, restDay), true, 'drowsy rest is not a conversation window');
+assert.equal(
+  isRestingChatGate({ ...sleeper, sleepState: 'drowsy', needs: { ...sleeper.needs, hunger: 4 } }, restNight),
+  true,
   'an urgent body need may keep them awake but must not turn rest into a mind call',
 );
 assert.equal(
-  getSleepingTalkReply({
+  isRestingChatGate({
     ...sleeper,
     sleepState: 'awake',
     lifePath: {
@@ -332,14 +332,12 @@ assert.equal(
       scores: { ...sleeper.lifePath.scores, party_animal: 52 },
     },
   }, restNight),
-  null,
+  false,
   'a settled night life can talk after dark',
 );
-assert.equal(isCannedRoomSpeech(getSleepingTalkReply(sleeper)), false, 'a rest murmur is not stripped canned idle');
-assert.equal(getSleepingTalkReply({ ...sleeper, conversation: { ...sleeper.conversation, language: 'en' } }), 'Mmm. I am in my rest.');
 assert.ok(
-  sendBody.lastIndexOf('getSleepingTalkReply') > sendBody.indexOf('requestCreatureReply(turn.state)'),
-  'a mind reply that arrives after they sleep must become a murmur',
+  sendBody.lastIndexOf('isRestingChatGate') > sendBody.indexOf('requestCreatureReply(turn.state)'),
+  'a mind reply that arrives after they settle must be discarded, not spoken',
 );
 const weatherLayer = readFileSync('src/components/WeatherLayer.tsx', 'utf8');
 assert.match(weatherLayer, /expanded/);
@@ -366,6 +364,6 @@ assert.match(canvasSource, /Kawaii head: big circle/);
 assert.doesNotMatch(canvasSource, /Fur is volume, not hairs/);
 assert.doesNotMatch(canvasSource, /for \(let index = 0; index < 9/, 'radiating hair strokes were not fur');
 const chatSource = readFileSync('src/components/ChatInterface.tsx', 'utf8');
-assert.match(chatSource, /if \(getSleepingTalkReply\(state\)\) return;/, 'opening chat during rest must not invent a greeting');
+assert.match(chatSource, /if \(isRestingChatGate\(state\)\) return;/, 'opening chat during rest must not invent a greeting');
 
 console.log('World action and room-first conversation checks passed.');

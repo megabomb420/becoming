@@ -47,23 +47,19 @@ export function isCannedRoomSpeech(text: string | null | undefined): boolean {
     || /^(it is quiet today|cicho tu dzisiaj)[.?!]?$/i.test(trimmed);
 }
 
-/** They are not a night-shift chatbot. Talk waits until they wake. */
-export function getSleepingTalkReply(state: GameState, now = Date.now()): string | null {
-  const polish = state.conversation.language === 'pl';
-  if (state.sleepState === 'sleeping') {
-    return polish ? 'Mmm. Jestem w swoim śnie.' : 'Mmm. I am in my rest.';
-  }
+/** Their rest is not a conversation window. True while sleeping, in a rest
+ * phase, or drowsy (unless a body need is keeping them up). The gate blocks
+ * DeepSeek, fact learning and transcripts; the room stays quiet — no canned
+ * murmur, silence is valid. */
+export function isRestingChatGate(state: GameState, now = Date.now()): boolean {
+  if (state.sleepState === 'sleeping') return true;
   const rest = isCreatureRestPhase(getTimeOfDay(now, state.world), getRestSchedule(state.lifePath));
   const upForCare = Boolean(getSleepBlocker(state));
   // A body need may keep them physically awake, but it does not turn their
   // rest into a conversation window. Care remains available through the room.
-  if (rest) {
-    return polish ? 'Mmm. To moja pora snu.' : 'Mmm. This is my rest.';
-  }
-  if (state.sleepState === 'drowsy' && !upForCare) {
-    return polish ? 'Mmm. Moja pora snu.' : 'Mmm. It is my rest.';
-  }
-  return null;
+  if (rest) return true;
+  if (state.sleepState === 'drowsy' && !upForCare) return true;
+  return false;
 }
 
 export function migrateConversationState(value?: Partial<ConversationState> | null): ConversationState {
