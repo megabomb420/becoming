@@ -865,11 +865,11 @@
   position: absolute;
   left: 50%;
   bottom: -1%;
-  width: 3.9rem;
-  height: 0.85rem;
+  width: 4.4rem;
+  height: 0.9rem;
   border-radius: 50%;
-  background: rgba(4, 5, 4, 0.38);
-  filter: blur(6px);
+  background: rgba(4, 5, 4, 0.46);
+  filter: blur(7px);
   pointer-events: none;
 }
 
@@ -877,12 +877,12 @@
   position: absolute;
   left: 50%;
   top: 64.7%;
-  width: min(52vw, 16rem);
-  height: 22%;
+  width: min(54vw, 17rem);
+  height: 24%;
   pointer-events: none;
   transform: translateX(-50%);
   clip-path: polygon(30% 0, 70% 0, 96% 100%, 4% 100%);
-  filter: blur(16px);
+  filter: blur(18px);
   mix-blend-mode: soft-light;
 }
 

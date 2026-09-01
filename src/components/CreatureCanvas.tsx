@@ -269,7 +269,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
 
     const fur = (dL: number, dS = 0, alpha = 1) => {
       const s = Math.max(8, Math.min(62, saturation + dS));
-      const l = Math.max(22, Math.min(86, lightness + dL));
+      const l = Math.max(22, Math.min(86, lightness + dL + (heatStrength - coldStrength) * 4));
       return alpha >= 1 ? `hsl(${hue}, ${s}%, ${l}%)` : `hsla(${hue}, ${s}%, ${l}%, ${alpha})`;
     };
     const ink = fur(-34, 8);

@@ -1697,24 +1697,24 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         <div className="absolute top-[11%] bottom-[34%] right-[13%] w-px bg-warm-200/5" />
         <div className="absolute bottom-0 left-0 right-0 h-[35%] transition-opacity duration-700" style={{ background: `linear-gradient(180deg, ${lighting.floorTop} 0%, ${lighting.floorBottom} 100%)`, transition: 'background 30s linear, opacity 900ms ease', opacity: outdoors ? 0.22 : 1 }} />
         <div className="absolute top-[64.7%] left-0 right-0 h-[2px] bg-[#100f0d]/70 shadow-[0_-1px_0_rgba(224,203,176,0.05)] transition-opacity duration-700" style={{ opacity: outdoors ? 0.15 : 1 }} />
-        <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)', opacity: outdoors ? 0.06 : 0.25 }} />
+        <div className="absolute bottom-0 left-0 right-0 h-[35%] opacity-25" style={{ background: 'repeating-linear-gradient(102deg, transparent 0 46px, rgba(8,7,6,.45) 47px 49px)', opacity: outdoors ? 0.06 : 0.28 }} />
         {/* Floorboard rows recede toward the wall, so the floor reads as a
             plane the creature and objects actually stand on. */}
         <div
           className="absolute bottom-0 left-0 right-0 h-[35%] pointer-events-none transition-opacity duration-700"
           style={{
-            background: 'repeating-linear-gradient(180deg, transparent 0 30px, rgba(8,7,6,.32) 31px 32px)',
-            maskImage: 'linear-gradient(180deg, transparent, black 42%)',
-            WebkitMaskImage: 'linear-gradient(180deg, transparent, black 42%)',
-            opacity: outdoors ? 0.05 : 0.22,
+            background: 'repeating-linear-gradient(180deg, transparent 0 30px, rgba(8,7,6,.44) 31px 32px)',
+            maskImage: 'linear-gradient(180deg, transparent, black 34%)',
+            WebkitMaskImage: 'linear-gradient(180deg, transparent, black 34%)',
+            opacity: outdoors ? 0.05 : 0.3,
           }}
           aria-hidden="true"
         />
         {/* Soft occlusion where the wall meets the floor grounds the whole
             terrarium instead of leaving a hard horizon line. */}
         <div
-          className="absolute top-[59.5%] left-0 right-0 h-[6%] pointer-events-none transition-opacity duration-700"
-          style={{ background: 'linear-gradient(180deg, transparent, rgba(6,7,5,.36))', opacity: outdoors ? 0.12 : 1 }}
+          className="absolute top-[59.5%] left-0 right-0 h-[6.5%] pointer-events-none transition-opacity duration-700"
+          style={{ background: 'linear-gradient(180deg, transparent, rgba(6,7,5,.48))', opacity: outdoors ? 0.12 : 1 }}
           aria-hidden="true"
         />
         <div

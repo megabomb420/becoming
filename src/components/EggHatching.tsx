@@ -98,7 +98,7 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
             className="relative cursor-pointer select-none bg-transparent border-0 p-5 rounded-full"
             onClick={handleTap}
           >
-            <span className={`absolute inset-[-48px] rounded-full transition-all duration-1000 ${stage === 'wobbling' ? 'animate-pulse' : ''}`} style={{ background: 'radial-gradient(circle, rgba(216,210,191,.2), rgba(199,166,108,.08) 38%, transparent 68%)' }} />
+            <span className={`absolute inset-[-48px] rounded-full transition-all duration-1000 ${stage === 'wobbling' ? 'animate-pulse' : ''}`} style={{ background: 'radial-gradient(circle, rgba(220,208,188,.34), rgba(200,180,150,.12) 42%, transparent 72%)' }} />
             {stage === 'hatched' ? (
               <span className="relative block w-28 h-36 animate-fade-in" aria-hidden="true">
                 <span className="absolute inset-0 rounded-full" style={{ background: 'radial-gradient(circle, rgba(236,232,218,.9), rgba(199,166,108,.25) 36%, transparent 70%)' }} />
@@ -109,7 +109,7 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
               </span>
             ) : (
               <span className={`relative block transition-transform duration-700 ${stage === 'wobbling' ? 'animate-breathe' : ''} ${stage === 'cracking' ? 'scale-105' : ''}`} aria-hidden="true">
-                <span className="block w-24 h-32 rounded-[51%_49%_45%_55%] border border-white/10" style={{ background: 'radial-gradient(ellipse at 32% 26%, #e3dece, #a49b84 55%, #6e6859)', boxShadow: '0 24px 55px rgba(0,0,0,.42), inset -8px -14px 26px rgba(42,40,33,.24)' }} />
+                <span className="block w-24 h-32 rounded-[51%_49%_45%_55%] border border-white/10" style={{ background: 'radial-gradient(ellipse at 32% 26%, #efe6d4, #d3c5ad 55%, #9b8a71)', boxShadow: '0 24px 55px rgba(0,0,0,.42), inset -8px -14px 26px rgba(42,40,33,.24)' }} />
                 {stage === 'cracking' && (
                   <svg className="absolute inset-0 w-24 h-32 text-[#3a3b32]" viewBox="0 0 96 128" fill="none">
                     <path d="M45 34 51 50l-9 12 11 13-8 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />

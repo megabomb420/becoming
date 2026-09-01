@@ -77,7 +77,7 @@ const WeatherLayer: React.FC<WeatherLayerProps> = ({ world, lighting, time, seed
                 left: time.phase === 'dawn' ? '24%' : '46%',
                 top: time.phase === 'dawn' ? '62%' : time.phase === 'golden_hour' ? '30%' : '16%',
                 background: time.phase === 'golden_hour' ? '#e39a62' : '#f0e2b8',
-                opacity: 0.52,
+                opacity: 0.34 + lighting.brightness * 0.24,
                 boxShadow: time.phase === 'golden_hour' ? '0 0 28px rgba(227,154,98,.5)' : '0 0 22px rgba(240,226,184,.38)',
               }}
             />
