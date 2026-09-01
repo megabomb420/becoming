@@ -84,7 +84,8 @@ export function createWorldEnvironment(): WorldEnvironment {
   };
 }
 
-export const OUTDOOR_VISIT_MS = 24_000;
+export const OUTDOOR_VISIT_MIN_MS = 32_000;
+export const OUTDOOR_VISIT_MAX_MS = 48_000;
 export const OUTDOOR_COOLDOWN_MS = 8 * 60_000;
 export const WINDOW_PLACE = { x: 50, y: 50 };
 export const OUTDOOR_PLACE = { x: 50, y: 40 };
@@ -701,8 +702,7 @@ export function wantsOutdoors(state: GameState, restPhase = false, nightLife = f
     ),
   );
   if (likesSky) return true;
-  const awakeEnough = state.development.hatched && state.development.cognitiveLevel >= 18;
-  if (!awakeEnough) return false;
+  if (!state.development.hatched) return false;
   if (nightLife) return state.needs.stimulation < 64;
   return state.needs.stimulation < 38;
 }
@@ -721,6 +721,29 @@ export function shouldEndOutdoorVisit(state: GameState, now = Date.now()) {
   if (now >= (state.world.outdoorUntil || 0)) return true;
   if (state.needs.hunger < 24 || state.needs.bladder < 30 || state.needs.bowel < 24 || state.needs.hygiene < 24) return true;
   return false;
+}
+
+/**
+ * Outdoor time stays short enough for Room's existing cadence, but no longer
+ * snaps every creature back inside after the same 24 seconds. Weather colours
+ * the visit instead of gating it: rain can shorten a wary visit or lengthen a
+ * calm one, while only a storm can still be refused before stepping out.
+ */
+export function getOutdoorVisitDurationMs(state: GameState) {
+  const condition = state.world.current?.condition ?? 'unknown';
+  const preference = state.world.current ? state.world.preferences[condition] : null;
+  let duration = 36_000;
+
+  if (condition === 'rain' || condition === 'drizzle') duration += 2_000;
+  if (condition === 'snow') duration += 4_000;
+  if (condition === 'storm') duration -= 4_000;
+
+  duration += (state.personality.curiosity - 50) * 80;
+  duration += (state.personality.calmness - 50) * 50;
+  duration -= (state.personality.caution - 50) * 35;
+  duration += clamp(preference?.affinity ?? 0, -20, 40) * 120;
+
+  return Math.round(clamp(duration, OUTDOOR_VISIT_MIN_MS, OUTDOOR_VISIT_MAX_MS) / 1000) * 1000;
 }
 
 function outdoorActivity(state: GameState) {
@@ -754,7 +777,7 @@ export function beginOutdoorVisit(state: GameState, now = Date.now()): GameState
       ...state.world,
       place: 'outdoors',
       lastOutdoorAt: now,
-      outdoorUntil: now + OUTDOOR_VISIT_MS,
+      outdoorUntil: now + getOutdoorVisitDurationMs(state),
     },
   };
 }

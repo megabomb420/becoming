@@ -55,11 +55,13 @@ export function getSleepingTalkReply(state: GameState, now = Date.now()): string
   }
   const rest = isCreatureRestPhase(getTimeOfDay(now, state.world), getRestSchedule(state.lifePath));
   const upForCare = Boolean(getSleepBlocker(state));
+  // A body need may keep them physically awake, but it does not turn their
+  // rest into a conversation window. Care remains available through the room.
+  if (rest) {
+    return polish ? 'Mmm. To moja pora snu.' : 'Mmm. This is my rest.';
+  }
   if (state.sleepState === 'drowsy' && !upForCare) {
     return polish ? 'Mmm. Moja pora snu.' : 'Mmm. It is my rest.';
-  }
-  if (rest && !upForCare) {
-    return polish ? 'Mmm. To moja pora snu.' : 'Mmm. This is my rest.';
   }
   return null;
 }

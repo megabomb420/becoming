@@ -11,6 +11,7 @@ import {
   endOutdoorVisit,
   failWeatherRefresh,
   getEffectiveStimulus,
+  getOutdoorVisitDurationMs,
   markWeatherPermissionFailure,
   outdoorVisitBlocked,
   receiveWeatherSnapshot,
@@ -344,9 +345,23 @@ assert.equal(steppedOut.lifePath.primary, indoorBase.lifePath.primary, 'going ou
 assert.deepEqual(steppedOut.personality, indoorBase.personality);
 assert.ok(steppedOut.memories.some(memory => memory.tags.includes('outdoors')));
 assert.equal(shouldEndOutdoorVisit(steppedOut, now + MINUTE + 5_000), false);
-assert.equal(shouldEndOutdoorVisit(steppedOut, now + MINUTE + 30_000), true);
-const cameIn = endOutdoorVisit(steppedOut, now + MINUTE + 30_000);
+assert.equal(shouldEndOutdoorVisit(steppedOut, steppedOut.world.outdoorUntil - 1), false);
+assert.equal(shouldEndOutdoorVisit(steppedOut, steppedOut.world.outdoorUntil), true);
+const cameIn = endOutdoorVisit(steppedOut, steppedOut.world.outdoorUntil);
 assert.equal(cameIn.world.place, 'indoor');
+
+const rainyCalm = {
+  ...indoorBase,
+  world: worldWith(snapshot({ weatherCode: 63, condition: 'rain', precipitationMm: 2 })),
+  personality: { ...indoorBase.personality, curiosity: 64, calmness: 76, caution: 32 },
+};
+const rainyWary = {
+  ...rainyCalm,
+  personality: { ...rainyCalm.personality, curiosity: 24, calmness: 34, caution: 84 },
+};
+assert.ok(getOutdoorVisitDurationMs(rainyCalm) > getOutdoorVisitDurationMs(rainyWary), 'rain colours visit length through temperament');
+const rainyVisit = beginOutdoorVisit(rainyCalm, now + 2 * MINUTE);
+assert.equal(shouldEndOutdoorVisit(rainyVisit, now + 2 * MINUTE + 30_000), false, 'rain must not make a creature immediately run inside');
 assert.equal(wantsOutdoors({
   ...indoorBase,
   world: { ...indoorBase.world, preferences: createWorldEnvironment().preferences },
@@ -358,7 +373,7 @@ assert.equal(wantsOutdoors({
   world: { ...indoorBase.world, preferences: createWorldEnvironment().preferences, current: null },
   personality: { ...indoorBase.personality, curiosity: 20 },
   needs: { ...indoorBase.needs, stimulation: 22 },
-  development: { ...indoorBase.development, cognitiveLevel: 40, hatched: true },
+  development: { ...indoorBase.development, cognitiveLevel: 5, hatched: true },
 }), true, 'a solar sky is enough to want air on their wake');
 assert.equal(wantsOutdoors({
   ...indoorBase,
