@@ -4,6 +4,7 @@ import { advanceNeeds, applyNeedDelta, getSleepBlocker } from './needsSystem';
 import { getRestSchedule } from './lifePathSystem';
 import { estimateNightRestMs, estimateWakeMs, getTimeOfDay, isCreatureRestPhase, shouldBeDrowsy } from './timeSystem';
 import { endOutdoorVisit } from './environmentSystem';
+import { advanceHealth, isDead } from './healthSystem';
 
 const TRACE_MINIMUM_MS = 10 * 60_000;
 
@@ -122,6 +123,33 @@ function applyReturnTrace(state: GameState, awayMs: number, now: number): { stat
 
 export type TimezoneOffsetAt = (timestamp: number) => number;
 
+/**
+ * Autonomous care during an absence. The same objects the creature already
+ * uses in the room (water bowl, food, litter box, wash basin, blanket) are
+ * used while the player is away — deterministically, once, in a bounded way.
+ * This is what makes existing self-care meaningfully reduce health risk: a
+ * stocked room leaves the body comfortably met, an empty room leaves it to
+ * the floors. A litter box also turns what would have been floor accidents
+ * into quiet bathroom breaks.
+ */
+function applyOfflineSelfCare(state: GameState): GameState {
+  const objects = state.roomObjects ?? [];
+  const has = (type: ObjectType) => objects.some(object => object.type === type);
+  const needs = { ...state.needs };
+  let roomMess = state.roomMess ?? [];
+  if (has('water_bowl') && needs.hydration < 62) needs.hydration = 62;
+  if ((has('apple') || has('broccoli') || has('food_bowl')) && needs.hunger < 58) needs.hunger = 58;
+  if (has('wash_basin') && needs.hygiene < 70) needs.hygiene = 70;
+  if (has('litter_box')) {
+    if (needs.bladder < 75) needs.bladder = 75;
+    if (needs.bowel < 80) needs.bowel = 80;
+    roomMess = roomMess.filter(mess => mess.type !== 'pee' && mess.type !== 'poop');
+  }
+  if (has('blanket') && needs.energy < 65) needs.energy = 65;
+  if (needs === state.needs && roomMess === (state.roomMess ?? [])) return state;
+  return { ...state, needs, roomMess };
+}
+
 export function simulateOfflineTime(
   state: GameState,
   awayMs: number,
@@ -135,6 +163,8 @@ export function simulateOfflineTime(
   const needsFrom = Number.isFinite(state.needsUpdatedAt) ? state.needsUpdatedAt : leftAt;
 
   if (awayMinutes < 1) return { state, activities };
+  // A completed life no longer simulates: no needs, no rest, no traces, no age.
+  if (isDead(state)) return { state: { ...state, lastSaved: now }, activities };
 
   if (state.world.place === 'outdoors') {
     state = endOutdoorVisit(state, now);
@@ -185,6 +215,26 @@ export function simulateOfflineTime(
       compressed: false,
     };
     currentState = { ...currentState, memories: [...currentState.memories, memory].slice(-200) };
+  }
+
+  // The body is maintained with whatever care objects are in the room, then
+  // the same health model as active play runs over the real absence window
+  // against the final body state. A life that ends while the player is away
+  // simply ends: no traces, no return presence, no age.
+  currentState = applyOfflineSelfCare(currentState);
+  const healthFrom = Number.isFinite(currentState.health.lastUpdated)
+    ? Math.max(leftAt, currentState.health.lastUpdated)
+    : needsFrom;
+  currentState = advanceHealth({ ...currentState, health: { ...currentState.health, lastUpdated: healthFrom } }, now);
+  if (isDead(currentState)) {
+    return {
+      state: {
+        ...currentState,
+        lastSaved: now,
+        needsUpdatedAt: now,
+      },
+      activities,
+    };
   }
 
   // Leave one physical, state-backed trace before any return dialogue. The

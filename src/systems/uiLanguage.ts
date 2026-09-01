@@ -120,6 +120,7 @@ const STORED_MEMORY_TRANSLATIONS: Record<string, string> = {
   'A phrase became ours': 'Zdanie stało się nasze',
   'It recognized itself': 'Rozpoznało siebie',
   'It chose what to do': 'Samo wybrało, co zrobić',
+  'the room fell quiet': 'pokój w końcu ucichł',
 };
 
 export function formatStoredMemory(content: string, language: SupportedUiLanguage): string {

@@ -8,6 +8,7 @@ import { createTouchBoundaryState } from './boundarySystem';
 import { createSharedLanguageState } from './sharedLanguageSystem';
 import { createDevelopmentExperience } from './developmentSystem';
 import { createWorldEnvironment } from './environmentSystem';
+import { createHealthState } from './healthSystem';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -115,6 +116,7 @@ export function createNewCreature(name: string | null = null, seed = Date.now())
   const state: GameState = {
     identity,
     needs,
+    health: createHealthState(birthTime),
     world: createWorldEnvironment(),
     personality,
     lifePath: createLifePathState(personality, birthTime),

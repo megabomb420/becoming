@@ -30,6 +30,28 @@ export interface Needs {
   social: number;
 }
 
+// Health follows the same hidden philosophy as needs: one qualitative
+// lifecycle (healthy -> strained -> ill -> critical -> recovery or death)
+// driven by sustained body state, never a visible meter. Wellness and illness
+// are internal numbers; the UI and the mind only ever read qualitative stages.
+export type HealthStage = 'healthy' | 'strained' | 'ill' | 'critical';
+export type LifeStatus = 'alive' | 'dead';
+
+export interface HealthState {
+  status: LifeStatus;
+  stage: HealthStage;
+  // General vitality, 100 = strong. Reaches 0 only at the end of a sustained
+  // critical state; wellness <= 0 is the single death rule (no random death).
+  wellness: number;
+  // Accumulated illness burden, 0-100. Builds only under severe sustained
+  // pressure, persists over real time, and accelerates wellness loss.
+  illness: number;
+  // When the illness first crossed into an active state (null while healthy).
+  illnessSince: number | null;
+  lastUpdated: number;
+  diedAt: number | null;
+}
+
 export type WeatherMode = 'unconfigured' | 'device' | 'city' | 'disabled';
 export type WeatherPermission = 'unknown' | 'prompt' | 'granted' | 'denied' | 'unavailable';
 export type WeatherCondition =
@@ -738,6 +760,7 @@ export interface CreatureCreation {
 export interface GameState {
   identity: CreatureIdentity;
   needs: Needs;
+  health: HealthState;
   world: WorldEnvironment;
   personality: PersonalityTraits;
   lifePath: LifePathState;

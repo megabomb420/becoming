@@ -119,6 +119,14 @@ import {
   WorldActionResult,
   WorldIntent,
 } from '../systems/worldActionSystem';
+import {
+  getHealthCareLine,
+  getHealthCue,
+  getMovementFatigue,
+  getSelfCareThreshold,
+  isDead,
+} from '../systems/healthSystem';
+import DeathScreen from './DeathScreen';
 
 interface RoomProps {
   state: GameState;
@@ -421,8 +429,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   useEffect(() => {
     const greeting = state.presence.pendingGreeting;
     // Speak after they wake. A rest-phase return must not talk as if they
-    // waited up on the player's night shift.
-    if (!greeting || state.presence.pendingTrace || initiatedTopic || showChat || quietTalkReply) return;
+    // waited up on the player's night shift. A completed life never greets.
+    if (isDead(state) || !greeting || state.presence.pendingTrace || initiatedTopic || showChat || quietTalkReply) return;
     setInitiatedTopic(greeting);
     onStateChange(prev => appendCreatureMessage(consumeReturnGreeting(prev), greeting));
   }, [initiatedTopic, onStateChange, quietTalkReply, showChat, state.presence.pendingGreeting, state.presence.pendingTrace]);
@@ -434,7 +442,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   // The room gets the first word after an absence. Dialogue is held back until
   // the changed position or object has had time to register visually.
   useEffect(() => {
-    if (!state.presence.pendingTrace) return;
+    if (isDead(state) || !state.presence.pendingTrace) return;
     clearTimeout(returnTraceTimerRef.current);
     returnTraceTimerRef.current = setTimeout(() => {
       onStateChange(prev => consumeReturnTrace(prev));
@@ -515,7 +523,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   // react to even when they do not know what to say in chat. The generator is
   // deterministic and idempotent, so StrictMode cannot duplicate a moment.
   useEffect(() => {
-    if (!state.development.hatched || state.development.cognitiveLevel < 12) return;
+    if (isDead(state) || !state.development.hatched || state.development.cognitiveLevel < 12) return;
     onStateChange(prev => ensureDailyMoment(prev, clockNow));
   }, [clockNow, onStateChange, state.development.hatched, state.development.cognitiveLevel, state.development.chronologicalAge, state.sleepState]);
 
@@ -646,7 +654,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     onWorldResult?: (result: WorldActionResult) => void,
   ) => {
     const currentState = stateRef.current;
-    if (currentState.sleepState === 'sleeping') return;
+    if (isDead(currentState) || currentState.sleepState === 'sleeping') return;
     if (currentState.world.place === 'outdoors') {
       const ended = endOutdoorVisit(currentState);
       stateRef.current = ended;
@@ -669,7 +677,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const currentPos = creaturePosRef.current;
     const { target } = beginWorldObjectApproach({ ...currentState, position: currentPos }, object);
     const travelDistance = dist(currentPos, target);
-    const travelTime = Math.max(900, Math.min(2600, 650 + travelDistance * 28));
+    // An unwell body moves heavily: same walk, slower pace, no extra loop.
+    const travelTime = Math.max(900, Math.min(2600, (650 + travelDistance * 28) * getMovementFatigue(currentState)));
     const noticeDelay = Math.max(380, Math.min(850,
       420 + currentState.personality.caution * 4 - currentState.personality.curiosity * 2,
     ));
@@ -709,13 +718,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   }, [clearActionTimers, finishObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue]);
 
   const walkToIdlePosition = useCallback((targetInput: { x: number; y: number }, options?: { outdoors?: boolean }) => {
-    if (activeObjectRef.current || stateRef.current.sleepState === 'sleeping') return;
+    if (activeObjectRef.current || stateRef.current.sleepState === 'sleeping' || isDead(stateRef.current)) return;
     clearTimeout(movementTimerRef.current);
     const currentPos = creaturePosRef.current;
     const target = options?.outdoors
       ? { x: Math.max(12, Math.min(88, targetInput.x)), y: Math.max(36, Math.min(78, targetInput.y)) }
       : clampToWalkable(targetInput);
-    const travelTime = Math.max(800, Math.min(2200, 600 + dist(currentPos, target) * 24));
+    const travelTime = Math.max(800, Math.min(2200, (600 + dist(currentPos, target) * 24) * getMovementFatigue(stateRef.current)));
 
     targetPosRef.current = target;
     behaviorRef.current = 'walking';
@@ -826,6 +835,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   // Intentional autonomous behaviour. The interval only chooses a new goal
   // while the creature is idle; user-selected objects always take priority.
   useEffect(() => {
+    if (isDead(state)) {
+      clearActionTimers();
+      return;
+    }
     if (state.sleepState === 'sleeping') {
       clearActionTimers();
       clearTimeout(speechFadeRef.current);
@@ -843,6 +856,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
     const chooseBehavior = () => {
       const currentState = stateRef.current;
+      if (isDead(currentState)) return;
       if (showChat || showCare || showInventory || activeObjectRef.current || behaviorRef.current !== 'idle') return;
 
       if (currentState.world.place === 'outdoors') {
@@ -907,19 +921,22 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
       let goal: RoomObject | null = null;
       let goalKind: SelfCareKind | null = null;
-      if (currentState.needs.hydration < 48) {
+      // An unwell body puts off its own care a little longer: thresholds drop,
+      // so a sick creature only bothers once a need is genuinely worse.
+      const careLimit = getSelfCareThreshold(currentState, 48);
+      if (currentState.needs.hydration < careLimit) {
         goal = closestOfType(['water_bowl']);
         if (goal) goalKind = 'drink';
       }
-      if (!goal && (currentState.needs.bladder < 48 || currentState.needs.bowel < 48)) {
+      if (!goal && (currentState.needs.bladder < careLimit || currentState.needs.bowel < careLimit)) {
         goal = closestOfType(['litter_box']);
         if (goal) goalKind = currentState.needs.bowel <= currentState.needs.bladder ? 'poop' : 'pee';
       }
-      if (!goal && currentState.needs.hunger < 48) {
+      if (!goal && currentState.needs.hunger < careLimit) {
         goal = closestOfType(['apple', 'broccoli']);
         if (goal) goalKind = 'eat';
       }
-      if (!goal && currentState.needs.hygiene < 48) {
+      if (!goal && currentState.needs.hygiene < careLimit) {
         goal = closestOfType(['wash_basin']);
         if (goal) goalKind = 'wash';
       }
@@ -1014,6 +1031,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   useEffect(() => {
     activityTimerRef.current = setInterval(() => {
       onStateChange(prev => {
+        if (isDead(prev)) return prev;
         const updated = updateDevelopment(prev, 0.5);
         return { ...updated, needs: { ...prev.needs } };
       });
@@ -1025,7 +1043,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   useEffect(() => {
     const interval = setInterval(() => {
       const currentState = stateRef.current;
-      if (showChat || showCare || activeObjectRef.current || currentState.sleepState === 'sleeping') return;
+      if (isDead(currentState) || showChat || showCare || activeObjectRef.current || currentState.sleepState === 'sleeping') return;
       if (behaviorRef.current !== 'idle' || selfSpeakInFlightRef.current) return;
       if (!isLlmAvailable()) return;
       if (Date.now() - lastSpeechAtRef.current < 90_000) return;
@@ -1053,6 +1071,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       const delay = 15000 + Math.random() * 20000;
       initiateTimerRef.current = setTimeout(() => {
         const currentState = stateRef.current;
+        if (isDead(currentState)) return;
         if (getSleepingTalkReply(currentState)) {
           checkInitiate();
           return;
@@ -1081,6 +1100,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   }, [emitCue, onStateChange, showCreatureCue, t]);
 
   const handleTapCreature = useCallback(() => {
+    if (isDead(stateRef.current)) return;
     if (stateRef.current.sleepState === 'sleeping') {
       wakeFromTouch('stirs at your touch', 'budzi się od twojego dotyku');
       return;
@@ -1102,6 +1122,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech, wakeFromTouch]);
 
   const handleStrokeCreature = useCallback(() => {
+    if (isDead(stateRef.current)) return;
     if (stateRef.current.sleepState === 'sleeping') {
       wakeFromTouch('leans into the stroke, then opens an eye', 'przysuwa się do dłoni i otwiera oko');
       return;
@@ -1125,6 +1146,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const handleHoldStart = useCallback(() => {}, []);
 
   const handleHoldEnd = useCallback(() => {
+    if (isDead(stateRef.current)) return;
     if (stateRef.current.sleepState === 'sleeping') {
       wakeFromTouch('wakes in your arms', 'budzi się w twoich ramionach');
       return;
@@ -1542,6 +1564,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const sendConversationMessage = useCallback(async (rawText: string) => {
     const text = rawText.trim();
     if (!text || isThinking) return;
+    // Words cannot reach a life that is over: no DeepSeek, no history entry.
+    if (isDead(stateRef.current)) return;
 
     const intent = parseWorldIntent(text);
     if (intent) {
@@ -1662,7 +1686,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     : null;
   const activeInventoryGroup = INVENTORY_GROUPS.find(group => group.id === inventoryGroupId) ?? INVENTORY_GROUPS[0];
   const activeInventoryItems = activeInventoryGroup.items.filter(type => state.inventory.includes(type));
-  const careNeedsAttention = state.roomMess.length > 0
+  const healthCue = getHealthCue(state);
+  const healthCareLine = getHealthCareLine(state, polish);
+  const careNeedsAttention = healthCue !== null
+    || state.roomMess.length > 0
     || state.needs.hunger < 36
     || state.needs.hygiene < 38
     || state.needs.bladder < 34
@@ -1673,9 +1700,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     wash: state.needs.hygiene < 38,
     clean: state.roomMess.length > 0,
   };
-  const careSummary = state.roomMess.length > 0
-    ? t('Something on the floor needs cleaning. No emergency — just part of sharing a room.', 'Coś na podłodze wymaga sprzątnięcia. Bez alarmu — tak wygląda wspólny pokój.')
-    : state.needs.bowel < 28 && state.needs.bladder < 34
+  const careSummary = healthCareLine
+    ? healthCareLine
+    : state.roomMess.length > 0
+      ? t('Something on the floor needs cleaning. No emergency — just part of sharing a room.', 'Coś na podłodze wymaga sprzątnięcia. Bez alarmu — tak wygląda wspólny pokój.')
+      : state.needs.bowel < 28 && state.needs.bladder < 34
       ? t('It cannot settle. A bathroom break would probably help.', 'Nie może się ułożyć. Wizyta w toalecie prawdopodobnie pomoże.')
       : state.needs.bowel < 28
         ? t('Its way of sitting says more than words do.', 'Sposób, w jaki siada, mówi więcej niż słowa.')
@@ -1696,6 +1725,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     ? `${getWeatherConditionLabel(state.world.current.condition, ui)}, ${Math.round(state.world.current.temperatureC)}°`
     : null;
   const roomSpeech = state.conversation.lastCreatureMessage;
+
+  // A completed life is a quiet room, not a game-over screen. The saved life
+  // stays in IndexedDB; only the explicit Start over contract begins another.
+  if (isDead(state)) {
+    return <DeathScreen state={state} version={version} onReset={onReset} />;
+  }
 
   return (
     <div
@@ -2043,8 +2078,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             </span>
           )}
           <span className="h-3 w-px shrink-0 bg-warm-200/10" />
-          {visibleNeedSignals.length > 0 ? (
+          {visibleNeedSignals.length > 0 || healthCue ? (
             <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+              {healthCue && (
+                <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[10px] font-serif" style={{ color: healthCue.tone === 'attention' ? '#e39a82' : '#d6b276' }}>
+                  <span aria-hidden="true">{healthCue.icon}</span>
+                  <span className="max-w-[5.7rem] truncate">{polish ? healthCue.labelPl : healthCue.labelEn}</span>
+                </span>
+              )}
               {visibleNeedSignals.map(signal => (
                 <span key={signal.key} className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[10px] font-serif" style={{ color: urgencyColor(signal.urgency) }}>
                   <span aria-hidden="true">{signal.icon}</span>
@@ -2244,6 +2285,15 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   <span className="text-sm" style={{ color: urgencyColor(getNeedUrgency(state.needs[dominantNeed])) }}>{NEED_COPY[dominantNeed].icon}</span>
                   <p className="text-[11px] font-serif italic text-warm-100/72">
                     {state.identity.name || t('The creature', 'Stworek')} {getNaturalNeedCue(state, polish, dominantNeed)}.
+                  </p>
+                </div>
+              )}
+
+              {healthCue && (
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-warm-300/12 bg-room-dark/35 px-3 py-2">
+                  <span className="text-sm" style={{ color: healthCue.tone === 'attention' ? '#e39a82' : '#d6b276' }}>{healthCue.icon}</span>
+                  <p className="text-[11px] font-serif italic text-warm-100/72">
+                    {state.identity.name || t('The creature', 'Stworek')} {polish ? healthCue.labelPl : healthCue.labelEn}.
                   </p>
                 </div>
               )}

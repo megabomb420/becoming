@@ -276,7 +276,7 @@ assert.doesNotMatch(roomSource, /handleSleepToggle/);
 assert.match(roomSource, /settleIfSleepy/);
 assert.match(roomSource, /getSleepingTalkReply/, 'talk must not call DeepSeek while they sleep');
 assert.match(roomSource, /if \(quietTalkReply \|\| showChat \|\| initiatedTopic\) return;/, 'rest must not initiate a how-was-your-day');
-assert.match(roomSource, /if \(!greeting \|\| state\.presence\.pendingTrace \|\| initiatedTopic \|\| showChat \|\| quietTalkReply\) return;/, 'return greetings must wait for wake, not merely an awake body');
+assert.match(roomSource, /if \(isDead\(state\) \|\| !greeting \|\| state\.presence\.pendingTrace \|\| initiatedTopic \|\| showChat \|\| quietTalkReply\) return;/, 'return greetings must wait for wake, not merely an awake body');
 const sendStart = roomSource.indexOf('const sendConversationMessage');
 const sendBody = roomSource.slice(sendStart, roomSource.indexOf('const handleRoomSubmit'));
 assert.ok(sendBody.includes('getSleepingTalkReply'), 'the send path must check sleep before the mind');

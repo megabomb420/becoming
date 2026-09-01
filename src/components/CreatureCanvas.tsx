@@ -3,6 +3,7 @@ import { GameState } from '../types';
 import { getLifePathVisual } from '../systems/lifePathSystem';
 import { getDominantNeed, getNeedUrgency } from '../systems/needsSystem';
 import { getEffectiveStimulus } from '../systems/environmentSystem';
+import { getIllnessIntensity } from '../systems/healthSystem';
 import type { RoomLighting } from '../systems/timeSystem';
 
 interface CreatureCanvasProps {
@@ -113,10 +114,14 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, lighting, onTap,
 
   const renderCreature = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, time: number) => {
     const app = state.identity.appearance;
-    const isSleeping = state.sleepState === 'sleeping';
+    const departed = state.health?.status === 'dead';
+    const illness = departed ? 1 : getIllnessIntensity(state);
+    const isSleeping = state.sleepState === 'sleeping' || departed;
     const behavior = state.creatureBehavior;
-    const breathSpeed = isSleeping ? 0.00105 : 0.003;
-    const breathAmount = isSleeping ? 0.012 : 0.022;
+    // A departed body barely breathes; the render stays still enough to read
+    // as rest, not as a paused animation frame.
+    const breathSpeed = departed ? 0.00035 : isSleeping ? 0.00105 : 0.003;
+    const breathAmount = departed ? 0.006 : isSleeping ? 0.012 : 0.022;
     const breath = Math.sin(time * breathSpeed) * breathAmount + 1;
     const { eyeSize, roundness } = app;
     const pathVisual = getLifePathVisual(state);
@@ -287,8 +292,8 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, lighting, onTap,
     }
 
     const lightDepth = lighting ? Math.max(0, 1.02 - lighting.brightness) : 0;
-    const coatDim = lightDepth * 6.5 + coldStrength * 4 - heatStrength * 2.2;
-    const coatSat = lightDepth * 1.8 + (environment.condition === 'storm' ? environment.intensity * 1.6 : 0);
+    const coatDim = lightDepth * 6.5 + coldStrength * 4 - heatStrength * 2.2 + illness * 6;
+    const coatSat = lightDepth * 1.8 + (environment.condition === 'storm' ? environment.intensity * 1.6 : 0) - illness * 8;
 
     const fur = (dL: number, dS = 0, alpha = 1) => {
       const s = Math.max(8, Math.min(62, saturation + dS + coatSat));
@@ -433,7 +438,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, lighting, onTap,
     const attentive = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'imitating' || behavior === 'proud' || behavior === 'uncomfortable';
     const weatherEyeScale = 1 + weatherCuriosity * 0.06 + stormCaution * 0.04;
     const pathEyeHeight = 1 - pathVisual.eyeDroop * pathVisual.strength * 0.45;
-    const tiredEyeScale = state.sleepState === 'drowsy' || dominantNeed === 'energy' ? Math.max(0.55, 1 - needStrength * 0.35) : 1;
+    const tiredEyeScale = (state.sleepState === 'drowsy' || dominantNeed === 'energy' ? Math.max(0.55, 1 - needStrength * 0.35) : 1) * (1 - illness * 0.3);
     const eyeW = 13.5 * eyeSize * (attentive ? 1.06 : 1) * weatherEyeScale;
     const openEyeHeight = 16.5 * eyeSize * pathEyeHeight * tiredEyeScale * (attentive ? 1.08 : behavior === 'eating' ? 0.78 : 1);
     const eyeH = blink.isBlinking && !isSleeping ? 1.4 : openEyeHeight;
@@ -484,10 +489,12 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, lighting, onTap,
     // Blush — a soft plum flush that melts into the coat instead of
     // sitting on it as two hard pink stickers. Small enough to stay
     // inside the head outline (head edge at this height is ±25.8).
+    // An unwell or departed body loses the flush.
+    const flush = Math.max(0.05, 0.4 * (1 - illness * 0.65));
     const drawBlush = (bx: number) => {
       const glow = ctx.createRadialGradient(bx, 8, 0.5, bx, 8, 6.2);
-      glow.addColorStop(0, 'hsla(340, 42%, 63%, 0.4)');
-      glow.addColorStop(0.55, 'hsla(340, 38%, 60%, 0.16)');
+      glow.addColorStop(0, `hsla(340, 42%, 63%, ${flush})`);
+      glow.addColorStop(0.55, `hsla(340, 38%, 60%, ${flush * 0.4})`);
       glow.addColorStop(1, 'hsla(340, 38%, 60%, 0)');
       ctx.fillStyle = glow;
       ctx.beginPath();
