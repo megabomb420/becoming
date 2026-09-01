@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.11
+> **Version:** 0.13.12
 > **Last Updated:** 2026-09-01
 
 ---
@@ -697,6 +697,10 @@ A normal installed-PWA playtest live-proved the missing autonomous case: on its 
 - **The creature is painted as one sculpted coat.** Body, head, chest, haunches and tail now share radial light — a warm upper glow over a deep peat base — instead of flat filled shapes, so the mass reads as fur volume rather than stacked ovals. The cel outline, glossy eyes, blush and teardrop tail stay; sleeping still does not wag. The egg's glow is softer and its shell mottled.
 - **The floor is a plane, not a backdrop.** Floorboard rows recede toward the wall and fade before they reach it, and a soft occlusion band sits where the wall meets the floor, so the hard horizon line is gone.
 - **Objects stand in the room.** Every placed thing casts a soft contact shadow that widens the nearer it sits to the front of the floor, so bowls, boxes and stones share the creature's ground instead of floating over it. No new objects, no new chrome, no cadence change; the peat–lichen–bone–plum–amber palette is untouched.
+
+### v0.13.12 — Blush that melts
+
+The cheeks were two hard pink stickers. The flush is now a radial wash that fades into the coat — duskier, quieter, still readable in the dark room.
 
 ---
 
