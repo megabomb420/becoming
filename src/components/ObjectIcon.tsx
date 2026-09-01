@@ -201,6 +201,43 @@ const ObjectIcon: React.FC<ObjectIconProps> = ({ type, size = 48, status, classN
     );
   }
 
+  if (type === 'cushion') {
+    return (
+      <svg {...common}>
+        <ellipse cx="32" cy="54" rx="23" ry="5" fill={shadow} opacity=".3" />
+        <path d="M12 20c3-6 9-9 20-9s17 3 20 9v16c-3 6-9 9-20 9s-17-3-20-9V20Z" fill={plum} stroke={ink} strokeWidth="3" strokeLinejoin="round" />
+        <path d="M12 26c8 5 32 5 40 0M18 19c2 8 2 18 0 27m28-27c-2 8-2 18 0 27" stroke={plumSoft} strokeWidth="2" opacity=".8" />
+        <circle cx="32" cy="33" r="2.6" fill={bone} stroke={ink} strokeWidth="1.6" />
+      </svg>
+    );
+  }
+
+  if (type === 'brush') {
+    return (
+      <svg {...common}>
+        <ellipse cx="32" cy="54" rx="22" ry="5" fill={shadow} opacity=".3" />
+        <g transform="rotate(24 32 32)">
+          <path d="M28 44h8v10c0 3-2 5-4 5s-4-2-4-5V44Z" fill={clay} stroke={ink} strokeWidth="3" strokeLinejoin="round" />
+          <path d="M22 24h20v20H22V24Z" fill={bone} stroke={ink} strokeWidth="3" strokeLinejoin="round" />
+          <path d="M24 28h16M24 34h16M24 40h16" stroke={stoneSoft} strokeWidth="2" strokeLinecap="round" />
+        </g>
+      </svg>
+    );
+  }
+
+  if (type === 'jingle_toy') {
+    return (
+      <svg {...common}>
+        <ellipse cx="32" cy="54" rx="22" ry="5" fill={shadow} opacity=".3" />
+        <circle cx="32" cy="32" r="19" fill={boneWarm} stroke={ink} strokeWidth="3" />
+        <path d="M32 21c-3-3-4-6-4-9h8c0 3-1 6-4 9Z" fill={amber} stroke={ink} strokeWidth="2.5" strokeLinejoin="round" />
+        <circle cx="32" cy="10" r="3.5" fill={amberSoft} stroke={ink} strokeWidth="2" />
+        <path d="M18 26c4 3 8 4 14 4s10-1 14-4" stroke={highlight} strokeWidth="2.5" strokeLinecap="round" opacity=".7" />
+        <path d="M20 38c3 4 7 6 12 6s9-2 12-6" stroke={stoneSoft} strokeWidth="2" strokeLinecap="round" opacity=".8" />
+      </svg>
+    );
+  }
+
   return (
     <svg {...common}>
       <ellipse cx="32" cy="56" rx="19" ry="4" fill={shadow} opacity=".3" />

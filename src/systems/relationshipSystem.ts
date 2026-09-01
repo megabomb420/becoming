@@ -24,6 +24,9 @@ export const ALL_OBJECT_TYPES: ObjectType[] = [
   'broccoli',
   'ball',
   'blanket',
+  'cushion',
+  'brush',
+  'jingle_toy',
   'paper',
   'pencil',
   'box',
@@ -67,6 +70,9 @@ function startingAffinity(type: ObjectType, personality: PersonalityTraits, seed
     broccoli: (personality.curiosity + personality.calmness - personality.stubbornness - 50) * 0.18,
     ball: (personality.impulsiveness + personality.curiosity + personality.confidence - 145) * 0.16,
     blanket: (personality.affection + personality.calmness - personality.independence - 35) * 0.16,
+    cushion: (personality.affection + personality.calmness - personality.independence - 40) * 0.16,
+    brush: (personality.affection + personality.calmness - personality.stubbornness - 45) * 0.15,
+    jingle_toy: (personality.impulsiveness + personality.curiosity + personality.confidence - 150) * 0.16,
     paper: (personality.curiosity + personality.calmness - 90) * 0.18,
     pencil: (personality.curiosity + personality.confidence - 90) * 0.17,
     box: (personality.curiosity + personality.caution - 100) * 0.15,
@@ -427,6 +433,51 @@ export function chooseObjectReaction(state: GameState, type: ObjectType): Object
       : 'turns the stone over and checks underneath', {
       icon: treasured ? '♥' : '·', behavior: 'investigating', duration: 3400,
       objectStatus: treasured ? 'treasured' : 'inspected', needDelta: { stimulation: 5, comfort: treasured ? 6 : 1 }, bondEvent: 'discover',
+    });
+  }
+
+  if (type === 'cushion') {
+    if (needs.hunger < 25 || needs.hydration < 25 || needs.bladder < 25 || needs.bowel < 25) {
+      return reactionFor('cushion-care-first', 'avoid', 'sinks toward the cushion, then stops — the body needs something else first', {
+        icon: '…', behavior: 'reacting', duration: 2800, objectStatus: 'checked', bondEvent: 'care',
+      });
+    }
+    const needsNest = needs.energy < 55 || needs.comfort < 62;
+    return reactionFor(`cushion-${needsNest ? 'nest' : 'lean'}`, needsNest ? 'love' : 'enjoy', needsNest
+      ? 'pulls the cushion into a small nest and sinks into it'
+      : 'leans against the cushion and lets out a long breath', {
+      icon: needsNest ? '♥' : '~', behavior: needsNest ? 'reacting' : 'settling', duration: 4000,
+      objectStatus: needsNest ? 'nested' : 'rested', needDelta: { comfort: needsNest ? 28 : 18, energy: needsNest ? 10 : 4 }, developmentGain: 0.6, bondEvent: 'comfort',
+    });
+  }
+
+  if (type === 'brush') {
+    const needsGroom = needs.hygiene < 70;
+    return reactionFor(`brush-${needsGroom ? 'groom' : 'tuft'}`, needsGroom ? 'enjoy' : 'neutral', needsGroom
+      ? 'works the brush through its fur until it lies flat'
+      : 'smoothes one small tuft and decides that is enough', {
+      icon: needsGroom ? '✦' : '·', behavior: 'reacting', duration: 3400,
+      objectStatus: needsGroom ? 'groomed' : 'tested', needDelta: { hygiene: needsGroom ? 26 : 6, comfort: needsGroom ? 8 : 4 }, developmentGain: 0.5, bondEvent: 'care',
+    });
+  }
+
+  if (type === 'jingle_toy') {
+    if (needs.hydration < 25 || needs.hunger < 25 || needs.bladder < 25 || needs.bowel < 25) {
+      return reactionFor('jingle-care-first', 'avoid', 'reaches for the jingle toy, then stops — something else needs attention first', {
+        icon: '…', behavior: 'reacting', duration: 2800, objectStatus: 'watched', bondEvent: 'care',
+      });
+    }
+    if (needs.energy < 28) {
+      return reactionFor('jingle-tired', 'neutral', 'watches the little bell glint without chasing it', {
+        icon: '~', behavior: 'observing', duration: 2700, objectStatus: 'watched', needDelta: { stimulation: 3 }, bondEvent: 'play',
+      });
+    }
+    const delighted = affinity > 12 || needs.stimulation < 50 || personality.impulsiveness > 62;
+    return reactionFor(`jingle-play-${seen >= 4 ? 'learned' : 'new'}`, delighted ? 'love' : 'enjoy', seen >= 4
+      ? 'knows the jingle and sends the bell rolling with a happy rattle'
+      : 'pounces and makes the bell ring in a bright jingle', {
+      icon: '✦', behavior: 'playing', duration: 4000, objectStatus: 'played', moveObjectBy: 10,
+      needDelta: { stimulation: delighted ? 30 : 20, comfort: 4, energy: -4 }, developmentGain: 0.8, bondEvent: 'play',
     });
   }
 

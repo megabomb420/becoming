@@ -21,6 +21,7 @@ export interface CareActionResult {
   performed: boolean;
   result: CareActionResultId;
   count?: number;
+  soiled?: 'no_box' | 'prank';
 }
 
 export function migrateRoomMess(value: unknown): RoomMess[] {
@@ -416,6 +417,67 @@ export function useToilet(state: GameState, now = Date.now()): CareActionResult 
   };
   next = addFirstCareMemory(next, 'first-toilet', 'used the toilet before the room became messy', now);
   return { state: next, performed: true, result };
+}
+
+function hasLitterBox(state: GameState): boolean {
+  return state.roomObjects.some(object => object.type === 'litter_box');
+}
+
+export function isPrankster(state: GameState): boolean {
+  const { impulsiveness, caution } = state.personality;
+  return impulsiveness >= 58 && caution <= 48;
+}
+
+/**
+ * A spoken "go pee / go poop" is an action, not a summary. With a litter box
+ * and no mischief, the body uses the box and resolves cleanly. Without a box,
+ * or for a prankster, the need still resolves — but leaves a floor trace the
+ * player has to clean up.
+ */
+export function useToiletCommanded(state: GameState, now = Date.now()): CareActionResult {
+  const current = advanceNeeds(state, now);
+  const needsPee = current.needs.bladder < 62;
+  const needsPoop = current.needs.bowel < 54;
+  if (!needsPee && !needsPoop) return { state: current, performed: false, result: 'not_needed' };
+
+  const boxPresent = hasLitterBox(current);
+  const prankster = isPrankster(current);
+  const shouldSoil = !boxPresent || prankster;
+
+  if (!shouldSoil) {
+    const result: CareActionResultId = needsPee && needsPoop ? 'both' : needsPoop ? 'poop' : 'pee';
+    let next: GameState = {
+      ...current,
+      needs: {
+        ...current.needs,
+        bladder: needsPee ? 100 : current.needs.bladder,
+        bowel: needsPoop ? 100 : current.needs.bowel,
+        hygiene: clamp(current.needs.hygiene - 3),
+        comfort: clamp(current.needs.comfort + 4),
+      },
+      needsUpdatedAt: now,
+    };
+    next = addFirstCareMemory(next, 'first-toilet', 'used the toilet before the room became messy', now);
+    return { state: next, performed: true, result };
+  }
+
+  const mess: RoomMess[] = [];
+  if (needsPee) mess.push(createMess(current, 'pee', now, 11));
+  if (needsPoop) mess.push(createMess(current, 'poop', now, 29));
+  const next: GameState = {
+    ...current,
+    needs: {
+      ...current.needs,
+      bladder: needsPee ? 72 : current.needs.bladder,
+      bowel: needsPoop ? 82 : current.needs.bowel,
+      hygiene: clamp(current.needs.hygiene - (needsPee ? 12 : 0) - (needsPoop ? 20 : 0)),
+      comfort: clamp(current.needs.comfort - (needsPee ? 4 : 0) - (needsPoop ? 7 : 0)),
+    },
+    roomMess: [...(current.roomMess ?? []), ...mess].slice(-6),
+    emotionalState: current.sleepState === 'sleeping' ? current.emotionalState : 'concerned',
+    needsUpdatedAt: now,
+  };
+  return { state: next, performed: true, result: needsPee && needsPoop ? 'both' : needsPoop ? 'poop' : 'pee', soiled: boxPresent ? 'prank' : 'no_box', count: mess.length };
 }
 
 export function washCreature(state: GameState, now = Date.now()): CareActionResult {

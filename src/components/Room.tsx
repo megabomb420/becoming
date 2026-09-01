@@ -135,6 +135,9 @@ const objectLabels: Record<ObjectType, string> = {
   broccoli: 'broccoli',
   ball: 'ball',
   blanket: 'blanket',
+  cushion: 'cushion',
+  brush: 'brush',
+  jingle_toy: 'jingle toy',
   paper: 'paper',
   pencil: 'pencil',
   box: 'box',
@@ -151,6 +154,9 @@ const objectLabelsPl: Record<ObjectType, string> = {
   broccoli: 'brokuł',
   ball: 'piłka',
   blanket: 'koc',
+  cushion: 'poduszka',
+  brush: 'szczotka',
+  jingle_toy: 'dzwonek',
   paper: 'papier',
   pencil: 'ołówek',
   box: 'pudełko',
@@ -171,6 +177,9 @@ function reactionLabel(id: string, type: ObjectType, fallback: string, polish: b
   if (type === 'apple' || type === 'broccoli') return `siada i je: ${objectLabel(type, true)}`;
   if (type === 'ball') return id.includes('care-first') ? 'rusza do piłki, ale zatrzymuje się — najpierw potrzebuje opieki' : id.includes('tired') ? 'patrzy, jak piłka się toczy' : 'rzuca się za piłką i rozpoczyna zabawę';
   if (type === 'blanket') return id.includes('not-now') ? 'dotyka koca, ale zostaje obok' : 'układa sobie małe gniazdo z koca';
+  if (type === 'cushion') return id.includes('care-first') ? 'opada w stronę poduszki, ale zatrzymuje się — najpierw ciało' : id.includes('nest') ? 'ściąga poduszkę w małe gniazdo i zapada się w nią' : 'opiera się o poduszkę i wypuszcza długi oddech';
+  if (type === 'brush') return id.includes('groom') ? 'przeczesuje futerko szczotką, aż leży płasko' : 'wygładza jeden kosmyk i uznaje, że wystarczy';
+  if (type === 'jingle_toy') return id.includes('care-first') ? 'sięga po dzwonek, ale zatrzymuje się — najpierw potrzebuje opieki' : id.includes('tired') ? 'patrzy, jak dzwonek błyska, ale go nie goni' : 'podbija dzwonek i słucha, jak się toczy';
   if (type === 'paper' || type === 'pencil') {
     if (id.includes('message')) return 'powoli pisze coś i zasłania łapką do samego końca';
     if (id.includes('picture')) return 'rysuje z pamięci i co chwilę rozgląda się po pokoju';
@@ -190,7 +199,10 @@ const INVENTORY_ORDER: ObjectType[] = [
   'apple',
   'broccoli',
   'ball',
+  'jingle_toy',
   'blanket',
+  'cushion',
+  'brush',
   'paper',
   'pencil',
   'box',
@@ -204,8 +216,8 @@ const INVENTORY_GROUPS: Array<{
   polish: string;
   items: ObjectType[];
 }> = [
-  { id: 'care', english: 'Care', polish: 'Opieka', items: ['water_bowl', 'litter_box', 'wash_basin', 'apple', 'broccoli', 'blanket'] },
-  { id: 'play', english: 'Play', polish: 'Zabawa', items: ['ball', 'box'] },
+  { id: 'care', english: 'Care', polish: 'Opieka', items: ['water_bowl', 'litter_box', 'wash_basin', 'apple', 'broccoli', 'blanket', 'cushion', 'brush'] },
+  { id: 'play', english: 'Play', polish: 'Zabawa', items: ['ball', 'jingle_toy', 'box'] },
   { id: 'make', english: 'Make', polish: 'Tworzenie', items: ['paper', 'pencil'] },
   { id: 'curious', english: 'Curiosities', polish: 'Ciekawostki', items: ['stone', 'mirror'] },
 ];
