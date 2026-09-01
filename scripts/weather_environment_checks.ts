@@ -358,7 +358,7 @@ assert.equal(wantsOutdoors({
   world: { ...indoorBase.world, preferences: createWorldEnvironment().preferences, current: null },
   personality: { ...indoorBase.personality, curiosity: 20 },
   needs: { ...indoorBase.needs, stimulation: 22 },
-  development: { ...indoorBase.development, cognitiveLevel: 40, hatched: true },
+  development: { ...indoorBase.development, cognitiveLevel: 5, hatched: true },
 }), true, 'a solar sky is enough to want air on their wake');
 assert.equal(wantsOutdoors({
   ...indoorBase,

@@ -351,9 +351,9 @@ function buildWeatherOverlay(state: GameState, now: number) {
 
 export function shouldCreatureSelfSpeak(state: GameState, now = Date.now()): boolean {
   if (state.sleepState === 'sleeping' || state.development.stage === 'egg') return false;
-  if (careIsNeeded(careContext(state))) return true;
   const clock = creatureClock(state, now);
   if (clock.rest) return false;
+  if (careIsNeeded(careContext(state))) return true;
   return Boolean(buildWeatherOverlay(state, now));
 }
 

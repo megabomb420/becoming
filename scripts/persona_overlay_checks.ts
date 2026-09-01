@@ -50,6 +50,28 @@ assert.equal(buildCreatureMindRequest({ ...unwritten, sleepState: 'sleeping' }).
 assert.equal(buildCreatureMindRequest({ ...unwritten, sleepState: 'drowsy' }).creature.mood, 'sleepy');
 assert.equal(shouldCreatureSelfSpeak(unwritten, Date.UTC(2026, 7, 27, 1, 30)), false, 'no idle self-speak on an ordinary night');
 
+const utcRestWorld = {
+  ...unwritten.world,
+  settings: {
+    ...unwritten.world.settings,
+    mode: 'city' as const,
+    location: {
+      source: 'city' as const,
+      name: 'UTC',
+      latitude: 51.5,
+      longitude: 0,
+      timezone: 'UTC',
+      countryCode: 'GB',
+      country: 'UTC',
+    },
+  },
+};
+assert.equal(shouldCreatureSelfSpeak({
+  ...unwritten,
+  needs: { ...unwritten.needs, hunger: 4 },
+  world: utcRestWorld,
+}, Date.UTC(2026, 7, 27, 1, 30)), false, 'care pressure must not call the mind during their rest');
+
 let mentioned = hatched('Mention', 202);
 mentioned = evolveLifePath(mentioned, 'zapalmy', NOW);
 const mentionedBody = buildCreatureMindRequest(withMessage(mentioned, 'zapalmy'));

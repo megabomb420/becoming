@@ -701,8 +701,7 @@ export function wantsOutdoors(state: GameState, restPhase = false, nightLife = f
     ),
   );
   if (likesSky) return true;
-  const awakeEnough = state.development.hatched && state.development.cognitiveLevel >= 18;
-  if (!awakeEnough) return false;
+  if (!state.development.hatched) return false;
   if (nightLife) return state.needs.stimulation < 64;
   return state.needs.stimulation < 38;
 }

@@ -328,6 +328,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [firstMoment, setFirstMoment] = useState<MeaningfulFirst | null>(null);
   const [careEffect, setCareEffect] = useState<CareRitualEffect>(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const quietTalkReply = getSleepingTalkReply(state, clockNow);
 
   // Drag state
   const [draggingType, setDraggingType] = useState<ObjectType | null>(null);
@@ -396,10 +397,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const greeting = state.presence.pendingGreeting;
     // Speak after they wake. A rest-phase return must not talk as if they
     // waited up on the player's night shift.
-    if (!greeting || state.presence.pendingTrace || initiatedTopic || showChat || state.sleepState === 'sleeping') return;
+    if (!greeting || state.presence.pendingTrace || initiatedTopic || showChat || quietTalkReply) return;
     setInitiatedTopic(greeting);
     onStateChange(prev => appendCreatureMessage(consumeReturnGreeting(prev), greeting));
-  }, [initiatedTopic, onStateChange, showChat, state.presence.pendingGreeting, state.presence.pendingTrace, state.sleepState]);
+  }, [initiatedTopic, onStateChange, quietTalkReply, showChat, state.presence.pendingGreeting, state.presence.pendingTrace]);
 
   const emitCue = useCallback((cue: SensoryCue) => {
     emitSensoryCue(cue, sensoryPreferences);
@@ -988,12 +989,16 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
   // Creature-initiated conversation check
   useEffect(() => {
-    if (state.sleepState === 'sleeping' || showChat || initiatedTopic) return;
+    if (quietTalkReply || showChat || initiatedTopic) return;
 
     const checkInitiate = () => {
       const delay = 15000 + Math.random() * 20000;
       initiateTimerRef.current = setTimeout(() => {
         const currentState = stateRef.current;
+        if (getSleepingTalkReply(currentState)) {
+          checkInitiate();
+          return;
+        }
         if (shouldInitiateConversation(currentState)) {
           const topic = generateInitiatedTopic(currentState);
           if (topic) {
@@ -1007,7 +1012,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     };
     checkInitiate();
     return () => clearTimeout(initiateTimerRef.current);
-  }, [state.sleepState, showChat, initiatedTopic, onStateChange]);
+  }, [quietTalkReply, showChat, initiatedTopic, onStateChange]);
 
   const wakeFromTouch = useCallback((label: string, polishLabel: string) => {
     emitCue('wake');

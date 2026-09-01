@@ -20,7 +20,7 @@ import {
   shouldEndOutdoorVisit,
 } from '../src/systems/environmentSystem';
 
-const NOW = 1_825_000_000_000;
+const NOW = Date.UTC(2026, 7, 27, 12, 0);
 const base = createHatchedCreature(createNewCreature('World', 4117));
 
 assert.deepEqual(parseWorldIntent('Masz, dam ci jabłko.'), { kind: 'offer_object', objectType: 'apple' });
@@ -237,12 +237,18 @@ assert.doesNotMatch(roomSource, /Put creature to sleep/);
 assert.doesNotMatch(roomSource, /handleSleepToggle/);
 assert.match(roomSource, /settleIfSleepy/);
 assert.match(roomSource, /getSleepingTalkReply/, 'talk must not call DeepSeek while they sleep');
+assert.match(roomSource, /if \(quietTalkReply \|\| showChat \|\| initiatedTopic\) return;/, 'rest must not initiate a how-was-your-day');
+assert.match(roomSource, /if \(!greeting \|\| state\.presence\.pendingTrace \|\| initiatedTopic \|\| showChat \|\| quietTalkReply\) return;/, 'return greetings must wait for wake, not merely an awake body');
 const sendStart = roomSource.indexOf('const sendConversationMessage');
 const sendBody = roomSource.slice(sendStart, roomSource.indexOf('const handleRoomSubmit'));
 assert.ok(sendBody.includes('getSleepingTalkReply'), 'the send path must check sleep before the mind');
 assert.ok(
   sendBody.indexOf('getSleepingTalkReply') < sendBody.indexOf('requestCreatureReply(turn.state)'),
   'a sleeping murmur must happen before any mind request',
+);
+assert.ok(
+  sendBody.indexOf('getSleepingTalkReply') < sendBody.indexOf('beginConversationTurn(stateRef.current, text, Date.now())'),
+  'rest must murmur before fact learning or conversation evolution',
 );
 
 const sleeper = {
@@ -272,10 +278,10 @@ assert.match(getSleepingTalkReply(sleeper, restNight) || '', /śnie/i);
 assert.equal(getSleepingTalkReply({ ...sleeper, sleepState: 'awake' }, restDay), null);
 assert.match(getSleepingTalkReply({ ...sleeper, sleepState: 'awake' }, restNight) || '', /pora snu/i, 'an ordinary night is rest, not a chat');
 assert.match(getSleepingTalkReply({ ...sleeper, sleepState: 'drowsy' }, restDay) || '', /pora snu|rest/i);
-assert.equal(
-  getSleepingTalkReply({ ...sleeper, sleepState: 'drowsy', needs: { ...sleeper.needs, hunger: 4 } }, restNight),
-  null,
-  'urgent hunger may speak even in rest',
+assert.match(
+  getSleepingTalkReply({ ...sleeper, sleepState: 'drowsy', needs: { ...sleeper.needs, hunger: 4 } }, restNight) || '',
+  /pora snu|rest/i,
+  'an urgent body need may keep them awake but must not turn rest into a mind call',
 );
 assert.equal(
   getSleepingTalkReply({
@@ -322,6 +328,6 @@ assert.match(canvasSource, /Kawaii head: big circle/);
 assert.doesNotMatch(canvasSource, /Fur is volume, not hairs/);
 assert.doesNotMatch(canvasSource, /for \(let index = 0; index < 9/, 'radiating hair strokes were not fur');
 const chatSource = readFileSync('src/components/ChatInterface.tsx', 'utf8');
-assert.match(chatSource, /state\.sleepState === 'sleeping'/, 'opening chat must not greet while they sleep');
+assert.match(chatSource, /if \(getSleepingTalkReply\(state\)\) return;/, 'opening chat during rest must not invent a greeting');
 
 console.log('World action and room-first conversation checks passed.');
