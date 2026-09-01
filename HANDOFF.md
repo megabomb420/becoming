@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.8
+> **Version:** 0.13.9
 > **Last Updated:** 2026-09-01
 
 ---
@@ -19,7 +19,7 @@ The project is built as a **polished vertical slice** — playable from birth th
 
 **What is actually good.** Hatch → room → care → talk holds together. Needs are readable without bars. Objects, blanket, toilet, backup, Polish/English, and PWA install are a game, not a mockup. The art direction is distinct. Persistence from 0.12.7–0.12.12 finally looks adult. 0.12.13–0.12.17 gave them a night that is not the player’s. 0.13 gives them a day: the mind is told their solar clock, they can step into a solar or last-known sky on their wake without grinding weather affinity, daily moments wait for that wake, and an absence still contains their waking hours. Autonomy keeps their rest quiet; a settled night life wants the dark without first having to be bored. Becoming portraits that clock. They do not adapt to the player’s night shifts.
 
-**What is weaker than the tables imply.** A grounded outdoor visit is live-proven on a real save, but the autonomous restless trigger is still only deterministic-test proven. The production gateway's failure path is live-proven empty; an actual clock-aware DeepSeek room reply is still not live-proven because the controlled browser was rejected by production Turnstile. Life paths are twelve labels and numbers, not a deep change of being — a nocturnal party animal is an inverted schedule plus night-life dilemmas, not a simulation of taking drugs. `Room.tsx` is a bag for everything. The promise “watch something become someone” is only half true: many authored overlays, little proof that the mind on a real save is someone rather than a system plus a prompt. There is no 30-day arc.
+**What is weaker than the tables imply.** A grounded outdoor visit and one autonomous rainy wake visit through return are live-proven on real saves, but ordinary-night refusal, settled-night permission, and sleeping outside still rely on deterministic proof. The production gateway's failure path is live-proven empty; production Turnstile works in the installed PWA, but an exact clock-aware DeepSeek reply is not yet recorded in this handoff because the controlled browser itself is rejected by Turnstile. Life paths are twelve labels and numbers, not a deep change of being — a nocturnal party animal is an inverted schedule plus night-life dilemmas, not a simulation of taking drugs. `Room.tsx` is a bag for everything. The promise “watch something become someone” is only half true: many authored overlays, little proof that the mind on a real save is someone rather than a system plus a prompt. There is no 30-day arc.
 
 **Plain judgement.** A strong, personal prototype with a soul — better than most vibe-coded life-sims. It is not yet a product that will carry months of one relationship without the author’s attention. As a vertical slice to show: closer. As full Becoming: still missing weeks with one creature.
 
@@ -189,7 +189,7 @@ becoming/
 | Feature | State | Gap |
 |---|---|---|
 | DeepSeek-only room bubbles | 🚧 | Canned idle/touch/autonomy lines and local worker fallback are absent. The mind receives their rest/wake clock. Production Worker failure was live-proven empty on a real save; successful DeepSeek speech remains unproven because Turnstile rejected the controlled browser. |
-| Outdoor visits | 🚧 | A real-save wake visit was live-proven with a solar sky and with Dublin weather; the expanded sky dropped its mullion and curtains and the grounded line used the real condition. Restless autonomous selection, ordinary-night refusal, settled-night-life permission, and sleeping-outside return pass deterministic checks but are not all live-proven. |
+| Outdoor visits | 🚧 | Real-save wake visits were live-proven manually with a solar sky and Dublin weather, then autonomously in rain through the creature's own return. The expanded sky dropped its mullion and curtains and grounded state used the real condition. Ordinary-night refusal, settled-night-life permission, and sleeping-outside return still rely on deterministic checks. |
 | Notifications | 🚧 | Architecture prepared but no push notification logic. |
 
 ### ❌ Not Yet Implemented
@@ -683,6 +683,10 @@ That pass did **not** produce a successful DeepSeek reply: production Turnstile 
 
 The code pass closes the edge cases found around that proof. An urgent care need can keep the body awake during its rest but can no longer open DeepSeek self-speak, fact learning, a return greeting, or creature-initiated chat. A hatched young creature no longer needs cognitive level 18 before restlessness can select the sky. Chat history cannot manufacture an opening during rest. The deterministic outdoor check now uses an explicit daytime instant instead of a mismatched 2027 timestamp against 2026 weather data, restoring the real `npm run check` release gate. The displayed app version is aligned with the package again.
 
+### v0.13.9 — Outdoor visits breathe
+
+A normal installed-PWA playtest live-proved the missing autonomous case: on its wake, the creature chose the rainy outside and returned by itself. The old fixed 24-second visit made that return look like rain was ejecting it. Visits now last a bounded 32–48 seconds, with the exact duration gently coloured by the real condition, learned affinity, curiosity, calmness, and caution. Rain is still not a gate and never ends a visit by itself; urgent care, sleep, disabled weather, the creature's rest, or the visit deadline still bring it inside. This remains part of Room's existing seven-second cadence and adds no speech or second autonomy loop.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -707,7 +711,7 @@ The code pass closes the edge cases found around that proof. An urgent care need
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Finish live proof of the mind and autonomous outside** — On a normal physical browser that passes production Turnstile, watch one successful clock-aware DeepSeek room bubble and one restless autonomous visit on a real save. Manual grounded outside and the empty Worker-failure path are already live-proven. Persistence on 0.12.12+ is believed good on a clean profile; do not treat old hung IndexedDB queues as a current boot bug.
+1. **Finish live proof of the mind** — On a normal physical browser that passes production Turnstile, record one successful clock-aware DeepSeek room bubble on a real save. Manual and autonomous rainy outside, autonomous return, and the empty Worker-failure path are already live-proven. Persistence on 0.12.12+ is believed good on a clean profile; do not treat old hung IndexedDB queues as a current boot bug.
 2. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, and daily moments from that, not from a single session. 0.13 makes a day *possible*; live weeks still have to prove it.
 3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
