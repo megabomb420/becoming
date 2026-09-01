@@ -50,37 +50,45 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
   const renderEgg = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, time: number) => {
     const pulse = Math.sin(time * 0.002) * 0.03 + 1;
     const wobble = Math.sin(time * 0.001) * 2;
-    
+
     ctx.save();
     ctx.translate(x, y + wobble);
     ctx.scale(pulse, pulse);
-    
-    // Egg glow
-    const glow = ctx.createRadialGradient(0, 0, 20, 0, 0, 60);
-    glow.addColorStop(0, 'rgba(200, 180, 150, 0.3)');
+
+    // Egg glow — softer, more like moonlight on shell
+    const glow = ctx.createRadialGradient(0, 0, 18, 0, 0, 72);
+    glow.addColorStop(0, 'rgba(220, 208, 188, 0.34)');
+    glow.addColorStop(0.4, 'rgba(200, 180, 150, 0.12)');
     glow.addColorStop(1, 'rgba(200, 180, 150, 0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(0, 0, 60, 0, Math.PI * 2);
+    ctx.arc(0, 0, 72, 0, Math.PI * 2);
     ctx.fill();
-    
-    // Egg body
-    const gradient = ctx.createRadialGradient(-10, -15, 5, 0, 0, 45);
-    gradient.addColorStop(0, '#e8ddd0');
-    gradient.addColorStop(0.7, '#c9b8a0');
-    gradient.addColorStop(1, '#a08b70');
+
+    // Egg body — layered cel with subtle mottling
+    const gradient = ctx.createRadialGradient(-12, -18, 4, 0, 0, 48);
+    gradient.addColorStop(0, '#efe6d4');
+    gradient.addColorStop(0.55, '#d3c5ad');
+    gradient.addColorStop(1, '#9b8a71');
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.ellipse(0, 0, 35, 48, 0, 0, Math.PI * 2);
     ctx.fill();
-    
-    // Subtle pattern
-    ctx.strokeStyle = 'rgba(160, 140, 110, 0.3)';
-    ctx.lineWidth = 1;
+
+    // Mottle
+    ctx.fillStyle = 'rgba(122, 105, 82, 0.14)';
+    ctx.beginPath();
+    ctx.ellipse(-9, -14, 11, 16, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(12, 9, 8, 12, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Subtle pattern line
+    ctx.strokeStyle = 'rgba(150, 130, 100, 0.26)';
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.ellipse(0, -5, 20, 30, 0.1, 0, Math.PI * 2);
     ctx.stroke();
-    
+
     ctx.restore();
   }, []);
 
@@ -214,7 +222,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     if (!isSleeping && environment.wind > 0.22) {
       motionRotation += Math.sin(time * 0.0065) * environment.wind * 0.018;
     }
-    
+
     // Blink logic
     const blink = blinkStateRef.current;
     blink.blinkTimer += 16;
@@ -230,12 +238,12 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     // Contact shadow stays on the floor even when the body curls or tilts.
     ctx.save();
     ctx.translate(x, y + 36);
-    const shadow = ctx.createRadialGradient(0, 0, 4, 0, 0, 40);
-    shadow.addColorStop(0, `rgba(0,0,0,${isSleeping ? 0.28 : 0.22})`);
+    const shadow = ctx.createRadialGradient(0, 0, 3, 0, 0, 44);
+    shadow.addColorStop(0, `rgba(0,0,0,${isSleeping ? 0.32 : 0.24})`);
     shadow.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = shadow;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 36 * roundness * (isSleeping ? 1.12 : 1), isSleeping ? 7 : 10, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 38 * roundness * (isSleeping ? 1.14 : 1), isSleeping ? 7 : 11, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -248,13 +256,13 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     // The skin is a consequence of the creature's life, not a wardrobe. Its
     // aura begins faint and becomes readable as a path stabilises.
     if (pathVisual.paths.length > 0) {
-      const aura = ctx.createRadialGradient(0, 0, 24, 0, 0, 62);
+      const aura = ctx.createRadialGradient(0, 0, 22, 0, 0, 70);
       aura.addColorStop(0, pathVisual.aura);
       aura.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = aura;
-      ctx.globalAlpha = 0.35 + pathVisual.strength * 0.65;
+      ctx.globalAlpha = 0.28 + pathVisual.strength * 0.55;
       ctx.beginPath();
-      ctx.arc(0, 0, 62, 0, Math.PI * 2);
+      ctx.arc(0, 0, 70, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
     }
@@ -264,7 +272,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       const l = Math.max(22, Math.min(86, lightness + dL));
       return alpha >= 1 ? `hsl(${hue}, ${s}%, ${l}%)` : `hsla(${hue}, ${s}%, ${l}%, ${alpha})`;
     };
-    const ink = fur(-32, 6);
+    const ink = fur(-34, 8);
     const tail = app.tailLength;
     const r = roundness;
     ctx.lineJoin = 'round';
@@ -274,12 +282,15 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.lineWidth = 2.2;
       ctx.stroke();
     };
-    const blob = (color: string, x: number, y: number, rx: number, ry: number, rot = 0) => {
-      ctx.beginPath();
-      ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-      outline();
+
+    // Layered coat: a soft gradient body over a flat ink base so the mass reads
+    // as one sculptural shape, not as strokes.
+    const bodyGradient = (cx: number, cy: number, rx: number, ry: number, light: number) => {
+      const grad = ctx.createRadialGradient(cx - rx * 0.4, cy - ry * 0.5, rx * 0.12, cx, cy, Math.max(rx, ry) * 1.35);
+      grad.addColorStop(0, fur(light));
+      grad.addColorStop(0.62, fur(light - 5));
+      grad.addColorStop(1, fur(light - 11));
+      return grad;
     };
 
     // A sleeping tail does not wag. One kawaii teardrop, not a string of lumps.
@@ -305,18 +316,33 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
         ctx.quadraticCurveTo(-len * 0.5, 16, 6, 8);
       }
       ctx.closePath();
-      ctx.fillStyle = fur(8, 2);
+      ctx.fillStyle = fur(9, 2);
       ctx.fill();
       outline();
       ctx.restore();
     }
 
-    // Chibi: small body, huge head. Clean cel fill, not coat clumps.
-    blob(fur(2), 0, 26, 19 * r, 15, 0);
+    // Chibi: small body, huge head. Layered gradient coat, no hair strokes.
+    ctx.beginPath();
+    ctx.ellipse(0, 26, 19 * r, 15, 0, 0, Math.PI * 2);
+    ctx.fillStyle = bodyGradient(0, 26, 19 * r, 15, 2);
+    ctx.fill();
+    outline();
+
+    // Belly glow — a soft lighter patch, not a texture.
     fillCoat(ctx, fur(16, -6, 0.55), 0, 24, 11 * r, 8, 0);
+
     // Tiny paws keep them on the floor instead of floating as a blob.
-    blob(fur(-4), -11, 36, 7.5, 5.2, -0.2);
-    blob(fur(-4), 11, 36, 7.5, 5.2, 0.2);
+    ctx.beginPath();
+    ctx.ellipse(-11, 36, 7.5, 5.2, -0.2, 0, Math.PI * 2);
+    ctx.fillStyle = fur(-4);
+    ctx.fill();
+    outline();
+    ctx.beginPath();
+    ctx.ellipse(11, 36, 7.5, 5.2, 0.2, 0, Math.PI * 2);
+    ctx.fillStyle = fur(-4);
+    ctx.fill();
+    outline();
 
     // Cleanliness is body language, not a meter. A few muted floor-coloured
     // flecks appear gradually and disappear completely after washing.
@@ -369,8 +395,14 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     }
 
     // Kawaii head: big circle, cel highlight, no muzzle mass.
-    blob(fur(10, -4), 0, -8, 31, 29, 0);
-    fillCoat(ctx, 'rgba(255,255,255,0.28)', -11, -18, 12, 8, -0.5);
+    ctx.beginPath();
+    ctx.ellipse(0, -8, 31, 29, 0, 0, Math.PI * 2);
+    ctx.fillStyle = bodyGradient(0, -8, 31, 29, 10);
+    ctx.fill();
+    outline();
+
+    // Soft sheen on the crown.
+    fillCoat(ctx, 'rgba(255,255,255,0.24)', -11, -18, 12, 8, -0.5);
 
     const attentive = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'imitating' || behavior === 'proud' || behavior === 'uncomfortable';
     const weatherEyeScale = 1 + weatherCuriosity * 0.06 + stormCaution * 0.04;
@@ -391,24 +423,29 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.stroke();
     } else {
       const drawEye = (ex: number) => {
+        // Glossy base
         ctx.fillStyle = '#fffaf1';
         ctx.beginPath();
         ctx.ellipse(ex, eyeY, eyeW, Math.max(2.6, eyeH), 0, 0, Math.PI * 2);
         ctx.fill();
         outline();
+        // Iris
         ctx.fillStyle = `hsl(${(hue + 12) % 360}, ${Math.min(58, saturation + 22)}%, ${Math.max(28, lightness - 18)}%)`;
         ctx.beginPath();
         ctx.ellipse(ex, eyeY + 1.4, eyeW * 0.72, eyeH * 0.72, 0, 0, Math.PI * 2);
         ctx.fill();
+        // Pupil
         ctx.fillStyle = '#1a1410';
         ctx.beginPath();
         ctx.ellipse(ex, eyeY + 2.2, eyeW * 0.34, eyeH * 0.42, 0, 0, Math.PI * 2);
         ctx.fill();
         if (!blink.isBlinking) {
+          // Gloss highlight
           ctx.fillStyle = 'rgba(255,255,255,0.95)';
           ctx.beginPath();
           ctx.ellipse(ex - eyeW * 0.28, eyeY - eyeH * 0.32, 4.6, 5.4, -0.25, 0, Math.PI * 2);
           ctx.fill();
+          // Micro reflection
           ctx.beginPath();
           ctx.arc(ex + eyeW * 0.22, eyeY + eyeH * 0.18, 1.7, 0, Math.PI * 2);
           ctx.fill();
@@ -418,6 +455,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       drawEye(14);
     }
 
+    // Blush — a soft plum flush that reads in the dark room.
     fillCoat(ctx, 'hsla(352, 70%, 72%, 0.42)', -22, 8, 8, 4.5, -0.15);
     fillCoat(ctx, 'hsla(352, 70%, 72%, 0.42)', 22, 8, 8, 4.5, 0.15);
 
@@ -720,13 +758,13 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
 
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    
+
     isHoldingRef.current = true;
     didHoldRef.current = false;
     hasMovedRef.current = false;
     holdTimerRef.current = 0;
     strokeStartRef.current = { x, y };
-    
+
     holdIntervalRef.current = setInterval(() => {
       holdTimerRef.current += 100;
       if (holdTimerRef.current >= 600 && isHoldingRef.current) {
@@ -740,7 +778,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
   const handlePointerUp = (e: React.PointerEvent) => {
     e.preventDefault();
     clearHold();
-    
+
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const x = e.clientX - rect.left;
@@ -750,7 +788,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       const dx = x - strokeStartRef.current.x;
       const dy = y - strokeStartRef.current.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      
+
       if (didHoldRef.current) {
         onHoldEnd();
       } else if (dist > 20) {
@@ -759,7 +797,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
         onTap();
       }
     }
-    
+
     isHoldingRef.current = false;
     strokeStartRef.current = null;
     hasMovedRef.current = false;

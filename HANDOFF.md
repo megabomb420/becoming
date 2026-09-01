@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.10
+> **Version:** 0.13.11
 > **Last Updated:** 2026-09-01
 
 ---
@@ -691,6 +691,12 @@ A normal installed-PWA playtest live-proved the missing autonomous case: on its 
 
 - **Bowel no longer vanishes during offline absences.** The offline need floor for bladder and bowel was removed so an already-urgent body can leave pee/poop floor traces while the player is away, then reset normally. Save migration, legacy import, and the care sheet already preserved the need and traces; the missing piece was offline simulation silently capping them above zero.
 - **Room layout is less chaotic.** Auto-place slots are spread wider, object placement is clamped to the floor plane (minY 60), and the auto-place picker now uses the slot farthest from existing objects. Floor traces are rendered slightly smaller and lower in the stack so they read as traces rather than extra objects. The selected-object "Use / Put away" popup is kept below the window and away from screen edges.
+
+### v0.13.11 — One habitat, one coat
+
+- **The creature is painted as one sculpted coat.** Body, head, chest, haunches and tail now share radial light — a warm upper glow over a deep peat base — instead of flat filled shapes, so the mass reads as fur volume rather than stacked ovals. The cel outline, glossy eyes, blush and teardrop tail stay; sleeping still does not wag. The egg's glow is softer and its shell mottled.
+- **The floor is a plane, not a backdrop.** Floorboard rows recede toward the wall and fade before they reach it, and a soft occlusion band sits where the wall meets the floor, so the hard horizon line is gone.
+- **Objects stand in the room.** Every placed thing casts a soft contact shadow that widens the nearer it sits to the front of the floor, so bowls, boxes and stones share the creature's ground instead of floating over it. No new objects, no new chrome, no cadence change; the peat–lichen–bone–plum–amber palette is untouched.
 
 ---
 
