@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.12
+> **Version:** 0.13.13
 > **Last Updated:** 2026-09-01
 
 ---
@@ -701,6 +701,10 @@ A normal installed-PWA playtest live-proved the missing autonomous case: on its 
 ### v0.13.12 — Blush that melts
 
 The cheeks were two hard pink stickers. The flush is now a radial wash that fades into the coat — duskier, quieter, still readable in the dark room.
+
+### v0.13.13 — Blush stays on the face
+
+The melt was too wide and spilled past the head outline. The flush is smaller and sits closer to the muzzle, inside the cheeks where it belongs.
 
 ---
 

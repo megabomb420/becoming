@@ -456,19 +456,20 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     }
 
     // Blush — a soft plum flush that melts into the coat instead of
-    // sitting on it as two hard pink stickers.
+    // sitting on it as two hard pink stickers. Small enough to stay
+    // inside the head outline (head edge at this height is ±25.8).
     const drawBlush = (bx: number) => {
-      const glow = ctx.createRadialGradient(bx, 8, 0.5, bx, 8, 9.5);
+      const glow = ctx.createRadialGradient(bx, 8, 0.5, bx, 8, 6.2);
       glow.addColorStop(0, 'hsla(340, 42%, 63%, 0.4)');
       glow.addColorStop(0.55, 'hsla(340, 38%, 60%, 0.16)');
       glow.addColorStop(1, 'hsla(340, 38%, 60%, 0)');
       ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.ellipse(bx, 8, 9.5, 5.5, bx < 0 ? -0.15 : 0.15, 0, Math.PI * 2);
+      ctx.ellipse(bx, 8, 6.2, 4.2, bx < 0 ? -0.15 : 0.15, 0, Math.PI * 2);
       ctx.fill();
     };
-    drawBlush(-22);
-    drawBlush(22);
+    drawBlush(-18.5);
+    drawBlush(18.5);
 
     if (!isSleeping && (state.emotionalState === 'skeptical' || state.emotionalState === 'wary')) {
       ctx.strokeStyle = ink;
