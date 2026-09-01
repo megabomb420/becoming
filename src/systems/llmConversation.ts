@@ -1,4 +1,4 @@
-import { ChatMessage, GameState, LifePathId } from '../types';
+import { ChatMessage, GameState, LifePathId, SemanticWorldAction } from '../types';
 import {
   getLifePathDescription,
   getLifePathTitle,
@@ -39,6 +39,7 @@ type ApiMessage = {
 
 type ApiReply = {
   reply?: string;
+  action?: SemanticWorldAction;
   error?: string;
 };
 
@@ -417,10 +418,15 @@ export function isLlmAvailable(): boolean {
   return API_URL.length > 0;
 }
 
+export interface CreatureReply {
+  reply: string;
+  action?: SemanticWorldAction;
+}
+
 export async function requestCreatureReply(
   state: GameState,
   options: { kind?: CreatureMindRequestKind } = {},
-): Promise<string> {
+): Promise<CreatureReply> {
   if (!API_URL) throw new Error('The private AI endpoint is not configured.');
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -440,9 +446,9 @@ export async function requestCreatureReply(
     const result = await response.json() as ApiReply;
     if (!response.ok) throw new Error(result.error || `AI endpoint returned ${response.status}.`);
     const reply = result.reply?.trim() ?? '';
-    if (options.kind === 'self') return reply.slice(0, 1200);
+    if (options.kind === 'self') return { reply: reply.slice(0, 1200) };
     if (!reply) throw new Error('The AI returned an empty reply.');
-    return reply.slice(0, 1200);
+    return { reply: reply.slice(0, 1200), action: result.action };
   } finally {
     window.clearTimeout(timeout);
   }

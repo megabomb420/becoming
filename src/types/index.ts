@@ -410,6 +410,23 @@ export type ObjectType =
   | 'stone'
   | 'mirror';
 
+export type SemanticWorldActionType =
+  | 'toilet'
+  | 'drink'
+  | 'eat'
+  | 'wash'
+  | 'sleep'
+  | 'wake'
+  | 'go_outside'
+  | 'come_inside'
+  | 'come_here'
+  | 'use_object';
+
+export interface SemanticWorldAction {
+  type: SemanticWorldActionType;
+  target?: 'pee' | 'poop' | 'current_need' | ObjectType;
+}
+
 export type ObjectReactionOutcome = 'love' | 'enjoy' | 'curious' | 'neutral' | 'avoid';
 
 export interface ObjectPreference {

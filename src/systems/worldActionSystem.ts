@@ -3,6 +3,7 @@ import {
   GameState,
   ObjectType,
   RoomObject,
+  SemanticWorldAction,
   WeatherCondition,
 } from '../types';
 import {
@@ -45,6 +46,7 @@ export type WorldIntentKind =
 export interface WorldIntent {
   kind: WorldIntentKind;
   objectType?: ObjectType;
+  target?: 'pee' | 'poop' | 'current_need';
 }
 
 export type WorldActionStatus =
@@ -133,9 +135,9 @@ export function parseWorldIntent(text: string): WorldIntent | null {
   if (hasPhrase(normalized, ['wroc do pokoju', 'wracaj do srodka', 'wroc do srodka', 'come back inside', 'come inside', 'go back inside'])) return { kind: 'come_inside' };
   if (hasPhrase(normalized, ['chodz tutaj', 'chodz tu', 'podejdz do mnie', 'come here', 'come to me'])) return { kind: 'come_here' };
   if (hasPhrase(normalized, ['napij sie', 'napij', 'pij wode', 'have a drink', 'drink some water', 'drink'])) return { kind: 'drink', objectType: 'water_bowl' };
-  if (hasPhrase(normalized, ['idz do toalety', 'skorzystaj z toalety', 'skorzystaj z kuwety', 'toaleta', 'do toalety', 'use the toilet', 'go to the toilet'])) return { kind: 'toilet', objectType: 'litter_box' };
-  if (hasPhrase(normalized, ['idz siku', 'zrob siku', 'siku', 'go pee', 'pee'])) return { kind: 'toilet', objectType: 'litter_box' };
-  if (hasPhrase(normalized, ['idz kupe', 'zrob kupe', 'kupe', 'go poop', 'go poo', 'poop', 'poo'])) return { kind: 'toilet', objectType: 'litter_box' };
+  if (hasPhrase(normalized, ['idz do toalety', 'skorzystaj z toalety', 'skorzystaj z kuwety', 'toaleta', 'do toalety', 'use the toilet', 'go to the toilet'])) return { kind: 'toilet', objectType: 'litter_box', target: 'current_need' };
+  if (hasPhrase(normalized, ['idz siku', 'zrob siku', 'go pee'])) return { kind: 'toilet', objectType: 'litter_box', target: 'pee' };
+  if (hasPhrase(normalized, ['idz kupe', 'zrob kupe', 'go poop', 'go poo'])) return { kind: 'toilet', objectType: 'litter_box', target: 'poop' };
   if (hasPhrase(normalized, ['umyj sie', 'mycie', 'umyj go', 'umyj ja', 'wash yourself', 'have a wash', 'wash'])) return { kind: 'wash', objectType: 'wash_basin' };
   if (hasPhrase(normalized, ['posprzataj', 'posprzataj pokoj', 'sprzatnij', 'clean the room', 'clean up'])) return { kind: 'clean' };
 
@@ -145,6 +147,47 @@ export function parseWorldIntent(text: string): WorldIntent | null {
     return { kind: 'use_object', objectType };
   }
   return null;
+}
+
+const ACTION_OBJECT_TYPES: ReadonlySet<ObjectType> = new Set<ObjectType>([
+  'food_bowl', 'water_bowl', 'litter_box', 'wash_basin', 'apple', 'broccoli',
+  'ball', 'blanket', 'cushion', 'brush', 'jingle_toy', 'paper', 'pencil', 'box', 'stone', 'mirror',
+]);
+
+/**
+ * A DeepSeek semantic action is a suggestion. Local code is the only source of
+ * truth: this maps the allowlisted action to a canonical local WorldIntent and
+ * returns null for anything that cannot be executed safely.
+ */
+export function semanticActionToWorldIntent(action: SemanticWorldAction | null | undefined): WorldIntent | null {
+  if (!action || typeof action.type !== 'string') return null;
+  switch (action.type) {
+    case 'toilet':
+      if (action.target !== undefined && action.target !== 'pee' && action.target !== 'poop' && action.target !== 'current_need') return null;
+      return { kind: 'toilet', objectType: 'litter_box', target: action.target ?? 'current_need' };
+    case 'drink':
+      return { kind: 'drink', objectType: 'water_bowl' };
+    case 'eat':
+      if (action.target !== undefined && action.target !== 'apple' && action.target !== 'broccoli') return null;
+      return { kind: 'use_object', objectType: action.target };
+    case 'wash':
+      return { kind: 'wash', objectType: 'wash_basin' };
+    case 'sleep':
+      return { kind: 'sleep' };
+    case 'wake':
+      return { kind: 'wake' };
+    case 'go_outside':
+      return { kind: 'go_outside' };
+    case 'come_inside':
+      return { kind: 'come_inside' };
+    case 'come_here':
+      return { kind: 'come_here' };
+    case 'use_object':
+      if (typeof action.target !== 'string' || !ACTION_OBJECT_TYPES.has(action.target as ObjectType)) return null;
+      return { kind: 'use_object', objectType: action.target as ObjectType };
+    default:
+      return null;
+  }
 }
 
 export function createRoomObject(
@@ -295,7 +338,7 @@ export function performImmediateWorldAction(
 
   if (intent.kind === 'toilet') {
     if (state.sleepState === 'sleeping') return { state, result: { intent, status: 'blocked', reason: 'sleeping' } };
-    const action = useToiletCommanded(state, now);
+    const action = useToiletCommanded(state, now, intent.target ?? 'current_need');
     const next = action.performed
       ? (action.soiled ? action.state : recordBondEvent(updateDevelopment(action.state, 0.22), 'care'))
       : action.state;

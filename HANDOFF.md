@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.3
+> **Version:** 0.14.4
 > **Last Updated:** 2026-09-01
 
 ---
@@ -710,6 +710,13 @@ The melt was too wide and spilled past the head outline. The flush is smaller an
 
 Self-care was already autonomous from hatching — the creature walks to the bowl, the litter box, the basin and the blanket on its own. What a mature mind adds is the voice: before the trip, it says so, in its own tone. A degen says "Gonna take a shit."; a monk asks for a little privacy; a plain soul just says "Gotta pee." / "Idę kupę." English is the canonical copy, Polish the bundled translation, and the tone follows the committed life path or the dominant personality traits. The lines are local one-liners — never DeepSeek, never conversation history, never while asleep, throttled so a restless night does not become a monologue. No new loop: the announcements ride the existing seven-second room cadence and the same need thresholds as always.
 
+### v0.14.4 — Care state stays settled; the mind proposes bounded actions
+
+- **Stale needs fix.** Direct care handlers in `Room.tsx` (toilet, wash, clean, touch, wake) now write the same returned `GameState` into `stateRef.current` synchronously with `onStateChange`. Previously a resolved bowel or bladder could still be read from a stale ref by the next cadence/autonomy callback and overwrite the just-satisfied need. A `pee` command resolves bladder only, a `poop` command resolves bowel only, `current_need` resolves whichever is genuinely urgent, and an accident/prank resolves the physiology while leaving a cleanable floor trace.
+- **Semantic world actions.** The existing DeepSeek reply contract now carries an optional allowlisted `action` object. `parseWorldIntent()` remains the offline/cheap fast path for obvious commands; longer-tail language is interpreted by DeepSeek and then mapped by `semanticActionToWorldIntent()` to a canonical local `WorldIntent`. Local execution is the only source of truth: the model proposes, it never mutates `GameState` directly.
+- **Contract.** Action types are `toilet`, `drink`, `eat`, `wash`, `sleep`, `wake`, `go_outside`, `come_inside`, `come_here`, `use_object`. `toilet` target is `pee`, `poop`, or `current_need`; `use_object` target is an allowlisted `ObjectType`. The Worker validates and strips any other action, and the app re-validates before execution.
+- **Security.** User text stays untrusted. The action channel cannot reach persistence, settings, reset, navigation, or arbitrary state. World commands still do not directly change personality or life path.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -762,6 +769,7 @@ Self-care was already autonomous from hatching — the creature walks to the bow
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
 - **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
 - **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
+- **Bounded semantic world actions.** DeepSeek may propose an allowlisted world action as a controlled output channel; local validation and canonical execution remain the only way state changes. The model can never mutate GameState directly or reach persistence, settings, reset, or navigation.
 - **Public AI is verified and bounded.** The browser obtains a short-lived, action-bound Turnstile token; the Worker validates it server-side and fail-closed, enforces exact routes/origins, native per-client and aggregate-IP limits, a Durable Object daily quota, strict request/provider byte bounds, and hardened response headers. The site key is public; the Turnstile and DeepSeek secrets stay encrypted in Cloudflare.
 - **No death from neglect.** Long absences change the creature (more independent, different trust level) but never punish the player.
 - **Nocturnal Terrarium art direction.** Room is a quiet habitat, Chat is a voice-led presence, Memory Book is a material keepsake, Becoming is a narrative portrait, and Settings is a functional sheet. Decorative assets support these roles but never define the creature.

@@ -15,9 +15,10 @@ function toiletState(seed: number) {
   };
 }
 
-assert.deepEqual(parseWorldIntent('idź siku'), { kind: 'toilet', objectType: 'litter_box' });
-assert.deepEqual(parseWorldIntent('zrób kupę'), { kind: 'toilet', objectType: 'litter_box' });
-assert.deepEqual(parseWorldIntent('go poop'), { kind: 'toilet', objectType: 'litter_box' });
+assert.deepEqual(parseWorldIntent('idź siku'), { kind: 'toilet', objectType: 'litter_box', target: 'pee' });
+assert.deepEqual(parseWorldIntent('zrób kupę'), { kind: 'toilet', objectType: 'litter_box', target: 'poop' });
+assert.deepEqual(parseWorldIntent('go poop'), { kind: 'toilet', objectType: 'litter_box', target: 'poop' });
+assert.deepEqual(parseWorldIntent('idź do toalety'), { kind: 'toilet', objectType: 'litter_box', target: 'current_need' });
 
 // No litter box: the need resolves, but the floor takes the mark and the
 // player has to clean it.
@@ -58,5 +59,32 @@ const spoken = performImmediateWorldAction(noBox, { kind: 'toilet', objectType: 
 assert.equal(spoken.result.status, 'success');
 assert.equal(spoken.result.reason, 'soiled_no_box');
 assert.match(groundedWorldReply(spoken.result, 'pl'), /kuwety/i);
+
+// Target-specific toilet semantics: pee resolves bladder only, poop resolves
+// bowel only, and a satisfied target is not performed.
+const targetPee = {
+  ...calm,
+  needs: { ...calm.needs, bladder: 20, bowel: 80 },
+  roomObjects: [],
+  personality: { ...calm.personality, impulsiveness: 30, caution: 70 },
+};
+const peeOnly = useToiletCommanded(targetPee, NOW + 2, 'pee');
+assert.equal(peeOnly.performed, true);
+assert.equal(peeOnly.state.needs.bladder, 72);
+assert.ok(peeOnly.state.needs.bowel > 78, 'a pee command must not flush bowel');
+
+const targetPoop = {
+  ...calm,
+  needs: { ...calm.needs, bladder: 80, bowel: 20 },
+  roomObjects: [],
+  personality: { ...calm.personality, impulsiveness: 30, caution: 70 },
+};
+const poopOnly = useToiletCommanded(targetPoop, NOW + 3, 'poop');
+assert.equal(poopOnly.performed, true);
+assert.equal(poopOnly.state.needs.bowel, 82);
+assert.ok(poopOnly.state.needs.bladder > 78, 'a poop command must not flush bladder');
+
+const satisfiedPoop = useToiletCommanded({ ...targetPoop, needs: { ...targetPoop.needs, bowel: 80 } }, NOW + 4, 'poop');
+assert.equal(satisfiedPoop.performed, false);
 
 console.log('Toilet command and room-soiling checks passed.');

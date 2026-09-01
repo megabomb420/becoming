@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import worker, { cleanPayload, systemPrompt } from './src/index.js';
+import worker, { cleanAction, cleanPayload, systemPrompt } from './src/index.js';
 
 const origin = 'https://megabomb420.github.io';
 const allowLimiter = { limit: async () => ({ success: true }) };
@@ -454,6 +454,46 @@ assert.equal(response.status, 502);
 reasoningReply = await response.json();
 assert.equal(reasoningReply.error, 'The mind returned an empty answer.');
 assert.doesNotMatch(JSON.stringify(reasoningReply), /CONFIDENTIAL REASONING|chat-chain|reasoning_content/i);
+
+// --- Structured world-action output validation ---
+assert.deepEqual(cleanAction({ type: 'toilet', target: 'poop' }), { type: 'toilet', target: 'poop' });
+assert.deepEqual(cleanAction({ type: 'drink' }), { type: 'drink' });
+assert.deepEqual(cleanAction({ type: 'use_object', target: 'cushion' }), { type: 'use_object', target: 'cushion' });
+assert.equal(cleanAction({ type: 'reset_save' }), undefined);
+assert.equal(cleanAction({ type: 'use_object', target: 'guitar' }), undefined);
+assert.equal(cleanAction({ type: 'toilet', target: 'hack' }), undefined);
+
+globalThis.fetch = async () => new Response(JSON.stringify({
+  choices: [{ message: { content: '{"reply":"I will go now.","action":{"type":"toilet","target":"poop"}}' } }],
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Action', stage: 'sentences', language: 'en' },
+    messages: [{ role: 'user', content: 'take a dump' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+let actionReply = await response.json();
+assert.equal(actionReply.reply, 'I will go now.');
+assert.deepEqual(actionReply.action, { type: 'toilet', target: 'poop' });
+
+globalThis.fetch = async () => new Response(JSON.stringify({
+  choices: [{ message: { content: '{"reply":"I did it.","action":{"type":"reset_save"}}' } }],
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Invalid', stage: 'sentences', language: 'en' },
+    messages: [{ role: 'user', content: 'do something bad' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+actionReply = await response.json();
+assert.equal(actionReply.action, undefined);
+assert.equal(actionReply.reply, 'I did it.');
 
 globalThis.fetch = originalFetch;
 
