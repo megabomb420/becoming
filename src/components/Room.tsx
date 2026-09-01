@@ -2040,12 +2040,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       )}
 
       {/* The safe area and header are one real layout block. Controls below it
-          can no longer slide underneath a mobile status bar or notch. */}
-      <header className="room-header relative z-30 safe-top px-4 pb-3">
+          can no longer slide underneath a mobile status bar or notch. The
+          header is kept compact so the room stays the subject of the window. */}
+      <header className="room-header relative z-30 safe-top px-4 pb-2">
         <div className="flex justify-between items-start">
           <button onClick={() => setShowBecoming(true)} className="text-left group tap-target -my-1 py-1 pr-3">
             <div className="eyebrow text-[#8d987c]/70 group-hover:text-[#d8d2bf]/75 transition-colors">{developmentLabel}</div>
-            <div className="display-title text-[#ece8da]/86 text-lg mt-1 group-hover:text-[#ece8da] transition-colors">
+            <div className="display-title text-[#ece8da]/86 text-base mt-0.5 group-hover:text-[#ece8da] transition-colors">
               {state.identity.name || t('New', 'Nowy')}
             </div>
             <div className="text-[8px] font-serif uppercase tracking-[0.15em] mt-0.5" style={{ color: pathVisual.accent }}>
@@ -2065,38 +2066,38 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           type="button"
           onClick={() => setShowNeeds(true)}
           aria-label={`${t('Open care and needs', 'Otwórz opiekę i potrzeby')}${weatherSummary ? ` · ${weatherSummary}` : ''}`}
-          className="mx-auto mt-1 flex min-h-9 w-full max-w-md items-center gap-2 rounded-full border border-warm-200/10 bg-room-dark/68 px-3 py-1.5 text-left shadow-lg backdrop-blur-md transition-colors hover:bg-room-dark/82"
+          className="mx-auto mt-1 flex min-h-8 w-full max-w-md items-center gap-1.5 rounded-full border border-warm-200/8 bg-room-dark/55 px-2.5 py-1 text-left shadow-md backdrop-blur-md transition-colors hover:bg-room-dark/70"
         >
-          <span className="shrink-0 whitespace-nowrap text-[9px] font-serif uppercase tracking-[0.13em] text-warm-200/50">
+          <span className="shrink-0 whitespace-nowrap text-[8px] font-serif uppercase tracking-[0.08em] text-warm-200/45">
             {getPhaseLabel(timeOfDay.phase, ui)} · {formatLocalClock(timeOfDay)}
           </span>
           {weatherSummary && state.world.current && (
-            <span className={`shrink-0 whitespace-nowrap text-[9px] font-serif text-warm-200/48 ${state.world.status === 'stale' || state.world.lastError ? 'opacity-55' : ''}`} title={weatherSummary}>
+            <span className={`shrink-0 whitespace-nowrap text-[8px] font-serif text-warm-200/42 ${state.world.status === 'stale' || state.world.lastError ? 'opacity-55' : ''}`} title={weatherSummary}>
               <span aria-hidden="true">{getWeatherIcon(state.world.current.condition)}</span> {Math.round(state.world.current.temperatureC)}°
             </span>
           )}
-          <span className="h-3 w-px shrink-0 bg-warm-200/10" />
+          <span className="h-2.5 w-px shrink-0 bg-warm-200/10" />
           {visibleNeedSignals.length > 0 || healthCue ? (
             <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
               {healthCue && (
-                <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[10px] font-serif" style={{ color: healthCue.tone === 'attention' ? '#e39a82' : '#d6b276' }}>
+                <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[9px] font-serif" style={{ color: healthCue.tone === 'attention' ? '#e39a82' : '#d6b276' }}>
                   <span aria-hidden="true">{healthCue.icon}</span>
-                  <span className="max-w-[5.7rem] truncate">{polish ? healthCue.labelPl : healthCue.labelEn}</span>
+                  <span className="max-w-[6.5rem] truncate">{polish ? healthCue.labelPl : healthCue.labelEn}</span>
                 </span>
               )}
               {visibleNeedSignals.map(signal => (
-                <span key={signal.key} className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[10px] font-serif" style={{ color: urgencyColor(signal.urgency) }}>
+                <span key={signal.key} className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[9px] font-serif" style={{ color: urgencyColor(signal.urgency) }}>
                   <span aria-hidden="true">{signal.icon}</span>
-                  <span className="max-w-[5.7rem] truncate">{getNeedLabel(signal.key, polish)}</span>
+                  <span className="max-w-[6.5rem] truncate">{getNeedLabel(signal.key, polish)}</span>
                 </span>
               ))}
             </span>
           ) : (
-            <span className="truncate text-[10px] font-serif italic text-warm-200/45">
+            <span className="truncate text-[9px] font-serif italic text-warm-200/45">
               {t('all is calm', 'wszystko spokojne')}
             </span>
           )}
-          <span className="ml-auto shrink-0 text-[10px] text-warm-200/30" aria-hidden="true">⌄</span>
+          <span className="ml-auto shrink-0 text-[9px] text-warm-200/30" aria-hidden="true">⌄</span>
         </button>
       </header>
 

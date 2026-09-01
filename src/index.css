@@ -80,7 +80,7 @@
   }
 
   .room-header {
-    min-height: calc(7.25rem + env(safe-area-inset-top));
+    min-height: calc(6rem + env(safe-area-inset-top));
   }
 
   .room-conversation-zone {
@@ -111,7 +111,7 @@
   .room-speech-chip {
     position: relative;
     max-width: min(240px, 72vw);
-    padding: .55rem .9rem .62rem;
+    padding: .45rem .72rem .5rem;
     border: 1px solid rgba(55, 48, 38, .18);
     border-radius: 1.15rem 1.05rem .85rem 1.2rem;
     background:
@@ -119,8 +119,8 @@
       linear-gradient(180deg, rgba(240, 234, 214, .96), rgba(228, 220, 196, .94));
     color: var(--ink-deep);
     font-family: Georgia, "Times New Roman", serif;
-    font-size: .875rem;
-    line-height: 1.35;
+    font-size: .8125rem;
+    line-height: 1.3;
     text-align: center;
     box-shadow: 0 10px 28px rgba(8, 7, 5, .28), inset 0 1px rgba(255,255,255,.45);
   }

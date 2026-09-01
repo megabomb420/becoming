@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.6
+> **Version:** 0.14.7
 > **Last Updated:** 2026-09-01
 
 ---
@@ -751,6 +751,15 @@ Two production polish slices: the creature's language now comes from the mind, a
 **Objects answer to a tap.** The Use / Put away popup is gone. `objectInput.ts` is a pure classifier: a tap on a placed object starts the canonical use flow, a drag repositions it (threshold 12 px, no long-press), and dragging it onto a shelf target that appears only during the drag puts it away. The open shelf keeps the accessible path: with the tray open, tapping (or keyboard-activating) a room object puts it away — no permanent toolbar. Inventory drags still place at the release point; taps still auto-place.
 
 Deterministic checks: daytime payload says day (with localTime), night payload says night and rest, sleep/wake matches the authoritative time system, `aboutTo` reaches the Worker allowlist and the model as a fact, canned speech cannot be a fallback, a failed mind call still runs the action without speech, development and path overlays still constrain the voice, and Room keeps exactly its four intervals (no second speech loop). Object checks cover tap→Use, popup gone, drag→reposition without Use, drop-on-target→Put away, inventory place paths, the 12 px threshold, pointer capture and touch-action isolation, and the intact reaction/life-path pipeline. `npm run check` is green. The updated Worker (`cleanSituation`, `cleanClock.localTime`, `SITUATION_PROMPT`) is in this commit but deploys separately via wrangler.
+
+### v0.14.7 — The room opens up
+
+A visual-only polish pass on the top of the room and the speech bubble; no logic, needs, weather or systems changed.
+
+- **Header is compact.** The creature name drops from `text-lg` to `text-base`, the header's reserved height shrinks from 7.25rem to 6rem (+ safe area), and bottom padding tightens — the room is the subject of the window again.
+- **The day/time/needs pill is lighter.** Border weight, shadow, padding (`px-2.5 py-1`), and gaps shrink; the pill drops from 36 px to 32 px tall while staying full-width, so the touch target remains comfortable. Phase · clock and the weather chip (icon + temperature) go from 9 px to 8 px with lighter color and tighter tracking, so the actual need signals — now at 9 px with a wider truncation budget — read immediately.
+- **Speech bubble is smaller.** `room-speech-chip` font drops from .875rem to .8125rem with slightly tighter padding and line-height.
+- Deterministic layout checks now assert the compact header height and bubble font; `npm run check` is green. Responsive widths are validated by the existing safe-area and mobile-layout checks at 390×844 and 320×568; a physical-device pass remains the honest final step.
 
 ---
 
