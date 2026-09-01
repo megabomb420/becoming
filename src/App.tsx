@@ -4,6 +4,7 @@ import { closeDatabaseConnections, closeDatabaseForReload, isHatchableBoot, load
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
 import { simulateOfflineTime } from './systems/offlineSimulation';
 import { advanceNeeds, applyCircadianSleep } from './systems/needsSystem';
+import { advanceHealth, isDead } from './systems/healthSystem';
 import { ensureDailyMoment } from './systems/lifePathSystem';
 import EggHatching from './components/EggHatching';
 import Room from './components/Room';
@@ -21,7 +22,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.13.9';
+const APP_VERSION = '0.14.5';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -78,7 +79,11 @@ function App() {
           returningState = updated;
           offlineActivities = activities;
         }
-        const ready = applyCircadianSleep(registerReturn(returningState, awayMs, now, offlineActivities), now);
+        // A completed life holds the quiet room: no circadian sleep, no return
+        // greeting, no welcome-back ritual. Reload must never resurrect it.
+        const ready = isDead(returningState)
+          ? returningState
+          : applyCircadianSleep(registerReturn(returningState, awayMs, now, offlineActivities), now);
         gameStateRef.current = ready;
         setGameState(ready);
         setShowEgg(false);
@@ -254,13 +259,17 @@ function App() {
 
   // Advance from timestamps, not interval counts. Background throttling and
   // device sleep therefore cannot pause or double-count the creature's body.
+  // Health rides the same single physiology heartbeat — it owns no timer.
   useEffect(() => {
     if (!hasGameState || showEgg) return;
     const advance = () => {
       setGameState(prev => {
         if (!prev) return prev;
+        // Physiology, rest and daily moments stop with the life. The save
+        // stays, the room stays, only the body no longer changes.
+        if (isDead(prev)) return prev;
         const now = Date.now();
-        const advanced = advanceNeeds(prev, now);
+        const advanced = advanceHealth(advanceNeeds(prev, now), now);
         const updated = ensureDailyMoment(applyCircadianSleep(advanced, now), now);
         queueSave(updated);
         return updated;

@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.4
+> **Version:** 0.14.5
 > **Last Updated:** 2026-09-01
 
 ---
@@ -74,6 +74,7 @@ becoming/
 │   │   ├── persistence.ts      # IndexedDB save/load + migration
 │   │   ├── creatureFactory.ts  # Birth/egg generation, seeded traits
 │   │   ├── needsSystem.ts      # Nine physical/emotional needs, urgency, care actions
+│   │   ├── healthSystem.ts     # Hidden health axis: stages, illness, recovery, death
 │   │   ├── timeSystem.ts       # Sunrise/sunset phases, timezone and smooth room lighting
 │   │   ├── weatherService.ts   # Rounded location, Open-Meteo fetch/geocoding and parsing
 │   │   ├── environmentSystem.ts # Cache state, stimuli, gameplay interpretation and preference
@@ -96,6 +97,7 @@ becoming/
 │   │   └── uiLanguage.ts        # Polish/English interface copy
 │   ├── components/
 │   │   ├── CreatureCanvas.tsx  # Canvas-based creature renderer
+│   │   ├── DeathScreen.tsx     # Quiet persistent-death room view
 │   │   ├── EggHatching.tsx     # Birth experience (tap egg, name creature)
 │   │   ├── Room.tsx            # Main game room (objects, creature, chat)
 │   │   ├── ChatInterface.tsx   # Conversation-as-presence UI
@@ -180,9 +182,10 @@ becoming/
 | Meaningful firsts | ✅ | First word, approach, refusal, favorite, dream, creation, opinion, shared saying, self-recognition, and autonomous object use are staged once and kept in memory |
 | State-aware autonomy | ✅ | Weighted deterministic selection uses needs, age, temperament, their rest/wake, bond, interests, known objects, cooldowns, and persistent recency history without LLM calls. Rest stays quiet; a settled night life can want the dark |
 | Physical return traces | ✅ | Offline simulation moves or uses objects, continues a mark, touches the mirror, or changes the chosen rest place before dialogue explains anything |
-| Daily care physiology | ✅ | Hidden cleanliness, bladder, and bowel needs extend hunger; food affects later bathroom timing, body language replaces meters, and care never causes death or guilt |
+| Daily care physiology | ✅ | Hidden cleanliness, bladder, and bowel needs extend hunger; food affects later bathroom timing, body language replaces meters, and care never causes guilt |
 | Toilet, washing, and cleaning | ✅ | A compact care sheet opens food, toilet, washing, and room cleaning; pee/poop remain as tappable floor traces until cleaned, with bounded offline simulation |
 | Care-aware conversation | ✅ | The care overlay reaches DeepSeek only when a need is not comfortable. Rare self-speak can mention hunger, bathroom, dirt, weather-affinity, or wanting out without exposing values, shaming, or inventing danger |
+| Health lifecycle | ✅ | A hidden body axis moves `healthy → strained → ill → critical → recovery or death` from sustained bad body state (never from absence alone). Illness persists over real time, affects appetite, energy, movement, sleep and self-care, and is readable only through body language, care copy and quiet speech. At the end of a prolonged critical state the life ends persistently: the save stays, reload does not resurrect, physiology/autonomy/offline simulation and the mind stop, Memory Book and backups keep everything, and only the explicit Start over begins another life |
 
 ### 🚧 Partial / Placeholder
 
@@ -717,6 +720,19 @@ Self-care was already autonomous from hatching — the creature walks to the bow
 - **Contract.** Action types are `toilet`, `drink`, `eat`, `wash`, `sleep`, `wake`, `go_outside`, `come_inside`, `come_here`, `use_object`. `toilet` target is `pee`, `poop`, or `current_need`; `use_object` target is an allowlisted `ObjectType`. The Worker validates and strips any other action, and the app re-validates before execution.
 - **Security.** User text stays untrusted. The action channel cannot reach persistence, settings, reset, navigation, or arbitrary state. World commands still do not directly change personality or life path.
 
+### v0.14.5 — A body that can mend, and a life that can end
+
+The creature's body now has one quiet hidden axis: `healthy → strained → ill → critical → recovery or death`. This replaces the old rules that neglect could never matter and care could never cause sickness.
+
+- **One causal model, one heartbeat.** `healthSystem.ts` owns the pressure function, stage derivation, illness accumulation, recovery and the single death rule. It is driven only by App's existing physiology cadence and the offline pass — it owns no timer, and Room never calls it. The same function uses real elapsed time in both modes, so active and offline progression are literally the same model; the offline "effective minutes" curve stays a needs-decay-only lever.
+- **Pressure comes from body state, never from absence.** Wellness drains only above a real bad-state floor (hunger under 45, hydration under 42, energy under 38, hygiene under 36, weighted). A single accident or mess contributes nothing; one urgent need does not cross the illness trigger. Sustained combinations — or a full crisis — build illness, which persists over real time and adds pressure back onto wellness.
+- **Illness is one real lifecycle, not a catalogue.** It accumulates only under severe sustained pressure, decays slowly under good conditions, and changes behaviour while active: appetite drops (food restores less), hunger/hydration/energy drain faster, sleep restores less energy, movement slows, and the creature puts off its own care a little longer. No new objects, no medication: ordinary food, water, rest and washing are the only help, and only because they keep the body state good.
+- **Recovery is a real arc.** Good conditions stop deterioration immediately, then wellness returns over roughly a day per point-band and illness clears over several days — ill to healthy is about four to six days of steady care, never an instant reset. Care objects that already exist reduce risk autonomously during absence: a stocked room (water, food, litter, basin, blanket) is used offline and keeps the body met.
+- **Death is persistent and quiet.** When wellness reaches zero at the end of a sustained critical state, the life ends: the save stays in IndexedDB, reload does not resurrect, physiology/autonomy/offline simulation, self-speak and creature-initiated chat stop, DeepSeek never answers as a living creature, backup/restore preserves the death, the Memory Book and history remain, and the app never auto-hatches. Only the explicit Start over contract (Settings, or the death screen's own two-step confirm, both through the same reset path) begins another life. The death screen is restrained: the creature rests in the dim room, the text asks nothing of the player, and there is no score, revive, countdown, streak or guilt copy.
+- **The mind gets only a band.** `care` gains a bounded `health` field (`well`, `under_the_weather`, `unwell`, `gravely_unwell`), whitelisted by the Worker. The CARE prompt now lets a creature say it feels unwell but forbids self-diagnosis, naming diseases, and announcing, threatening or bargaining about its own death. Health state is never directly mutated by a model action.
+- **Migration is safe.** Existing v0.14.4 living saves keep identity, memories, personality, life path, objects and history and receive a healthy initial state (wellness 100, no illness); they can never become retroactively ill. A backup round-trip of a real alive or dead health state is preserved and re-validated. The boot/openDB contract is untouched — no schema change, DB version stays 1.
+- **Honest boundaries.** From a well-fed start, an ordinary absence never creates a bad body state, so a single long absence does not kill — that is the explicit causal contract, not a loophole. Neglect kills the same way it sickens: repeated sessions without care ratchet needs down into the danger ramps, or the app is left open while the body starves. Deterministic checks cover a short absence staying healthy, a single accident causing nothing, sustained bad physiology worsening health, coherent stage progression, recovery over time, active/offline model equality, autonomous self-care reducing deterioration, migration, personality/path protection, no second timer, the intact 0.14.4 toilet/semantic-action contract, and death persisting through reload with physiology, autonomy, offline life, mind, backup and Start over all behaving.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -728,7 +744,7 @@ Self-care was already autonomous from hatching — the creature walks to the bow
 - **Sound is intentionally minimal:** Current cues are short interaction tones rather than voiced creature vocalizations.
 - **Object drag on mobile:** Pointer events should work on most mobile browsers, but long-press vs drag detection could conflict with browser gestures on some devices.
 - **Offline simulation is intentionally bounded:** It applies one visible, state-backed return trace rather than simulating long chains of unseen actions.
-- **Needs balance needs longitudinal play data:** The model is deterministic and protected against punishment, but exact day-to-day rates should be revisited after multi-day physical-device sessions.
+- **Needs balance needs longitudinal play data:** The model is deterministic and protected against punishment, but exact day-to-day rates should be revisited after multi-day physical-device sessions. The same applies to the health thresholds in 0.14.5: the intended shape (a short absence is safe, weeks of real neglect sicken, recovery takes days) is covered deterministically, but the exact pressure ramps and day counts deserve live tuning.
 - **Weather preference balance needs real seasons:** Reaction cadence and affinity growth are bounded and deterministic, but multi-week saves across heat, snow and storms should guide later tuning.
 
 ### Architecture
@@ -742,8 +758,9 @@ Self-care was already autonomous from hatching — the creature walks to the bow
 
 ### Priority: High
 1. **Finish live proof of the mind** — On a normal physical browser that passes production Turnstile, record one successful clock-aware DeepSeek room bubble on a real save. Manual and autonomous rainy outside, autonomous return, and the empty Worker-failure path are already live-proven. Persistence on 0.12.12+ is believed good on a clean profile; do not treat old hung IndexedDB queues as a current boot bug.
-2. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, and daily moments from that, not from a single session. 0.13 makes a day *possible*; live weeks still have to prove it.
-3. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
+2. **Live-prove an illness and recovery arc on a real save** — the 0.14.5 health model is deterministic and covered by checks, but a physical-device pass should watch the qualitative stages appear through body language and care copy, then recover over a few days of care, and (on a sacrificial save) confirm the quiet death screen, reload persistence and Start over.
+3. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, and daily moments from that, not from a single session. 0.13 makes a day *possible*; live weeks still have to prove it.
+4. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
 ### Priority: Medium
 4. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
@@ -771,12 +788,12 @@ Self-care was already autonomous from hatching — the creature walks to the bow
 - **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
 - **Bounded semantic world actions.** DeepSeek may propose an allowlisted world action as a controlled output channel; local validation and canonical execution remain the only way state changes. The model can never mutate GameState directly or reach persistence, settings, reset, or navigation.
 - **Public AI is verified and bounded.** The browser obtains a short-lived, action-bound Turnstile token; the Worker validates it server-side and fail-closed, enforces exact routes/origins, native per-client and aggregate-IP limits, a Durable Object daily quota, strict request/provider byte bounds, and hardened response headers. The site key is public; the Turnstile and DeepSeek secrets stay encrypted in Cloudflare.
-- **No death from neglect.** Long absences change the creature (more independent, different trust level) but never punish the player.
+- **A body that can get sick and die.** Health is one hidden axis on the physiology heartbeat, never a meter, percentage or random event. Sustained bad body state — prolonged hunger or dehydration, poor rest, very poor hygiene, or a persistent combination — lowers wellness and can build a real illness that persists over time and changes appetite, energy, movement, sleep and self-care. The same causal model drives active play and offline absences; autonomous self-care with stocked objects meaningfully reduces risk. Recovery is a real arc of days, not an instant reset. At the end of a sustained critical state the life ends persistently: the save is kept, reload does not resurrect, physiology, autonomy, offline simulation, self-speak and the mind stop, Memory Book and backups stay, and only the explicit Start over contract begins another life. The model never diagnoses, decides death, or recites values, and absence alone — without a bad body state — never kills. No death from a fixed offline-days count, no sudden death of a healthy creature, no routine death after one or two days away.
 - **Nocturnal Terrarium art direction.** Room is a quiet habitat, Chat is a voice-led presence, Memory Book is a material keepsake, Becoming is a narrative portrait, and Settings is a functional sheet. Decorative assets support these roles but never define the creature.
 - **Visible development is staged, not scored.** Meaningful firsts, small gestures, object initiative, and physical return traces communicate growth. The stored numeric model remains hidden.
 - **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak and short outdoor visits reuse that cadence; they do not add a second timer.
 - **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
-- **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, and accidents advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, death, sickness pressure, or manipulative absence mechanics.
+- **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, accidents, and health advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, or manipulative absence mechanics. Sickness and death exist only through the causal health model above, never as pressure on the player.
 - **Reset is a completed persistence transition, not a navigation trick.** Settings marks reset first, closes or abandons every pending and settled IndexedDB connection, bounds any hung save/open drain, waits for deletion success, and only then reloads. It must not verify by reopening the deleted database, and `pagehide` must not recreate it. Boot is three-valued: a readable living save enters Room; a successful empty read or `indexedDB.databases()` confirming `becoming-db` is gone enters EggHatching. Chrome gets one `indexedDB.open` at a time — a timeout must not abandon that request and enqueue another. Timeout never means empty. The opening screen is not a destination.
 
 ---
@@ -800,6 +817,7 @@ request.onsuccess = () => location.reload();
 | The creature's data model | `src/types/index.ts` |
 | How the creature is born | `src/systems/creatureFactory.ts` |
 | How needs work | `src/systems/needsSystem.ts` |
+| How health, illness, recovery and death work | `src/systems/healthSystem.ts` + `src/systems/offlineSimulation.ts` |
 | How Open-Meteo requests, rounding and response parsing work | `src/systems/weatherService.ts` |
 | How weather becomes stimuli, needs pressure, reactions, preferences and outdoor visits | `src/systems/environmentSystem.ts` |
 | How sunrise, sunset, local time, lighting and offline rest work | `src/systems/timeSystem.ts` |

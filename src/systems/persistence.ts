@@ -12,6 +12,7 @@ import { migrateTouchBoundaryState } from './boundarySystem';
 import { migrateSharedLanguageState } from './sharedLanguageSystem';
 import { migrateRoomMess } from './needsSystem';
 import { migrateWorldEnvironment } from './environmentSystem';
+import { migrateHealthState } from './healthSystem';
 
 interface BecomingDB extends DBSchema {
   gameState: {
@@ -202,6 +203,12 @@ export function migrateGameState(state: GameState): GameState {
   // receive the same one-time consent choice as a fresh creature.
   migrated.world = migrateWorldEnvironment(migrated.world);
   migrated.roomMess = migrateRoomMess(migrated.roomMess);
+
+  // v0.14.5: existing living saves receive a safe healthy health state. They
+  // are never retroactively ill because historical health data did not exist.
+  // A backup round-trip of a real (alive or dead) health state is preserved.
+  const healthSavedAt = Number.isFinite(migrated.lastSaved) ? migrated.lastSaved : savedAt;
+  migrated.health = migrateHealthState(migrated.health, healthSavedAt);
 
   // Ensure development.hatched exists
   if (typeof migrated.development?.hatched !== 'boolean') {

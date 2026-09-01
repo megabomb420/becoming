@@ -3,6 +3,7 @@ import { generateDreamAfterSleep } from './innerLifeSystem';
 import { getRestSchedule } from './lifePathSystem';
 import { creatureMaySleep, getTimeOfDay, isCreatureWakePhase } from './timeSystem';
 import { getEnvironmentalNeedMultiplier } from './environmentSystem';
+import { getAppetiteFactor, getNeedRateFactor } from './healthSystem';
 
 export type NeedUpdateMode = 'active' | 'offline';
 
@@ -156,7 +157,10 @@ function applyRates(
   const result = { ...source };
   for (const key of NEED_ORDER) {
     const environmentalMultiplier = rates[key] > 0 ? getEnvironmentalNeedMultiplier(state, key, at) : 1;
-    const rate = rates[key] * personalityMultiplier(state, key) * environmentalMultiplier;
+    const healthFactor = key === 'hunger' || key === 'hydration' || key === 'energy' || key === 'hygiene'
+      ? getNeedRateFactor(state, key, rates[key] < 0)
+      : 1;
+    const rate = rates[key] * personalityMultiplier(state, key) * environmentalMultiplier * healthFactor;
     const next = clamp(source[key] - rate * minutes);
     if (offline && rate > 0) {
       // Never make a need better just because it was already below the floor.
@@ -373,8 +377,11 @@ function careMemory(state: GameState, content: string, tags: string[], now: numb
 
 export function feedCreature(state: GameState, foodType: string, now = Date.now()): GameState {
   const hungry = state.needs.hunger < 48;
+  // An unwell body loses appetite: food still helps, but a full portion is no
+  // longer finished. Care objects stay ordinary — this is not medicine.
+  const appetite = getAppetiteFactor(state);
   let next = applyNeedDelta(state, {
-    hunger: foodType === 'apple' ? 38 : 34,
+    hunger: Math.round((foodType === 'apple' ? 38 : 34) * appetite * 10) / 10,
     comfort: foodType === 'apple' ? 5 : 3,
     hydration: foodType === 'apple' ? 4 : -2,
     bowel: -7,

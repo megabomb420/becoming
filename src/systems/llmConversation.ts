@@ -15,6 +15,7 @@ import { getAdoptedSharedPhrases } from './sharedLanguageSystem';
 import { wantsOutdoors } from './environmentSystem';
 import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
 import { getTurnstileToken } from './turnstile';
+import { getHealthBand, isDead } from './healthSystem';
 
 const API_URL = String((import.meta as { env?: { VITE_BECOMING_API_URL?: string } }).env?.VITE_BECOMING_API_URL ?? '').replace(/\/$/, '');
 const CLIENT_ID_KEY = 'becoming-ai-client';
@@ -165,7 +166,10 @@ function careContext(state: GameState) {
       : state.needs.bladder < 30
         ? 'needs_to_pee'
         : 'comfortable';
-  return { hunger, hygiene, bathroom, roomMess: Math.min(6, state.roomMess.length) };
+  // Health reaches the mind only as a bounded qualitative band; the model can
+  // speak about feeling unwell but can never diagnose or decide anything.
+  const health = getHealthBand(state);
+  return { hunger, hygiene, bathroom, roomMess: Math.min(6, state.roomMess.length), health };
 }
 
 function careIsNeeded(care: ReturnType<typeof careContext>) {
@@ -173,7 +177,8 @@ function careIsNeeded(care: ReturnType<typeof careContext>) {
     || care.hunger === 'very_hungry'
     || care.hygiene !== 'clean'
     || care.bathroom !== 'comfortable'
-    || care.roomMess > 0;
+    || care.roomMess > 0
+    || care.health !== 'well';
 }
 
 function pathLabel(id: LifePathId, language: 'en' | 'pl') {
@@ -351,7 +356,7 @@ function buildWeatherOverlay(state: GameState, now: number) {
 }
 
 export function shouldCreatureSelfSpeak(state: GameState, now = Date.now()): boolean {
-  if (state.sleepState === 'sleeping' || state.development.stage === 'egg') return false;
+  if (isDead(state) || state.sleepState === 'sleeping' || state.development.stage === 'egg') return false;
   const clock = creatureClock(state, now);
   if (clock.rest) return false;
   if (careIsNeeded(careContext(state))) return true;
