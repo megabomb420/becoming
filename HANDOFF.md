@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.7
+> **Version:** 0.14.8
 > **Last Updated:** 2026-09-01
 
 ---
@@ -180,7 +180,7 @@ becoming/
 | Shared sayings | ✅ | Safe short phrases repeated two or three times can become persistent inside language visible in Memory Book and available to chat |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Automated verification | ✅ | Deterministic gameplay, weather/privacy/cache/solar, Worker and production-build checks run before every GitHub Pages deployment |
-| Version display | ✅ | Discreetly shown in Memory Book footer |
+| Version display | ✅ | Shown in Memory Book and the compact Settings About / Diagnostics footer, alongside build, update, runtime, save, weather-cache and mind status |
 | Nocturnal Terrarium UI | ✅ | Intimate dark room, material Memory Book, voice-led Chat, narrative Becoming, restrained functional settings |
 | Visible personality signatures | ✅ | Seeded trait combinations alter early hesitations, approaches, rest choices, object initiative, imitation, and conversation presence |
 | Meaningful firsts | ✅ | First word, approach, refusal, favorite, dream, creation, opinion, shared saying, self-recognition, and autonomous object use are staged once and kept in memory |
@@ -196,7 +196,7 @@ becoming/
 
 | Feature | State | Gap |
 |---|---|---|
-| DeepSeek-only room bubbles | 🚧 | Canned idle/touch/autonomy lines and local worker fallback are absent; self-care announcements are mind-voiced through the same `/chat` with an about-to situation. The mind receives one authoritative rest/wake clock, place and activity. Production Worker failure was live-proven empty on a real save; successful DeepSeek speech remains unproven because Turnstile rejected the controlled browser. The updated Worker (situation whitelist) deploys separately via wrangler. |
+| DeepSeek-only room bubbles | 🚧 | Canned idle/touch/autonomy lines and local worker fallback are absent; self-care announcements use the same `/chat` with an about-to situation. The live Worker receives one authoritative clock/situation and validates selective ordinary/complex reasoning before one DeepSeek request. Failure is live-proven silent; successful clock-aware speech still needs a physical-browser record because controlled-browser Turnstile is correctly rejected. |
 | Outdoor visits | 🚧 | Real-save wake visits were live-proven manually with a solar sky and Dublin weather, then autonomously in rain through the creature's own return. The expanded sky dropped its mullion and curtains and grounded state used the real condition. Ordinary-night refusal, settled-night-life permission, and sleeping-outside return still rely on deterministic checks. |
 | Notifications | 🚧 | Architecture prepared but no push notification logic. |
 
@@ -353,7 +353,7 @@ The creature now answers through GPT-5.6 Luna from the first conversation. Puter
 
 ### v0.7.2 — Private DeepSeek Mind
 
-Puter and end-user login have been removed. The browser now sends a bounded personality, memory, habit, and recent-conversation context to a private Cloudflare Worker, which calls DeepSeek V4 Flash in non-thinking mode. The public bundle contains no model credential. The worker enforces origin, payload, output, timeout, and best-effort per-IP rate limits; the local dialogue engine remains the offline fallback.
+Puter and end-user login have been removed. The browser now sends bounded earned context to a private Cloudflare Worker, which calls DeepSeek V4 Flash once per accepted turn. Ordinary speech is non-thinking; only a locally identified, Worker-validated multi-context turn receives low bounded reasoning. The public bundle contains no model credential. The worker enforces origin, payload, output, timeout, Turnstile, native rate limits and a Durable Object daily quota; failures stay silent rather than inventing creature speech.
 
 ### v0.9.9 — Lives, Hybrids & Consequences
 
@@ -763,6 +763,14 @@ Today chooses its date through the selected weather location's IANA timezone, th
 
 Deterministic checks cover the extended request, aligned parsing, exact local-date hourly filtering, a Tokyo date differing from UTC/device date, second-day cache rollover, legacy migration and retained stale/offline snapshots. The browser pass covered the rendered Room and Today sheet at 390×844 and 320×568: separate 44 px targets, no page-width overflow, an independently scrolling hourly strip, readable EN/PL condition copy, and no console warnings or errors. `npm run check` is green.
 
+### v0.14.8 — Selective thought, visible diagnostics
+
+The pending 0.14.6 Worker clock/situation contract was deployed first, then the completed 0.14.8 Worker was deployed as Cloudflare version `9f646765-5c82-4a34-b40c-c0b3e457de4a`. The live endpoint at `becoming-mind.whip-blanket.workers.dev` returned 200 from `/health` and 403 for a chat request without an allowed origin. This exercises only public health and normal fail-closed security paths; Turnstile, role protection, rate bindings, quotas and provider access were not bypassed.
+
+Reasoning now follows one path: a small deterministic device heuristic emits only `ordinary` or `complex`; the Worker sanitizes the request, validates that a complex hint is backed by at least two earned context domains, maps it to DeepSeek V4 Flash `thinking: enabled` with `reasoning_effort: low`, and makes the same single provider request. Relevance comes from overlap with earned continuity, inner life/opinions, conflicted identity, and a qualitative close/bonded relationship — never message length or a keyword alone. Self-speak, about-to self-care, care-driven requests and local world-command fast paths stay non-thinking. Provider `reasoning_content` is never read, returned, logged, persisted or placed in history.
+
+Settings ends with a bilingual About / Diagnostics footer containing six bounded items: version plus short build id, truthful one-shot PWA update state, installed-app/browser runtime, local IndexedDB save state, weather-cache freshness/disabled state, and `DeepSeek V4 Flash · ordinary off / complex low`. `App.tsx` owns the existing single service-worker registration; opening Settings calls `registration.update()` once, with no poller or second update system. The browser pass at 390×844 and 320×568 found no horizontal overflow. Deterministic tests cover the conservative local choice, Worker demotion/acceptance, ordinary and complex provider mappings, one provider call, and reasoning privacy. `npm run check` is green.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -779,8 +787,7 @@ Deterministic checks cover the extended request, aligned parsing, exact local-da
 
 ### Architecture
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the room bubble stays empty rather than inventing a local line. World-command replies remain the grounded local fact.
-- **The Worker deploys separately from the app:** the 0.14.6 Worker changes (`cleanSituation`, `cleanClock.localTime`, `SITUATION_PROMPT`) ship in the repo but need a `wrangler deploy` to affect the live endpoint; until then the app still works (unknown keys are dropped and self-care announcements fail empty).
-- **Selective reasoning is designed, not yet wired:** every current request keeps `thinking` disabled for speed; per-request thinking budgets await live verification of `deepseek-v4-flash` thinking.
+- **The Worker deploys separately from the app:** Wrangler deployment remains a separate release step. The clock/situation contract and selective-reasoning mapping are live as of 0.14.8; future Worker edits still require their own deploy.
 - **Public gateway still needs monitoring:** Turnstile, native rate limits, and a Durable Object daily quota now bound anonymous access, but thresholds and false positives need production observation. This is defence in depth, not a promise that a public endpoint can never be abused.
 - **Coverage is targeted, not comprehensive:** Needs, care, weather parsing/privacy/cache, solar time, migration, offline time, dates, timezones, DST, and day phases are covered; older conversation, social-learning, age-floor, and drag-gesture cases still need broader unit coverage.
 
@@ -790,21 +797,19 @@ Deterministic checks cover the extended request, aligned parsing, exact local-da
 
 ### Priority: High
 1. **Finish live proof of the mind** — On a normal physical browser that passes production Turnstile, record one successful clock-aware DeepSeek room bubble on a real save, and one DeepSeek self-care announcement with the about_to situation. Manual and autonomous rainy outside, autonomous return, and the empty Worker-failure path are already live-proven. Persistence on 0.12.12+ is believed good on a clean profile; do not treat old hung IndexedDB queues as a current boot bug.
-2. **Deploy the updated Worker and watch it** — the 0.14.6 `cleanSituation`/`SITUATION_PROMPT` changes go live via `wrangler deploy`; then confirm clock-grounded speech and about_to announcements on a real save.
-3. **Live-prove an illness and recovery arc on a real save** — the 0.14.5 health model is deterministic and covered by checks, but a physical-device pass should watch the qualitative stages appear through body language and care copy, then recover over a few days of care, and (on a sacrificial save) confirm the quiet death screen, reload persistence and Start over.
-4. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, and daily moments from that, not from a single session. 0.13 makes a day *possible*; live weeks still have to prove it.
-5. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
+2. **Live-prove an illness and recovery arc on a real save** — the 0.14.5 health model is deterministic and covered by checks, but a physical-device pass should watch the qualitative stages appear through body language and care copy, then recover over a few days of care, and (on a sacrificial save) confirm the quiet death screen, reload persistence and Start over.
+3. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, and daily moments from that, not from a single session. 0.13 makes a day *possible*; live weeks still have to prove it.
+4. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
 ### Priority: Medium
-6. **Physical-device polish pass** — verify location permission wording, vibration and tap-vs-drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
-7. **Gateway observability** — watch Turnstile failures, native rate-limit decisions, daily quota usage, and DeepSeek errors in Cloudflare before tuning production thresholds.
-8. **Selective reasoning** — once `deepseek-v4-flash` thinking is live-verified, wire the local complexity heuristic to a per-request thinking budget for complex turns only.
-9. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
+5. **Physical-device polish pass** — verify location permission wording, vibration and tap-vs-drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
+6. **Gateway observability** — watch Turnstile failures, native rate-limit decisions, daily quota usage, DeepSeek errors and the ordinary/complex request mix in Cloudflare before tuning production thresholds. Never log reasoning content.
+7. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
 
 ### Priority: Low / Future
-10. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
-11. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
-12. **Notifications** — gentle, non-manipulative PWA notifications.
+8. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
+9. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
+10. **Notifications** — gentle, non-manipulative PWA notifications.
 
 ---
 
@@ -821,7 +826,7 @@ Deterministic checks cover the extended request, aligned parsing, exact local-da
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
 - **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
 - **Local systems decide reality; DeepSeek supplies creature language; silence beats fake fallback.** Local code owns every fact — clock, solar phase, rest/wake, needs, autonomy, current activity, place, weather, persistence — and sends one authoritative context per speech opportunity (`clock` + `situation`, including a real `aboutTo` action for self-care). The model phrases natural language from those facts and can never contradict them, diagnose, decide death, or mutate GameState. When the Worker, Turnstile or model fails, the real action still happens and the creature stays silent; no canned substitute line is ever invented. Local UI cues (body-language captions, reaction labels, grounded world-command acks, the clock-grounded return greeting) stay local because they are facts, not pretended mind speech.
-- **Reasoning is selective; ordinary embodied speech stays fast.** Every current mind request is embodied speech (conversation, self-speak, self-care announcements), so the provider contract keeps `thinking` disabled and replies stay quick. Per-request thinking budgets for genuinely complex turns are deferred until `deepseek-v4-flash` thinking is live-verified; the planned design is a local complexity heuristic setting a `reasoning` flag the Worker maps to a thinking budget — never a separate classifier call.
+- **Reasoning is selective; ordinary embodied speech stays fast.** A deterministic local rule chooses only `ordinary` or `complex`: length and keywords alone never count, and complex requires at least two relevant earned domains among continuity, inner life/opinion, conflicted identity and a qualitative close/bonded relationship. The Worker re-sanitizes and validates that hint, then maps ordinary to thinking disabled or complex to one low-effort thinking request. Self-speak, about-to self-care, care-driven turns and obvious local world commands remain ordinary. There is no classifier, second model call, new loop or retry cadence. Provider reasoning content is ignored at the boundary and never returned, stored, placed in history or logged.
 - **Tap uses; drag moves; drag to inventory puts away.** Placed objects follow one physical model with no Use/Put away popup and no permanent toolbar: a tap starts the canonical use flow, a drag (12 px threshold, no long-press) repositions, and dropping a dragged room object on the shelf target that appears only during the drag puts it away. The open shelf and keyboard activation keep an accessible put-away path. The release decision is a pure classifier, so a drag can never fall through to Use.
 - **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
 - **Bounded semantic world actions.** DeepSeek may propose an allowlisted world action as a controlled output channel; local validation and canonical execution remain the only way state changes. The model can never mutate GameState directly or reach persistence, settings, reset, or navigation.

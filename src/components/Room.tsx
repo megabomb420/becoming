@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import type { LocalSaveStatus, PwaUpdateStatus } from '../App';
 import { GameState, ObjectType, RoomObject, CreatureBehavior, MeaningfulFirst } from '../types';
 import CreatureCanvas from './CreatureCanvas';
 import ChatInterface from './ChatInterface';
@@ -139,6 +140,10 @@ interface RoomProps {
   onStateChange: (state: GameState | ((prev: GameState) => GameState)) => void;
   onReset?: () => void;
   version?: string;
+  buildId?: string;
+  pwaUpdateStatus?: PwaUpdateStatus;
+  localSaveStatus?: LocalSaveStatus;
+  onCheckForUpdate?: () => Promise<void>;
 }
 
 const objectLabels: Record<ObjectType, string> = {
@@ -336,7 +341,7 @@ function urgencyColor(urgency: ReturnType<typeof getNeedUrgency>) {
   return '#8fa695';
 }
 
-const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) => {
+const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, buildId, pwaUpdateStatus = 'unknown', localSaveStatus = 'unknown', onCheckForUpdate }) => {
   const ui = uiLanguage(state.conversation.language);
   const polish = ui === 'pl';
   const t = (english: string, polishText: string) => uiText(ui, english, polishText);
@@ -367,6 +372,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [careEffect, setCareEffect] = useState<CareRitualEffect>(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const quietTalkReply = isRestingChatGate(state, clockNow);
+
+  useEffect(() => {
+    if (showSettings) void onCheckForUpdate?.();
+  }, [onCheckForUpdate, showSettings]);
 
   // Drag state
   const [draggingType, setDraggingType] = useState<ObjectType | null>(null);
@@ -1729,6 +1738,34 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const outdoors = state.world.place === 'outdoors';
   const timeOfDay = getTimeOfDay(clockNow, state.world);
   const lighting = getRoomLighting(timeOfDay, state.world, clockNow);
+  const installedPwa = window.matchMedia('(display-mode: standalone)').matches
+    || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const updateStatusLabel: Record<PwaUpdateStatus, string> = {
+    up_to_date: t('Up to date', 'Aktualna'),
+    update_available: t('Update available', 'Dostępna aktualizacja'),
+    checking: t('Checking…', 'Sprawdzanie…'),
+    offline: t('Offline', 'Offline'),
+    unknown: t('Unknown', 'Nieznany'),
+  };
+  const saveStatusLabel: Record<LocalSaveStatus, string> = {
+    saved: t('Saved locally', 'Zapisano lokalnie'),
+    saving: t('Saving…', 'Zapisywanie…'),
+    unavailable: t('Unavailable', 'Niedostępny'),
+    unknown: t('Unknown', 'Nieznany'),
+  };
+  const weatherCacheLabel = (() => {
+    const mode = state.world.settings.mode;
+    if (mode === 'disabled' || mode === 'unconfigured') return t('Disabled', 'Wyłączona');
+    const snapshot = state.world.current;
+    if (!snapshot) return state.world.lastError === 'offline' ? t('Offline · no cache', 'Offline · brak cache') : t('No cached weather', 'Brak pogody w cache');
+    const ageMinutes = Math.max(0, Math.round((clockNow - snapshot.fetchedAt) / 60_000));
+    const age = ageMinutes < 60
+      ? t(`${ageMinutes} min old`, `sprzed ${ageMinutes} min`)
+      : t(`${Math.round(ageMinutes / 60)} h old`, `sprzed ${Math.round(ageMinutes / 60)} godz.`);
+    return state.world.status === 'ready' && !state.world.lastError
+      ? t(`Fresh · ${age}`, `Świeża · ${age}`)
+      : t(`Cached / stale · ${age}`, `Cache / nieaktualna · ${age}`);
+  })();
   const visibleNeedSignals = getVisibleNeedSignals(state, 3);
   const dominantNeed = getDominantNeed(state, true);
   const weatherActive = state.world.settings.mode === 'device' || state.world.settings.mode === 'city';
@@ -2766,9 +2803,28 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
                   )}
                 </div>
               )}
+              {backupStatus && <p className="text-center text-warm-100/55 text-[10px] font-serif mt-5">{backupStatus}</p>}
+              <p className="text-center text-warm-200/58 text-[9px] font-serif mt-7">{t('Sensory choices stay only on this device.', 'Ustawienia dźwięku i wibracji zostają tylko na tym urządzeniu.')}</p>
+              <section className="mt-5 border-t border-warm-200/10 pt-5" aria-labelledby="about-diagnostics-title">
+                <p className="eyebrow text-[#a8ad91]/75">{t('About / Diagnostics', 'O aplikacji / Diagnostyka')}</p>
+                <h3 id="about-diagnostics-title" className="sr-only">{t('About and diagnostics', 'O aplikacji i diagnostyka')}</h3>
+                <dl className="mt-3 divide-y divide-warm-200/8 rounded-2xl border border-warm-200/10 bg-room-mid/20 px-4">
+                  {[
+                    [t('Version', 'Wersja'), `v${version ?? '—'} · ${buildId || 'local'}`],
+                    [t('Updates', 'Aktualizacje'), updateStatusLabel[pwaUpdateStatus]],
+                    [t('Running as', 'Tryb uruchomienia'), installedPwa ? t('Installed app', 'Zainstalowana aplikacja') : t('Browser', 'Przeglądarka')],
+                    [t('Local save', 'Zapis lokalny'), saveStatusLabel[localSaveStatus]],
+                    [t('Weather cache', 'Cache pogody'), weatherCacheLabel],
+                    [t('Mind', 'Umysł'), t('DeepSeek V4 Flash · ordinary off / complex low', 'DeepSeek V4 Flash · zwykłe bez / złożone low')],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-start justify-between gap-4 py-3 text-[10px] font-serif">
+                      <dt className="text-warm-200/48">{label}</dt>
+                      <dd className="max-w-[62%] text-right text-warm-100/68 leading-relaxed">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
             </div>
-            {backupStatus && <p className="text-center text-warm-100/55 text-[10px] font-serif mt-5">{backupStatus}</p>}
-            <p className="text-center text-warm-200/58 text-[9px] font-serif mt-7">{t('Sensory choices stay only on this device.', 'Ustawienia dźwięku i wibracji zostają tylko na tym urządzeniu.')}</p>
           </div>
         </div>
       )}

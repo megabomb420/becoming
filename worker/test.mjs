@@ -445,6 +445,40 @@ response = await request('/chat', {
 assert.equal(response.status, 200);
 assert.equal(providerContractBody.model, 'deepseek-v4-flash');
 assert.deepEqual(providerContractBody.thinking, { type: 'disabled' });
+assert.equal(providerContractBody.max_tokens, 180);
+assert.equal('reasoning_effort' in providerContractBody, false);
+
+// A locally earned complex hint is validated against sanitized context and
+// mapped to one bounded provider request — never a classifier or second loop.
+let complexProviderCalls = 0;
+globalThis.fetch = async (_url, init) => {
+  complexProviderCalls += 1;
+  providerContractBody = JSON.parse(init.body);
+  return new Response(JSON.stringify({
+    choices: [{ message: { content: 'I remember the garden differently now.', reasoning_content: 'PRIVATE chain must stay here' } }],
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Contract', stage: 'mature', language: 'en' },
+    reasoning: 'complex',
+    relationship: { bond: 'close' },
+    continuity: { openThreads: [{ kind: 'question', subject: 'garden question', askCount: 1 }] },
+    messages: [{ role: 'user', content: 'What about us and that garden question?' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+assert.equal(complexProviderCalls, 1);
+assert.deepEqual(providerContractBody.thinking, { type: 'enabled' });
+assert.equal(providerContractBody.reasoning_effort, 'low');
+assert.equal(providerContractBody.max_tokens, 320);
+assert.equal('temperature' in providerContractBody, false);
+assert.equal('frequency_penalty' in providerContractBody, false);
+const complexReply = await response.json();
+assert.equal(complexReply.reply, 'I remember the garden differently now.');
+assert.doesNotMatch(JSON.stringify(complexReply), /PRIVATE chain|reasoning_content/i);
 
 // A reasoning payload that also carries content yields reply = content only.
 // reasoning_content must never leak past the boundary.

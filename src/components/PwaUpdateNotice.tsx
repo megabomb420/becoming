@@ -1,23 +1,18 @@
 import React from 'react';
-import { useRegisterSW } from 'virtual:pwa-register/react';
 import { SupportedUiLanguage, uiText } from '../systems/uiLanguage';
 
 interface PwaUpdateNoticeProps {
   language: SupportedUiLanguage;
+  needRefresh: boolean;
+  setNeedRefresh: (value: boolean) => void;
+  updateServiceWorker: (reloadPage?: boolean) => Promise<void>;
   onBeforeUpdate?: () => Promise<void>;
   onUpdateFailed?: () => void;
 }
 
-const PwaUpdateNotice: React.FC<PwaUpdateNoticeProps> = ({ language, onBeforeUpdate, onUpdateFailed }) => {
+const PwaUpdateNotice: React.FC<PwaUpdateNoticeProps> = ({ language, needRefresh, setNeedRefresh, updateServiceWorker, onBeforeUpdate, onUpdateFailed }) => {
   const [updating, setUpdating] = React.useState(false);
   const [updateError, setUpdateError] = React.useState(false);
-  const {
-    needRefresh: [needRefresh, setNeedRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
-    immediate: true,
-    onRegisterError: error => console.warn('PWA update check failed.', error),
-  });
 
   if (!needRefresh) return null;
   const t = (english: string, polish: string) => uiText(language, english, polish);

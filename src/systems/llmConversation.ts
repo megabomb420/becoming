@@ -45,6 +45,7 @@ type ApiReply = {
 };
 
 export type CreatureMindRequestKind = 'reply' | 'self';
+export type MindReasoningHint = 'ordinary' | 'complex';
 
 // A real body action the local autonomy has already decided to take. The mind
 // may phrase one short natural line about it, or stay silent; the action
@@ -93,6 +94,7 @@ export interface CreatureMindRequest {
     clock?: CreatureClockOverlay;
   };
   messages: ApiMessage[];
+  reasoning: MindReasoningHint;
   promptKind?: 'self';
   // One authoritative record of what the body is doing right now, decided by
   // local systems: place, current activity, and an optional real about-to act.
@@ -101,6 +103,7 @@ export interface CreatureMindRequest {
   influence?: ReturnType<typeof influenceProfile>;
   innerLife?: Record<string, unknown>;
   continuity?: Record<string, unknown>;
+  relationship?: { bond: 'close' | 'bonded' };
   creations?: Array<Record<string, string>>;
   presence?: Record<string, unknown>;
   care?: ReturnType<typeof careContext>;
@@ -113,6 +116,59 @@ export interface CreatureMindRequest {
     wantOut?: boolean;
     place?: 'outdoors';
   };
+}
+
+const REASONING_STOP_WORDS = new Set([
+  'about', 'after', 'again', 'because', 'being', 'could', 'from', 'have', 'into', 'just', 'that', 'their', 'then', 'there', 'these', 'they', 'this', 'what', 'when', 'where', 'which', 'with', 'would', 'your',
+  'albo', 'bardzo', 'bylem', 'bylam', 'bylo', 'czyli', 'dlaczego', 'jest', 'juz', 'ktore', 'mnie', 'moze', 'przez', 'tego', 'teraz', 'tobie', 'twoje', 'wtedy', 'znowu',
+]);
+
+function reasoningTokens(value: unknown): Set<string> {
+  return new Set(String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .match(/[a-z0-9]{4,}/g)
+    ?.filter(token => !REASONING_STOP_WORDS.has(token)) ?? []);
+}
+
+function overlapsReasoningContext(message: string, context: unknown): boolean {
+  const messageTokens = reasoningTokens(message);
+  if (!messageTokens.size) return false;
+  for (const token of reasoningTokens(JSON.stringify(context))) {
+    if (messageTokens.has(token)) return true;
+  }
+  return false;
+}
+
+/**
+ * The device makes one conservative, deterministic choice. Complexity is
+ * earned by at least two relevant state domains, never by length alone.
+ */
+export function chooseMindReasoningHint(input: {
+  kind?: CreatureMindRequestKind;
+  aboutTo?: SelfCareAboutTo;
+  latestUserMessage?: string;
+  lifePath?: LifePathMindOverlay;
+  innerLife?: Record<string, unknown>;
+  continuity?: Record<string, unknown>;
+  relationship?: { bond: 'close' | 'bonded' };
+}): MindReasoningHint {
+  if (input.kind === 'self' || input.aboutTo) return 'ordinary';
+  const message = input.latestUserMessage?.trim() ?? '';
+  if (!message) return 'ordinary';
+
+  const relevant = new Set<string>();
+  if (input.continuity && overlapsReasoningContext(message, input.continuity)) relevant.add('continuity');
+  if (input.innerLife && overlapsReasoningContext(message, input.innerLife)) relevant.add('inner-life');
+  if (input.lifePath?.layer === 'identity'
+    && (input.lifePath.cost || input.lifePath.secondary || input.lifePath.doesNotWant?.length)
+    && overlapsReasoningContext(message, input.lifePath)) relevant.add('life-path');
+  if (input.relationship && /\b(us|we|between us|our bond|trust me|remember me|relationship|nas|nami|miedzy nami|ufasz mi|pamietasz mnie|relacj[aei])\b/i.test(
+    message.normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+  )) relevant.add('relationship');
+
+  return relevant.size >= 2 ? 'complex' : 'ordinary';
 }
 
 function compactFacts(state: GameState) {
@@ -410,6 +466,13 @@ export function buildCreatureMindRequest(
     activity: state.currentActivity?.slice(0, 60) ?? null,
   };
   if (options.aboutTo) situation.aboutTo = options.aboutTo;
+  const lifePath = buildPathOverlay(state);
+  const innerLife = buildInnerLifeOverlay(state);
+  const continuity = buildContinuityOverlay(state);
+  const relationship = state.bond.stage === 'close' || state.bond.stage === 'bonded'
+    ? { bond: state.bond.stage }
+    : undefined;
+  const messages = toModelHistory(state.conversation.messages);
 
   const body: CreatureMindRequest = {
     creature: {
@@ -424,19 +487,26 @@ export function buildCreatureMindRequest(
       language: state.conversation.language,
       clock: creatureClock(state, now),
     },
-    messages: toModelHistory(state.conversation.messages),
+    messages,
+    reasoning: chooseMindReasoningHint({
+      kind: options.kind,
+      aboutTo: options.aboutTo,
+      latestUserMessage: [...messages].reverse().find(message => message.role === 'user')?.content,
+      lifePath,
+      innerLife,
+      continuity,
+      relationship,
+    }),
     situation,
   };
 
   if (options.kind === 'self') body.promptKind = 'self';
-  const lifePath = buildPathOverlay(state);
   if (lifePath) body.lifePath = lifePath;
   const influence = buildInfluenceOverlay(state);
   if (influence) body.influence = influence;
-  const innerLife = buildInnerLifeOverlay(state);
   if (innerLife) body.innerLife = innerLife;
-  const continuity = buildContinuityOverlay(state);
   if (continuity) body.continuity = continuity;
+  if (relationship) body.relationship = relationship;
   if (creations.length) body.creations = creations;
   if (recentAbsences.length) body.presence = { recentAbsences };
   if (careIsNeeded(care)) body.care = care;

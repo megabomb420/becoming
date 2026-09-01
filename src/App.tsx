@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 import { GameState, OfflineActivity } from './types';
 import { closeDatabaseConnections, closeDatabaseForReload, isHatchableBoot, loadGameStateForBoot, resetForNewLife, saveGameState } from './systems/persistence';
 import { createNewCreature, createHatchedCreature } from './systems/creatureFactory';
@@ -22,13 +23,17 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.14.7';
+const APP_VERSION = '0.14.8';
+export type PwaUpdateStatus = 'up_to_date' | 'update_available' | 'checking' | 'offline' | 'unknown';
+export type LocalSaveStatus = 'saved' | 'saving' | 'unavailable' | 'unknown';
 
 function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEgg, setShowEgg] = useState(false);
   const [bootError, setBootError] = useState(false);
+  const [pwaUpdateStatus, setPwaUpdateStatus] = useState<PwaUpdateStatus>(navigator.onLine ? 'unknown' : 'offline');
+  const [localSaveStatus, setLocalSaveStatus] = useState<LocalSaveStatus>('unknown');
   const gameStateRef = useRef<GameState | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const needsTimerRef = useRef<ReturnType<typeof setInterval>>();
@@ -37,6 +42,22 @@ function App() {
   const updatingRef = useRef(false);
   const bootRunRef = useRef(0);
   const recoveringRef = useRef(false);
+  const serviceWorkerRegistrationRef = useRef<ServiceWorkerRegistration>();
+  const updateAvailableRef = useRef(false);
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    immediate: true,
+    onRegisteredSW: (_swUrl, registration) => {
+      serviceWorkerRegistrationRef.current = registration;
+      if (navigator.onLine && !updateAvailableRef.current) setPwaUpdateStatus('up_to_date');
+    },
+    onRegisterError: error => {
+      console.warn('PWA update check failed.', error);
+      setPwaUpdateStatus(navigator.onLine ? 'unknown' : 'offline');
+    },
+  });
   const hasGameState = gameState !== null;
   const weatherMode = gameState?.world.settings.mode;
   const selectedWeatherLocationKey = gameState?.world.settings.location
@@ -46,6 +67,47 @@ function App() {
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
+
+  useEffect(() => {
+    if (needRefresh) {
+      updateAvailableRef.current = true;
+      setPwaUpdateStatus('update_available');
+    }
+  }, [needRefresh]);
+
+  useEffect(() => {
+    const handleOffline = () => setPwaUpdateStatus('offline');
+    const handleOnline = () => setPwaUpdateStatus(updateAvailableRef.current ? 'update_available' : 'unknown');
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
+  const checkForPwaUpdate = useCallback(async () => {
+    if (!navigator.onLine) {
+      setPwaUpdateStatus('offline');
+      return;
+    }
+    if (updateAvailableRef.current) {
+      setPwaUpdateStatus('update_available');
+      return;
+    }
+    const registration = serviceWorkerRegistrationRef.current;
+    if (!registration) {
+      setPwaUpdateStatus('unknown');
+      return;
+    }
+    setPwaUpdateStatus('checking');
+    try {
+      await registration.update();
+      setPwaUpdateStatus(updateAvailableRef.current ? 'update_available' : 'up_to_date');
+    } catch {
+      setPwaUpdateStatus(navigator.onLine ? 'unknown' : 'offline');
+    }
+  }, []);
 
   const runBoot = useCallback(async () => {
     const run = ++bootRunRef.current;
@@ -86,16 +148,19 @@ function App() {
           : applyCircadianSleep(registerReturn(returningState, awayMs, now, offlineActivities), now);
         gameStateRef.current = ready;
         setGameState(ready);
+        setLocalSaveStatus('saved');
         setShowEgg(false);
       } else {
         // Confirmed empty: missing DB or an unhatched record. Never invent a life.
         gameStateRef.current = null;
         setShowEgg(true);
+        setLocalSaveStatus('unknown');
       }
       setLoading(false);
     } catch (error) {
       if (bootRunRef.current !== run) return;
       console.warn('Becoming could not read local state during boot.', error);
+      setLocalSaveStatus('unavailable');
       recoveringRef.current = true;
       setBootError(true);
       setLoading(false);
@@ -120,8 +185,11 @@ function App() {
   // Auto-save
   const queueSave = useCallback((state: GameState) => {
     clearTimeout(saveTimerRef.current);
+    setLocalSaveStatus('saving');
     saveTimerRef.current = setTimeout(() => {
-      saveGameState(state);
+      void saveGameState(state)
+        .then(() => setLocalSaveStatus('saved'))
+        .catch(() => setLocalSaveStatus('unavailable'));
     }, 1000);
   }, []);
 
@@ -131,11 +199,16 @@ function App() {
     saveTimerRef.current = undefined;
     const latest = gameStateRef.current;
     try {
-      if (!resettingRef.current && latest?.development.hatched) await saveGameState(latest);
+      if (!resettingRef.current && latest?.development.hatched) {
+        setLocalSaveStatus('saving');
+        await saveGameState(latest);
+        setLocalSaveStatus('saved');
+      }
       // Chrome hangs if the next document opens becoming-db while this
       // connection is still closing. Wait for close, then reload.
       await closeDatabaseForReload();
     } catch (error) {
+      setLocalSaveStatus('unavailable');
       updatingRef.current = false;
       throw error;
     }
@@ -311,6 +384,7 @@ function App() {
     // The first room is proof of a durable life, not optimistic UI. If the
     // write cannot complete, EggHatching stays mounted and offers a retry.
     await saveGameState(hatched);
+    setLocalSaveStatus('saved');
     gameStateRef.current = hatched;
     setGameState(hatched);
   }, []);
@@ -369,7 +443,7 @@ function App() {
         <div className="h-screen w-screen">
           <EggHatching onHatch={handleHatch} onNameChosen={handleNameChosen} />
         </div>
-        <PwaUpdateNotice language={detectUiLanguage()} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
+        <PwaUpdateNotice language={detectUiLanguage()} needRefresh={needRefresh} setNeedRefresh={setNeedRefresh} updateServiceWorker={updateServiceWorker} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
       </>
     );
   }
@@ -385,9 +459,9 @@ function App() {
   return (
     <>
       <div className="h-screen w-screen overflow-hidden relative">
-        <Room state={safeState} onStateChange={handleStateChange} onReset={handleReset} version={APP_VERSION} />
+        <Room state={safeState} onStateChange={handleStateChange} onReset={handleReset} version={APP_VERSION} buildId={__BUILD_ID__} pwaUpdateStatus={pwaUpdateStatus} localSaveStatus={localSaveStatus} onCheckForUpdate={checkForPwaUpdate} />
       </div>
-      <PwaUpdateNotice language={uiLanguage(safeState.conversation.language)} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
+      <PwaUpdateNotice language={uiLanguage(safeState.conversation.language)} needRefresh={needRefresh} setNeedRefresh={setNeedRefresh} updateServiceWorker={updateServiceWorker} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
     </>
   );
 }

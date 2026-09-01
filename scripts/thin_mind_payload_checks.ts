@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
-import { buildCreatureMindRequest } from '../src/systems/llmConversation';
+import { buildCreatureMindRequest, chooseMindReasoningHint } from '../src/systems/llmConversation';
 import { cleanPayload } from '../worker/src/index.js';
 import { GameState } from '../src/types';
 
@@ -59,5 +59,38 @@ assert.ok(cleaned.lifePath, 'a provided life path rides through as a sanitized o
 assert.equal(cleaned.lifePath?.primary, 'stoner');
 assert.equal('scores' in (cleaned.lifePath ?? {}), false, 'raw life-path scores must never cross the boundary');
 assert.doesNotMatch(JSON.stringify(cleaned), /"curiosity":\d|\"scores\"/, 'no score data leaks through the boundary');
+
+// 5. Selective reasoning is conservative and contextual. Length and a lone
+//    keyword/domain never earn thinking; two relevant earned domains do.
+const longButSimple = `hello ${'very '.repeat(240)}nice to see you`;
+assert.equal(chooseMindReasoningHint({ latestUserMessage: longButSimple }), 'ordinary', 'length alone never enables reasoning');
+assert.equal(chooseMindReasoningHint({
+  latestUserMessage: 'What do you think about the garden?',
+  innerLife: { opinions: [{ topic: 'garden', reason: 'quiet leaves' }] },
+}), 'ordinary', 'one relevant earned domain remains ordinary');
+const earnedComplex = {
+  latestUserMessage: 'We left the garden question unresolved. Has your opinion about the garden changed between us?',
+  innerLife: { opinions: [{ topic: 'garden', reason: 'quiet leaves' }] },
+  continuity: { openThreads: [{ kind: 'question', subject: 'garden question' }] },
+  relationship: { bond: 'close' as const },
+};
+assert.equal(chooseMindReasoningHint(earnedComplex), 'complex', 'two matching earned contexts enable bounded reasoning');
+assert.equal(chooseMindReasoningHint({ ...earnedComplex, kind: 'self' }), 'ordinary', 'autonomous speech never enables reasoning');
+assert.equal(chooseMindReasoningHint({ ...earnedComplex, aboutTo: { action: 'drink' } }), 'ordinary', 'self-care never enables reasoning');
+
+const workerDemoted = cleanPayload({
+  creature: { name: 'Thin', stage: 'sentences', language: 'en' },
+  reasoning: 'complex',
+  messages: [{ role: 'user', content: 'Hello.' }],
+});
+assert.equal(workerDemoted.reasoning, 'ordinary', 'Worker demotes an unsupported complex hint');
+const workerAccepted = cleanPayload({
+  creature: { name: 'Thin', stage: 'sentences', language: 'en' },
+  reasoning: 'complex',
+  relationship: { bond: 'close' },
+  continuity: { openThreads: [{ kind: 'question', subject: 'garden question', askCount: 1 }] },
+  messages: [{ role: 'user', content: 'What about us and that garden question?' }],
+});
+assert.equal(workerAccepted.reasoning, 'complex', 'Worker accepts only a bounded hint backed by multiple sanitized domains');
 
 console.log('Thin-mind payload checks passed.');
