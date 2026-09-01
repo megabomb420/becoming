@@ -26,7 +26,17 @@ const base = createHatchedCreature(createNewCreature('World', 4117));
 assert.deepEqual(parseWorldIntent('Masz, dam ci jabłko.'), { kind: 'offer_object', objectType: 'apple' });
 assert.deepEqual(parseWorldIntent('Please play with the ball'), { kind: 'use_object', objectType: 'ball' });
 assert.deepEqual(parseWorldIntent('Napij się wody'), { kind: 'drink', objectType: 'water_bowl' });
+assert.deepEqual(parseWorldIntent('użyj poduszki'), { kind: 'use_object', objectType: 'cushion' });
+assert.deepEqual(parseWorldIntent('play with the jingle toy'), { kind: 'use_object', objectType: 'jingle_toy' });
+assert.deepEqual(parseWorldIntent('daj mi szczotkę'), { kind: 'offer_object', objectType: 'brush' });
 assert.equal(parseWorldIntent('Lubię jabłka, ale ty nie musisz.'), null, 'an object mention is not automatically a command');
+
+const cushionReaction = chooseObjectReaction({ ...base, needs: { ...base.needs, comfort: 20 } }, 'cushion');
+assert.ok(cushionReaction.needDelta.comfort > 0, 'a low-comfort cushion use must restore comfort');
+const brushReaction = chooseObjectReaction({ ...base, needs: { ...base.needs, hygiene: 40 } }, 'brush');
+assert.ok(brushReaction.needDelta.hygiene > 0, 'a dirty brush use must restore hygiene');
+const jingleReaction = chooseObjectReaction({ ...base, needs: { ...base.needs, stimulation: 30 } }, 'jingle_toy');
+assert.ok(jingleReaction.needDelta.stimulation > 0, 'a restless jingle toy use must restore stimulation');
 
 const spokenOffer = beginConversationTurn(base, 'Masz, dam ci jabłko.', NOW, { worldAction: true }).state;
 assert.deepEqual(spokenOffer.personality, base.personality, 'a world command must not directly rewrite creature personality');

@@ -32,7 +32,7 @@ const DB_NAME = 'becoming-db';
 const DB_VERSION = 1;
 const BASE_INVENTORY: ObjectType[] = [
   'water_bowl', 'litter_box', 'wash_basin',
-  'apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror',
+  'apple', 'broccoli', 'ball', 'blanket', 'cushion', 'brush', 'jingle_toy', 'paper', 'pencil', 'box', 'stone', 'mirror',
 ];
 const SAVE_FORMAT = 'becoming-save';
 const SAVE_FORMAT_VERSION = 1;

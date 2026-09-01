@@ -46,7 +46,7 @@ function generatePersonality(rand: () => number): PersonalityTraits {
 
 const ALL_INVENTORY_ITEMS: ObjectType[] = [
   'water_bowl', 'litter_box', 'wash_basin',
-  'apple', 'broccoli', 'ball', 'blanket', 'paper', 'pencil', 'box', 'stone', 'mirror',
+  'apple', 'broccoli', 'ball', 'blanket', 'cushion', 'brush', 'jingle_toy', 'paper', 'pencil', 'box', 'stone', 'mirror',
 ];
 
 export function createNewCreature(name: string | null = null, seed = Date.now()): GameState {

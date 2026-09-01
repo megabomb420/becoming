@@ -12,6 +12,7 @@ import {
   feedCreature,
   getSleepBlocker,
   useToilet,
+  useToiletCommanded,
   wakeUp,
   washCreature,
 } from './needsSystem';
@@ -76,6 +77,9 @@ const OBJECT_ALIASES: Array<[ObjectType, string[]]> = [
   ['broccoli', ['broccoli', 'brokul', 'brokula']],
   ['ball', ['ball', 'pilka', 'pilke']],
   ['blanket', ['blanket', 'koc', 'koca']],
+  ['cushion', ['cushion', 'pillow', 'poduszka', 'poduszke', 'poduszki']],
+  ['brush', ['brush', 'szczotka', 'szczotke', 'szczotki']],
+  ['jingle_toy', ['jingle toy', 'jingle', 'bell', 'dzwonek', 'dzwoneczek', 'dzwonka', 'dzwoneczka']],
   ['paper', ['paper', 'papier', 'papieru']],
   ['pencil', ['pencil', 'olowek', 'olowka']],
   ['box', ['box', 'pudelko', 'pudelka']],
@@ -130,6 +134,8 @@ export function parseWorldIntent(text: string): WorldIntent | null {
   if (hasPhrase(normalized, ['chodz tutaj', 'chodz tu', 'podejdz do mnie', 'come here', 'come to me'])) return { kind: 'come_here' };
   if (hasPhrase(normalized, ['napij sie', 'napij', 'pij wode', 'have a drink', 'drink some water', 'drink'])) return { kind: 'drink', objectType: 'water_bowl' };
   if (hasPhrase(normalized, ['idz do toalety', 'skorzystaj z toalety', 'skorzystaj z kuwety', 'toaleta', 'do toalety', 'use the toilet', 'go to the toilet'])) return { kind: 'toilet', objectType: 'litter_box' };
+  if (hasPhrase(normalized, ['idz siku', 'zrob siku', 'siku', 'go pee', 'pee'])) return { kind: 'toilet', objectType: 'litter_box' };
+  if (hasPhrase(normalized, ['idz kupe', 'zrob kupe', 'kupe', 'go poop', 'go poo', 'poop', 'poo'])) return { kind: 'toilet', objectType: 'litter_box' };
   if (hasPhrase(normalized, ['umyj sie', 'mycie', 'umyj go', 'umyj ja', 'wash yourself', 'have a wash', 'wash'])) return { kind: 'wash', objectType: 'wash_basin' };
   if (hasPhrase(normalized, ['posprzataj', 'posprzataj pokoj', 'sprzatnij', 'clean the room', 'clean up'])) return { kind: 'clean' };
 
@@ -289,10 +295,13 @@ export function performImmediateWorldAction(
 
   if (intent.kind === 'toilet') {
     if (state.sleepState === 'sleeping') return { state, result: { intent, status: 'blocked', reason: 'sleeping' } };
-    const action = useToilet(state, now);
+    const action = useToiletCommanded(state, now);
+    const next = action.performed
+      ? (action.soiled ? action.state : recordBondEvent(updateDevelopment(action.state, 0.22), 'care'))
+      : action.state;
     return {
-      state: action.performed ? recordBondEvent(updateDevelopment(action.state, 0.22), 'care') : action.state,
-      result: { intent, status: action.performed ? 'success' : 'already_satisfied', reason: action.result },
+      state: next,
+      result: { intent, status: action.performed ? 'success' : 'already_satisfied', reason: action.soiled ? `soiled_${action.soiled}` : action.result },
     };
   }
 
@@ -373,6 +382,7 @@ const LABELS: Record<ObjectType, { pl: string; en: string }> = {
   litter_box: { pl: 'kuwety', en: 'litter box' }, wash_basin: { pl: 'miski do mycia', en: 'wash basin' },
   apple: { pl: 'jabłka', en: 'apple' }, broccoli: { pl: 'brokułu', en: 'broccoli' },
   ball: { pl: 'piłki', en: 'ball' }, blanket: { pl: 'koca', en: 'blanket' },
+  cushion: { pl: 'poduszki', en: 'cushion' }, brush: { pl: 'szczotki', en: 'brush' }, jingle_toy: { pl: 'dzwonka', en: 'jingle toy' },
   paper: { pl: 'papieru', en: 'paper' }, pencil: { pl: 'ołówka', en: 'pencil' },
   box: { pl: 'pudełka', en: 'box' }, stone: { pl: 'kamienia', en: 'stone' }, mirror: { pl: 'lustra', en: 'mirror' },
 };
@@ -419,7 +429,11 @@ export function groundedWorldReply(result: WorldActionResult, language: 'pl' | '
   if (result.intent.kind === 'sleep') return polish ? 'Dobrze. Pójdę się ułożyć.' : 'All right. I will go settle.';
   if (result.intent.kind === 'wake') return polish ? 'Już jestem.' : 'I am here.';
   if (result.intent.kind === 'drink') return polish ? 'Napiłem się. Tego potrzebowałem.' : 'I drank. I needed that.';
-  if (result.intent.kind === 'toilet') return polish ? 'Gotowe. Jest mi lżej.' : 'Done. I feel better.';
+  if (result.intent.kind === 'toilet') {
+    if (result.reason === 'soiled_no_box') return polish ? 'Nie ma tu kuwety, więc zrobiłem to na podłodze. Trzeba posprzątać.' : 'There is no litter box here, so I did it on the floor. It needs cleaning.';
+    if (result.reason === 'soiled_prank') return polish ? 'Zrobiłem to tutaj, chociaż kuweta jest obok. Teraz ty sprzątaj.' : 'I did it right here even though the box is nearby. Your turn to clean.';
+    return polish ? 'Gotowe. Jest mi lżej.' : 'Done. I feel better.';
+  }
   if (result.intent.kind === 'wash') return polish ? 'Już. Czuję się czyściej.' : 'Done. I feel cleaner.';
   if (result.intent.kind === 'clean') return polish ? 'Tu znowu jest przyjemnie.' : 'The room feels clear again.';
   if (result.consumed) return polish ? `Zjadłem trochę ${label}.` : `I ate the ${label}.`;
