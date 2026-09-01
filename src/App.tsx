@@ -23,6 +23,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 import { authoritativeNow, cadenceDelay, isDevTimeSimulationActive } from './systems/authoritativeTime';
+import { SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS, SaveScheduler } from './systems/saveScheduler';
 
 const APP_VERSION = '0.14.11';
 export type PwaUpdateStatus = 'up_to_date' | 'update_available' | 'checking' | 'offline' | 'unknown';
@@ -36,7 +37,8 @@ function App() {
   const [pwaUpdateStatus, setPwaUpdateStatus] = useState<PwaUpdateStatus>(navigator.onLine ? 'unknown' : 'offline');
   const [localSaveStatus, setLocalSaveStatus] = useState<LocalSaveStatus>('unknown');
   const gameStateRef = useRef<GameState | null>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveSchedulerRef = useRef<SaveScheduler | null>(null);
+  const pendingSaveRef = useRef<GameState | null>(null);
   const needsTimerRef = useRef<ReturnType<typeof setInterval>>();
   const retryTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const resettingRef = useRef(false);
@@ -183,21 +185,30 @@ function App() {
     };
   }, [runBoot]);
 
-  // Auto-save
+  // Auto-save. The scheduler keeps the production one-second idle debounce but
+  // caps the pending window, so a continuous update stream (the 1440× harness
+  // drives several cadences at one real second) flushes every few seconds
+  // instead of re-arming the debounce forever and never persisting.
   const queueSave = useCallback((state: GameState) => {
-    clearTimeout(saveTimerRef.current);
+    if (!saveSchedulerRef.current) {
+      saveSchedulerRef.current = new SaveScheduler(SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS, () => {
+        const snapshot = pendingSaveRef.current;
+        pendingSaveRef.current = null;
+        if (!snapshot) return;
+        void saveGameState(snapshot)
+          .then(() => setLocalSaveStatus('saved'))
+          .catch(() => setLocalSaveStatus('unavailable'));
+      });
+    }
+    pendingSaveRef.current = state;
     setLocalSaveStatus('saving');
-    saveTimerRef.current = setTimeout(() => {
-      void saveGameState(state)
-        .then(() => setLocalSaveStatus('saved'))
-        .catch(() => setLocalSaveStatus('unavailable'));
-    }, 1000);
+    saveSchedulerRef.current.update();
   }, []);
 
   const prepareForUpdate = useCallback(async () => {
     updatingRef.current = true;
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = undefined;
+    saveSchedulerRef.current?.cancel();
+    pendingSaveRef.current = null;
     const latest = gameStateRef.current;
     try {
       if (!resettingRef.current && latest?.development.hatched) {
@@ -396,8 +407,8 @@ function App() {
   const handleReset = useCallback(async () => {
     const previous = gameStateRef.current;
     resettingRef.current = true;
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = undefined;
+    saveSchedulerRef.current?.cancel();
+    pendingSaveRef.current = null;
     // Prevent pagehide from recreating the just-deleted creature during the
     // reload that follows a successful reset.
     gameStateRef.current = null;

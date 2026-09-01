@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createAuthoritativeTimeSource } from '../src/systems/authoritativeTime';
+import { SaveScheduler } from '../src/systems/saveScheduler';
 import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
 import { advanceNeeds, applyCircadianSleep, drinkCreature, feedCreature, useToilet, washCreature } from '../src/systems/needsSystem';
 import { advanceHealth, isDead } from '../src/systems/healthSystem';
@@ -48,6 +49,97 @@ assert.match(appSource, /import\.meta\.env\.DEV && import\.meta\.env\.MODE === '
 assert.doesNotMatch(appSource + roomSource, /Date\.now\(\)/, 'authoritative runtime paths do not bypass the controlled clock');
 assert.equal((appSource.match(/setInterval\(/g) ?? []).length, 2, 'simulation adds no App interval');
 assert.equal((roomSource.match(/setInterval\(/g) ?? []).length, 4, 'simulation adds no Room interval');
+
+// Regression: repeated simulation-cadence updates must not starve saving.
+// The harness collapses several existing cadences to one real second, and the
+// old pure 1000 ms debounce re-armed itself on every tick, so persistence
+// never flushed. The capped save scheduler must flush every few seconds in
+// either timer ordering, never write on every gameplay tick, and keep
+// production's debounce-after-idle semantics for sporadic interaction.
+let fakeNow = 1_000;
+type FakeTimer = { at: number; fn: () => void };
+const scheduledTimers: FakeTimer[] = [];
+const setFakeTimer = (fn: () => void, ms: number): FakeTimer => {
+  const handle = { at: fakeNow + ms, fn };
+  scheduledTimers.push(handle);
+  return handle;
+};
+const clearFakeTimer = (handle: FakeTimer) => {
+  const index = scheduledTimers.indexOf(handle);
+  if (index >= 0) scheduledTimers.splice(index, 1);
+};
+const runDueTimers = () => {
+  for (;;) {
+    const due = scheduledTimers.filter(t => t.at <= fakeNow).sort((a, b) => a.at - b.at);
+    if (due.length === 0) break;
+    for (const t of due) {
+      const index = scheduledTimers.indexOf(t);
+      if (index >= 0) scheduledTimers.splice(index, 1);
+      t.fn();
+    }
+  }
+};
+const makeSaveScheduler = (onSave: () => void, maxWaitMs: number) =>
+  new SaveScheduler(1_000, maxWaitMs, onSave, () => fakeNow, setFakeTimer, clearFakeTimer);
+const runCadence = (scheduler: SaveScheduler, updateFirst: boolean) => {
+  for (let step = 1; step <= 30; step += 1) {
+    fakeNow += 1_000;
+    if (updateFirst) scheduler.update();
+    runDueTimers();
+    if (!updateFirst) scheduler.update();
+  }
+};
+
+// The old pure debounce (no max wait) starved under the one-second cadence:
+// each update landed before the due save timer and re-armed it forever.
+let starvedSaves = 0;
+const starved = makeSaveScheduler(() => { starvedSaves += 1; }, Number.POSITIVE_INFINITY);
+runCadence(starved, true);
+assert.equal(starvedSaves, 0, 'a pure debounce starved under the one-second cadence (the regression being fixed)');
+
+// With the capped pending window the same stream persists every few seconds.
+// Update-first is the browser ordering QA observed; timer-first is defensive.
+for (const updateFirst of [true, false]) {
+  let saves = 0;
+  const saveTimes: number[] = [];
+  const scheduler = makeSaveScheduler(() => { saves += 1; saveTimes.push(fakeNow); }, 5_000);
+  runCadence(scheduler, updateFirst);
+  assert.ok(saves >= 5, `cadence updates must keep persisting (${saves} saves in 30 s, updateFirst=${updateFirst})`);
+  assert.ok(saves < 10, `cadence updates must not write every tick (${saves} saves in 30 s, updateFirst=${updateFirst})`);
+  for (let i = 1; i < saveTimes.length; i += 1) {
+    assert.ok(saveTimes[i] - saveTimes[i - 1] >= 5_000, 'actual writes stay at least five seconds apart');
+  }
+}
+
+// Sporadic production interaction keeps its exact debounce: a short burst
+// coalesces into one write, one second after the last update.
+scheduledTimers.length = 0;
+let sporadicSaves = 0;
+const sporadic = makeSaveScheduler(() => { sporadicSaves += 1; }, 5_000);
+fakeNow = 10_000;
+sporadic.update();
+fakeNow += 500;
+sporadic.update();
+fakeNow += 1_000;
+runDueTimers();
+assert.equal(sporadicSaves, 1, 'two updates half a second apart coalesce into one save');
+assert.ok(!scheduledTimers.some(t => t.at <= fakeNow), 'no extra save after the burst settles');
+
+// A long dense burst flushes mid-burst at bounded spacing rather than waiting
+// for the burst to end, and still never writes closer than five seconds apart.
+scheduledTimers.length = 0;
+let burstSaves = 0;
+const burstTimes: number[] = [];
+const burst = makeSaveScheduler(() => { burstSaves += 1; burstTimes.push(fakeNow); }, 5_000);
+fakeNow = 20_000;
+for (let i = 0; i < 100; i += 1) {
+  fakeNow += 100;
+  burst.update();
+}
+assert.ok(burstSaves >= 1, 'a long dense burst still persists before it ends');
+for (let i = 1; i < burstTimes.length; i += 1) {
+  assert.ok(burstTimes[i] - burstTimes[i - 1] >= 5_000, 'dense-burst writes stay at least five seconds apart');
+}
 
 // Fast, deterministic 30-day active-life pass. It composes the same needs,
 // health, circadian, development, daily-moment and autonomy transitions used
