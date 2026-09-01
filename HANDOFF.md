@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.13.13
+> **Version:** 0.14.0
 > **Last Updated:** 2026-09-01
 
 ---
@@ -705,6 +705,10 @@ The cheeks were two hard pink stickers. The flush is now a radial wash that fade
 ### v0.13.13 — Blush stays on the face
 
 The melt was too wide and spilled past the head outline. The flush is smaller and sits closer to the muzzle, inside the cheeks where it belongs.
+
+### v0.14.0 — A mature mind says what its body is doing
+
+Self-care was already autonomous from hatching — the creature walks to the bowl, the litter box, the basin and the blanket on its own. What a mature mind adds is the voice: before the trip, it says so, in its own tone. A degen says "Gonna take a shit."; a monk asks for a little privacy; a plain soul just says "Gotta pee." / "Idę kupę." English is the canonical copy, Polish the bundled translation, and the tone follows the committed life path or the dominant personality traits. The lines are local one-liners — never DeepSeek, never conversation history, never while asleep, throttled so a restless night does not become a monologue. No new loop: the announcements ride the existing seven-second room cadence and the same need thresholds as always.
 
 ---
 

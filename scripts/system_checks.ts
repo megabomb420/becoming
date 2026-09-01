@@ -5,6 +5,7 @@ import './needs_time_checks';
 import './weather_environment_checks';
 import './world_action_checks';
 import './persona_overlay_checks';
+import './self_care_speech_checks';
 import './chapter_quality_checks';
 import './creation_mastery_checks';
 import './persistence_checks';

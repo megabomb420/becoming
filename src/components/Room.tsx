@@ -38,6 +38,7 @@ import {
 } from '../systems/developmentSystem';
 
 import { shouldInitiateConversation, generateInitiatedTopic, clearInitiatedTopic } from '../systems/socialLearningSystem';
+import { getSelfCareLine, SelfCareKind } from '../systems/selfCareSpeech';
 import {
   chooseObjectReaction,
   chooseAutonomousMoment,
@@ -371,6 +372,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const returnTraceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const careEffectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const lastCareSignalRef = useRef(0);
+  const lastSelfCareSpeechRef = useRef<Partial<Record<SelfCareKind | 'any', number>>>({});
   const lastSpeechAtRef = useRef(0);
   const lastSelfSpeakAtRef = useRef(0);
   const selfSpeakInFlightRef = useRef(false);
@@ -521,6 +523,21 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           },
         });
   }, [onStateChange]);
+
+  // A mature mind narrates its own body before a self-care trip. The line is
+  // a local, non-remembered bubble — never DeepSeek, never history, throttled
+  // so a restless night does not become a monologue.
+  const announceSelfCare = useCallback((kind: SelfCareKind) => {
+    const now = Date.now();
+    const last = lastSelfCareSpeechRef.current;
+    if (now - (last.any ?? 0) < 120_000) return;
+    if (now - (last[kind] ?? 0) < 360_000) return;
+    const line = getSelfCareLine(stateRef.current, kind, now);
+    if (!line) return;
+    last.any = now;
+    last[kind] = now;
+    triggerSpeech(line, false);
+  }, [triggerSpeech]);
 
   useEffect(() => {
     if (!state.conversation.lastCreatureMessage) return;
@@ -876,16 +893,30 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       };
 
       let goal: RoomObject | null = null;
-      if (currentState.needs.hydration < 48) goal = closestOfType(['water_bowl']);
-      if (!goal && (currentState.needs.bladder < 48 || currentState.needs.bowel < 48)) goal = closestOfType(['litter_box']);
-      if (!goal && currentState.needs.hunger < 48) goal = closestOfType(['apple', 'broccoli']);
-      if (!goal && currentState.needs.hygiene < 48) goal = closestOfType(['wash_basin']);
+      let goalKind: SelfCareKind | null = null;
+      if (currentState.needs.hydration < 48) {
+        goal = closestOfType(['water_bowl']);
+        if (goal) goalKind = 'drink';
+      }
+      if (!goal && (currentState.needs.bladder < 48 || currentState.needs.bowel < 48)) {
+        goal = closestOfType(['litter_box']);
+        if (goal) goalKind = currentState.needs.bowel <= currentState.needs.bladder ? 'poop' : 'pee';
+      }
+      if (!goal && currentState.needs.hunger < 48) {
+        goal = closestOfType(['apple', 'broccoli']);
+        if (goal) goalKind = 'eat';
+      }
+      if (!goal && currentState.needs.hygiene < 48) {
+        goal = closestOfType(['wash_basin']);
+        if (goal) goalKind = 'wash';
+      }
       const now = Date.now();
       const time = getTimeOfDay(now, currentState.world);
       const schedule = getRestSchedule(currentState.lifePath);
       const disposition = getCircadianDisposition(time, currentState.needs.energy, false, schedule);
       if (!goal && creatureMaySleep(time, currentState.needs.energy, schedule) && !getSleepBlocker(currentState)) {
         const blanket = closestOfType(['blanket']);
+        announceSelfCare('sleep');
         if (blanket) {
           beginObjectInteraction(blanket, false);
           return;
@@ -893,7 +924,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         onStateChange(putToSleep(currentState, now));
         return;
       }
-      if (!goal && (currentState.needs.energy < 40 || disposition === 'ready_to_sleep')) goal = closestOfType(['blanket']);
+      if (!goal && (currentState.needs.energy < 40 || disposition === 'ready_to_sleep')) {
+        goal = closestOfType(['blanket']);
+        if (goal) goalKind = 'sleep';
+      }
       if (!goal && currentState.needs.comfort < 48) goal = closestOfType(['blanket']);
       if (!goal && currentState.needs.stimulation < 48 && (disposition === 'active' || currentState.needs.stimulation < 25)) goal = closestOfType(['ball']);
 
@@ -930,6 +964,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       }
 
       if (goal) {
+        if (goalKind) announceSelfCare(goalKind);
         beginObjectInteraction(goal, false);
         return;
       }
@@ -942,7 +977,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       clearTimeout(kickoff);
       clearInterval(behaviorTimerRef.current);
     };
-  }, [beginObjectInteraction, clearActionTimers, onStateChange, polish, setTemporaryEmotion, showCare, showChat, showCreatureCue, showInventory, startAmbientMoment, state.sleepState, ui, walkToIdlePosition]);
+  }, [announceSelfCare, beginObjectInteraction, clearActionTimers, onStateChange, polish, setTemporaryEmotion, showCare, showChat, showCreatureCue, showInventory, startAmbientMoment, state.sleepState, ui, walkToIdlePosition]);
 
   useEffect(() => () => {
     clearActionTimers();
