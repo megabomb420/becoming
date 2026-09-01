@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   ChatMessage,
   ConversationLanguage,
@@ -50,7 +51,7 @@ export function isCannedRoomSpeech(text: string | null | undefined): boolean {
  * phase. Drowsy alone is only dozing off, not asleep: they may still take a
  * short, sleepy conversation (DeepSeek may run). Their solar night still
  * closes the window regardless of sleepState. */
-export function isRestingChatGate(state: GameState, now = Date.now()): boolean {
+export function isRestingChatGate(state: GameState, now = authoritativeNow()): boolean {
   if (state.sleepState === 'sleeping') return true;
   const rest = isCreatureRestPhase(getTimeOfDay(now, state.world), getRestSchedule(state.lifePath));
   if (rest) return true;
@@ -446,7 +447,7 @@ export interface ConversationTurnOptions {
 export function beginConversationTurn(
   state: GameState,
   text: string,
-  now = Date.now(),
+  now = authoritativeNow(),
   options: ConversationTurnOptions = {},
 ): ConversationTurn {
   const userMessage: ChatMessage = {
@@ -501,7 +502,7 @@ export function beginConversationTurn(
 export function appendCreatureMessage(
   state: GameState,
   text: string,
-  now = Date.now(),
+  now = authoritativeNow(),
   options: { roomBubble?: boolean } = {},
 ): GameState {
   if (!text.trim()) return state;

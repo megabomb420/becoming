@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   DailyMoment,
   GameState,
@@ -337,7 +338,7 @@ function recalculate(value: LifePathState, now: number, detail?: string): LifePa
   };
 }
 
-export function createLifePathState(personality: PersonalityTraits, now = Date.now()): LifePathState {
+export function createLifePathState(personality: PersonalityTraits, now = authoritativeNow()): LifePathState {
   return recalculate({
     scores: seededScores(personality),
     evidence: emptyEvidence(),
@@ -355,7 +356,7 @@ export function createLifePathState(personality: PersonalityTraits, now = Date.n
   }, now);
 }
 
-export function migrateLifePathState(value: Partial<LifePathState> | null | undefined, personality: PersonalityTraits, now = Date.now()): LifePathState {
+export function migrateLifePathState(value: Partial<LifePathState> | null | undefined, personality: PersonalityTraits, now = authoritativeNow()): LifePathState {
   const fallback = createLifePathState(personality, now);
   if (!value) return fallback;
   const hasSourceAwareEvidence = Boolean(value.evidence && LIFE_PATH_IDS.every(id => value.evidence?.[id]));
@@ -413,7 +414,7 @@ function applyObservedBehaviour(
   return LIFE_PATH_IDS.filter(id => scores[id] !== before[id]);
 }
 
-export function bootstrapLifePathState(personality: PersonalityTraits, observations: ObservedBehaviour[], now = Date.now()): LifePathState {
+export function bootstrapLifePathState(personality: PersonalityTraits, observations: ObservedBehaviour[], now = authoritativeNow()): LifePathState {
   const base = createLifePathState(personality, now);
   const scores = { ...base.scores };
   const evidence = { ...base.evidence };
@@ -457,7 +458,7 @@ function addScore(scores: Record<LifePathId, number>, id: LifePathId, amount: nu
   scores[id] = clamp(scores[id] + amount);
 }
 
-export function evolveLifePath(state: GameState, userText: string, now = Date.now()): GameState {
+export function evolveLifePath(state: GameState, userText: string, now = authoritativeNow()): GameState {
   if (!state.development.hatched) return state;
   const current = migrateLifePathState(state.lifePath, state.personality, now);
   const scores = { ...current.scores };
@@ -543,7 +544,7 @@ function recordPathEvidence(previous: LifePathEvidence, signal: CreaturePathSign
 }
 
 /** Records only the creature's own expressed stance, after its reply exists. */
-export function evolveLifePathFromCreatureStatement(state: GameState, text: string, now = Date.now()): GameState {
+export function evolveLifePathFromCreatureStatement(state: GameState, text: string, now = authoritativeNow()): GameState {
   if (!state.development.hatched || !text.trim()) return state;
   const current = migrateLifePathState(state.lifePath, state.personality, now);
   const scores = { ...current.scores };
@@ -569,7 +570,7 @@ export function evolveLifePathFromCreatureStatement(state: GameState, text: stri
 }
 
 /** Converts a completed imitation attempt into the creature's own evidence. */
-export function evolveLifePathFromImitation(state: GameState, observationId: string, now = Date.now()): GameState {
+export function evolveLifePathFromImitation(state: GameState, observationId: string, now = authoritativeNow()): GameState {
   const observation = state.socialLearning.observations.find(item => item.id === observationId);
   const imitation = state.socialLearning.imitated.find(item => item.observedId === observationId);
   if (!observation || !imitation) return state;
@@ -609,7 +610,7 @@ const OBJECT_EFFECTS: Partial<Record<ObjectType, Partial<Record<LifePathId, numb
   apple: { caretaker: 0.5, gymbro: 0.7 },
 };
 
-export function evolveLifePathFromObject(state: GameState, type: ObjectType, outcome: ObjectReactionOutcome, now = Date.now()): GameState {
+export function evolveLifePathFromObject(state: GameState, type: ObjectType, outcome: ObjectReactionOutcome, now = authoritativeNow()): GameState {
   const effects = OBJECT_EFFECTS[type];
   if (!effects || !state.development.hatched) return state;
   const current = migrateLifePathState(state.lifePath, state.personality, now);
@@ -751,7 +752,7 @@ function hydrateDailyMoment(moment: DailyMoment | null): DailyMoment | null {
   };
 }
 
-export function ensureDailyMoment(state: GameState, now = Date.now()): GameState {
+export function ensureDailyMoment(state: GameState, now = authoritativeNow()): GameState {
   if (!state.development.hatched || state.development.cognitiveLevel < 12) return state;
   if (state.sleepState === 'sleeping') return state;
   const schedule = getRestSchedule(state.lifePath);
@@ -774,7 +775,7 @@ export function ensureDailyMoment(state: GameState, now = Date.now()): GameState
   return { ...state, lifePath: { ...path, pendingMoment } };
 }
 
-export function resolveDailyMoment(state: GameState, choiceId: string, now = Date.now()): GameState {
+export function resolveDailyMoment(state: GameState, choiceId: string, now = authoritativeNow()): GameState {
   const moment = state.lifePath?.pendingMoment;
   if (!moment) return state;
   const choice = moment.choices.find(item => item.id === choiceId);

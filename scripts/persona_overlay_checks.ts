@@ -13,6 +13,7 @@ import {
 } from '../src/systems/lifePathSystem';
 
 const NOW = 1_825_100_000_000;
+const DAY_NOW = Date.UTC(2026, 7, 27, 12, 0);
 
 function hatched(name: string, seed: number) {
   const creature = createHatchedCreature(createNewCreature(name, seed));
@@ -136,21 +137,21 @@ const hungry = {
 const hungryBody = buildCreatureMindRequest(withMessage(hungry, 'Hej.'));
 assert.ok(hungryBody.care, 'care overlay is present when a need is not comfortable');
 assert.equal(hungryBody.care?.hunger, 'very_hungry');
-assert.equal(shouldCreatureSelfSpeak(hungry), true);
-assert.equal(shouldCreatureSelfSpeak(comfortable), false);
+assert.equal(shouldCreatureSelfSpeak(hungry, DAY_NOW), true);
+assert.equal(shouldCreatureSelfSpeak(comfortable, DAY_NOW), false);
 
 const dirty = {
   ...comfortable,
   needs: { ...comfortable.needs, hygiene: 20 },
 };
-assert.equal(shouldCreatureSelfSpeak(dirty), true);
+assert.equal(shouldCreatureSelfSpeak(dirty, DAY_NOW), true);
 assert.ok(buildCreatureMindRequest(withMessage(dirty, 'Hej.')).care);
 
 const bathroom = {
   ...comfortable,
   needs: { ...comfortable.needs, bladder: 12 },
 };
-assert.equal(shouldCreatureSelfSpeak(bathroom), true);
+assert.equal(shouldCreatureSelfSpeak(bathroom, DAY_NOW), true);
 
 const outdoors = {
   ...comfortable,

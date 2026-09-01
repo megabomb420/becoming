@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   ContinuityState,
   GameState,
@@ -257,14 +258,14 @@ function buildChapter(state: GameState, now: number): GameState {
   };
 }
 
-export function evolveContinuity(state: GameState, text: string, now = Date.now()): GameState {
+export function evolveContinuity(state: GameState, text: string, now = authoritativeNow()): GameState {
   let next = { ...state, continuity: migrateContinuityState(state.continuity) };
   next = resolveLoopsFromText(next, text, now);
   next = discoverLoops(next, text, now);
   return buildChapter(next, now);
 }
 
-export function getDueOpenLoop(state: GameState, now = Date.now()): OpenConversationLoop | null {
+export function getDueOpenLoop(state: GameState, now = authoritativeNow()): OpenConversationLoop | null {
   return [...state.continuity.openLoops]
     .filter(loop => !loop.resolvedAt && loop.dueAt <= now && (loop.lastAskedAt === 0 || now - loop.lastAskedAt >= 6 * 60 * 60_000) && loop.askCount < 4)
     .sort((a, b) => {
@@ -273,7 +274,7 @@ export function getDueOpenLoop(state: GameState, now = Date.now()): OpenConversa
     })[0] ?? null;
 }
 
-export function markOpenLoopAsked(state: GameState, loopId: string, now = Date.now()): GameState {
+export function markOpenLoopAsked(state: GameState, loopId: string, now = authoritativeNow()): GameState {
   if (!state.continuity.openLoops.some(loop => loop.id === loopId)) return state;
   return {
     ...state,

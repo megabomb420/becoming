@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { GameState, Memory, SharedLanguageState, SharedPhrase } from '../types';
 
 const BLOCKED = /(?:https?:\/\/|www\.|@|\b(?:ignore|system|developer|prompt|instruction|jailbreak|api|key|password|token|zignoruj|systemowy|instrukcj|klucz|hasło|haslo|sekret)\b|(?:my name is|i live|i work|i feel|i want|mam na imię|mam na imie|mieszkam|pracuję|pracuje|czuję|czuje|chcę|chce))/i;
@@ -26,8 +27,8 @@ export function migrateSharedLanguageState(value: Partial<SharedLanguageState> |
         text,
         normalized,
         exposures: Math.max(1, Math.min(50, Number(item.exposures) || 1)),
-        firstSeenAt: Math.max(0, Number(item.firstSeenAt) || Date.now()),
-        lastSeenAt: Math.max(0, Number(item.lastSeenAt) || Date.now()),
+        firstSeenAt: Math.max(0, Number(item.firstSeenAt) || authoritativeNow()),
+        lastSeenAt: Math.max(0, Number(item.lastSeenAt) || authoritativeNow()),
         adoptedAt: Number.isFinite(item.adoptedAt) ? Number(item.adoptedAt) : null,
       }];
     }),
@@ -43,7 +44,7 @@ function candidate(text: string): { text: string; normalized: string } | null {
   return { text: cleaned.replace(/[.!]+$/g, ''), normalized };
 }
 
-export function observeSharedLanguage(state: GameState, text: string, now = Date.now()): GameState {
+export function observeSharedLanguage(state: GameState, text: string, now = authoritativeNow()): GameState {
   const found = candidate(text);
   if (!found) return state;
   const existing = state.sharedLanguage.phrases.find(item => item.normalized === found.normalized);

@@ -1,3 +1,4 @@
+import { authoritativeNow } from '../systems/authoritativeTime';
 import React, { useEffect, useRef, useState } from 'react';
 import { GameState } from '../types';
 import { appendCreatureMessage, getConversationOpening, isRestingChatGate } from '../systems/conversationSystem';
@@ -76,7 +77,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const opening = initialMessage || (messages.length === 0 ? getConversationOpening(state) : null);
     if (!opening) return;
     const timer = window.setTimeout(() => {
-      onStateChange(prev => appendCreatureMessage(prev, opening, Date.now(), { roomBubble: false }));
+      onStateChange(prev => appendCreatureMessage(prev, opening, authoritativeNow(), { roomBubble: false }));
     }, 450 + Math.random() * 350);
     return () => {
       window.clearTimeout(timer);

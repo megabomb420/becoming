@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.10
+> **Version:** 0.14.11
 > **Last Updated:** 2026-09-01
 
 ---
@@ -66,6 +66,8 @@ becoming/
 │   ├── weather_environment_checks.ts # Open-Meteo, cache, solar light, reaction checks
 │   ├── persona_overlay_checks.ts # Thin mind payload, earned overlays, DeepSeek-only bubbles
 │   ├── grounded_speech_checks.ts # Authoritative clock/situation context, about_to, no fallback speech
+│   ├── accelerated_time_checks.ts # Dev-clock isolation plus deterministic 30-day system pass
+│   ├── verify_production_time.mjs # Rejects production bundles containing simulation activation/UI
 │   ├── object_interaction_checks.ts # Tap uses, drag moves, drag-to-inventory puts away
 │   ├── chapter_quality_checks.ts # Local chapter summaries without a second model call
 │   ├── creation_mastery_checks.ts # Box dens, stone keepsakes, shared ball games
@@ -79,6 +81,7 @@ becoming/
 │   │   ├── healthSystem.ts     # Hidden health axis: stages, illness, recovery, death
 │   │   ├── objectInput.ts      # Pure tap/drag/reposition/put-away pointer semantics
 │   │   ├── timeSystem.ts       # Sunrise/sunset phases, timezone and smooth room lighting
+│   │   ├── authoritativeTime.ts # Production wall clock; compile-time dev simulation source
 │   │   ├── weatherService.ts   # Rounded location, Open-Meteo fetch/geocoding and parsing
 │   │   ├── environmentSystem.ts # Cache state, stimuli, gameplay interpretation and preference
 │   │   ├── developmentSystem.ts # Stage progression, vocabulary acquisition
@@ -180,6 +183,7 @@ becoming/
 | Shared sayings | ✅ | Safe short phrases repeated two or three times can become persistent inside language visible in Memory Book and available to chat |
 | Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
 | Automated verification | ✅ | Deterministic gameplay, weather/privacy/cache/solar, Worker and production-build checks run before every GitHub Pages deployment |
+| Isolated time simulation | ✅ | Explicit local dev server at 1440× authoritative time (one creature day per real minute), using existing cadences/systems; production builds are forced to real time and scanned for simulation activation/UI |
 | Version display | ✅ | Shown in Memory Book and the compact Settings About / Diagnostics footer, alongside build, update, runtime, save, weather-cache and mind status |
 | Nocturnal Terrarium UI | ✅ | Intimate dark room, material Memory Book, voice-led Chat, narrative Becoming, restrained functional settings |
 | Visible personality signatures | ✅ | Seeded trait combinations alter early hesitations, approaches, rest choices, object initiative, imitation, and conversation presence |
@@ -781,6 +785,16 @@ A visual-only polish pass on the top of the room and the speech bubble; no logic
 - **Speech bubble is smaller.** `room-speech-chip` font drops from .875rem to .8125rem with slightly tighter padding and line-height.
 - Deterministic layout checks now assert the compact header height, the compact bubble font, and the lighter weather/needs controls; `npm run check` is green. Responsive widths are validated by the existing safe-area and mobile-layout checks at 390×844 and 320×568; a physical-device pass remains the honest final step.
 
+### v0.14.11 — Isolated developer time simulation
+
+An explicit local-only harness can run the authoritative creature clock at 1440×: approximately one simulated creature day per real minute. `authoritativeTime.ts` is now the timestamp boundary used by App, Room, persistence, solar/rest logic, care, autonomy, development, conversation context and the other existing time-dependent systems. Production compiles that source to a scale of exactly 1; only `vite serve --mode simulation` can enable acceleration, and the production build fails if simulation activation or its visible amber badge survives bundling.
+
+The harness does not add a heartbeat, polling loop, autonomy loop, physiology loop, weather model or gameplay implementation. It shortens only the existing clock, physiology and development interval delays so their timestamp-based transitions remain observable. Room autonomy keeps its existing seven-second cadence. DeepSeek payload construction reads the same authoritative timestamp, so its clock, solar phase, rest state, place and situation are simulated together.
+
+Live weather refresh is intentionally paused during acceleration: a forecast for an invented future would be false. A prior observation ages out through the existing cache/freshness rules, and solar light falls back to the existing deterministic seasonal calculation. A fresh simulation origin starts with weather unconfigured, which is the recommended month-run setup.
+
+`npm run test:simulation` performs a fast deterministic 30-day active-system pass using the production needs, health, circadian sleep, development, daily-moment, autonomy and care transitions. The current proof resolves 30 daily moments, observes repeated dawn/day/dusk/night and sleep/wake transitions, and keeps the supported creature alive with ordinary threshold-based calls to the existing care actions. It also proves the production clock remains an exact wall-clock adapter, App and Room gain no intervals, and the DeepSeek request receives the authoritative simulated phase/situation.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -794,6 +808,10 @@ A visual-only polish pass on the top of the room and the speech bubble; no logic
 - **Offline simulation is intentionally bounded:** It applies one visible, state-backed return trace rather than simulating long chains of unseen actions.
 - **Needs balance needs longitudinal play data:** The model is deterministic and protected against punishment, but exact day-to-day rates should be revisited after multi-day physical-device sessions. The same applies to the health thresholds in 0.14.5: the intended shape (a short absence is safe, weeks of real neglect sicken, recovery takes days) is covered deterministically, but the exact pressure ramps and day counts deserve live tuning.
 - **Weather preference balance needs real seasons:** Reaction cadence and affinity growth are bounded and deterministic, but multi-week saves across heat, snow and storms should guide later tuning.
+- **The accelerated run is an observation harness, not real-weather history:** future Open-Meteo observations do not exist, so simulation mode pauses refresh and lets the one real cache age into the existing deterministic solar fallback. It cannot prove multi-week weather preference balance.
+- **Browser timers still have browser semantics:** keep the simulation tab visible. Background throttling or device sleep can make a 30-minute wall-time session take longer, although authoritative elapsed time is still timestamp-based when the cadence resumes.
+- **The accelerated epoch belongs to the sacrificial tab session:** reloading that tab preserves the epoch, but closing it and later opening a new browser session may reset the dev epoch while its disposable save still contains future timestamps. Start over for a clean new run; this state is deliberately not made portable or production-compatible.
+- **The fast 30-day check is intentionally opinionated:** it applies ordinary care at deterministic thresholds and resolves the first authored daily choice so the run can continue. It proves system composition and invariants, not whether thirty interactive days feel emotionally convincing.
 
 ### Architecture
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the room bubble stays empty rather than inventing a local line. World-command replies remain the grounded local fact.
@@ -826,7 +844,7 @@ A visual-only polish pass on the top of the room and the speech bubble; no logic
 ## 8. Architecture Decisions
 
 - **No permanent raw-stat dashboard.** Body language remains the first signal. A compact room cue and optional descriptive care sheet may expose playable urgency and the helpful action, but never raw percentages, optimisation-heavy meters, personality scores, or life-path scores.
-- **A real sky, never an accelerated clock.** With weather enabled, the selected place's real local time and sunrise/sunset define the sky. With weather disabled, a seasonal solar fallback follows device-local time. The game never accelerates the sun or invents an unexplained night toggle.
+- **Production has a real sky, never an accelerated clock.** With weather enabled, the selected place's real local time and sunrise/sunset define the sky. With weather disabled, a seasonal solar fallback follows device-local time. A production build always compiles the authoritative clock to real time and contains no accelerated-mode activation or badge. The only exception is the explicit local `dev:simulation` harness on its separate port; it advances the same authoritative sun/rest/gameplay clock and never invents future weather.
 - **Their night, not the player's.** Ordinary lives sleep on solar night and wake on solar day. A committed party animal, alcoholic, or degen inverts that clock. Visit hours, night-shift play, dock commands, and late chat must not rewrite it. Return greetings, visit rituals, outdoor urge, daily moments, and the mind’s CLOCK overlay follow that same clock. Talking during their rest is a closed window, not a murmur: no mind call, no transcript, silence. Leanings and recovery stay diurnal. Touch and “wake up” may wake them; they settle again if it is still their rest.
 - **Their day, not the session.** A life continues through wake hours the player did not watch. Autonomous outdoor visits and daily moments belong to that wake. Weather affinity colours the sky; it is not a permission slip to exist outside.
 - **Weather is interpreted, not scored.** Open-Meteo supplies observations only. `WorldEnvironment` translates them into bounded stimuli, and gameplay combines those with needs, personality, preferences and memories before a reaction. No rule maps a condition directly to happiness loss.
@@ -847,6 +865,7 @@ A visual-only polish pass on the top of the room and the speech bubble; no logic
 - **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak and short outdoor visits reuse that cadence; they do not add a second timer.
 - **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
 - **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, accidents, and health advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, or manipulative absence mechanics. Sickness and death exist only through the causal health model above, never as pressure on the player.
+- **One authoritative time source, with a dev-only adapter.** Production time is exactly `Date.now()`. The explicit local simulation server scales that source before the existing systems see it; it does not patch global time, duplicate transitions, or expose a runtime/query/local-storage switch. The simulation command uses port 7101 so its sacrificial IndexedDB origin is isolated from ordinary local development on port 7100.
 - **Reset is a completed persistence transition, not a navigation trick.** Settings marks reset first, closes or abandons every pending and settled IndexedDB connection, bounds any hung save/open drain, waits for deletion success, and only then reloads. It must not verify by reopening the deleted database, and `pagehide` must not recreate it. Boot is three-valued: a readable living save enters Room; a successful empty read or `indexedDB.databases()` confirming `becoming-db` is gone enters EggHatching. Chrome gets one `indexedDB.open` at a time — a timeout must not abandon that request and enqueue another. Timeout never means empty. The opening screen is not a destination.
 
 ---
@@ -861,6 +880,27 @@ const request = indexedDB.deleteDatabase('becoming-db');
 request.onsuccess = () => location.reload();
 ```
 
+### Run the accelerated developer simulation
+
+This is local test infrastructure only. Do not build or deploy its dev-server output.
+
+```bash
+npm ci
+npm run dev:simulation
+```
+
+Open `http://localhost:7101/becoming/` and keep the tab visible. The amber **Dev simulation · 1 creature day / 1 real minute** badge must be present. Port 7101 is a separate browser origin from normal development on port 7100, so its IndexedDB save is sacrificial and starts empty on first use. Hatch and name a new creature through the normal flow. A reload in the same tab keeps the accelerated epoch. If that origin has already been used in an older/closed session, choose **Settings → Begin another life → Start over**, or run the existing IndexedDB deletion snippet above while on port 7101.
+
+For the cleanest deterministic observation, leave weather unconfigured/disabled. Place ordinary care objects, then observe for about 30 real minutes. Solar transitions, sleep/wake, needs/health, development, daily moments and autonomy all remain the existing implementations. If local DeepSeek/Turnstile configuration is available, room/chat requests carry the simulated authoritative clock and situation; a gateway failure still means silence.
+
+For the non-UI long-horizon proof:
+
+```bash
+npm run test:simulation
+```
+
+Normal development remains `npm run dev` on port 7100 and real time. `npm run build` is always real-clock, even if someone appends `--mode simulation`, and its final verifier rejects a bundle containing the simulation activation or badge.
+
 ---
 
 ## 10. Key Files for Onboarding
@@ -874,6 +914,7 @@ request.onsuccess = () => location.reload();
 | How Open-Meteo requests, rounding and response parsing work | `src/systems/weatherService.ts` |
 | How weather becomes stimuli, needs pressure, reactions, preferences and outdoor visits | `src/systems/environmentSystem.ts` |
 | How sunrise, sunset, local time, lighting and offline rest work | `src/systems/timeSystem.ts` |
+| How production/dev simulation choose authoritative time | `src/systems/authoritativeTime.ts` + `vite.config.ts` |
 | How language emerges | `src/systems/languageSystem.ts` + `src/systems/developmentSystem.ts` |
 | How social learning works | `src/systems/socialLearningSystem.ts` |
 | How paths, hybrids, choices, recovery, and skins work | `src/systems/lifePathSystem.ts` |
@@ -906,6 +947,7 @@ request.onsuccess = () => location.reload();
 ```bash
 npm ci
 npm test       # deterministic systems + Worker/security checks
+npm run test:simulation # focused fast deterministic 30-day pass
 npm run build  # TypeScript + production PWA build
 npm run check  # complete local and CI verification
 ```

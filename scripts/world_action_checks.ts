@@ -334,7 +334,7 @@ assert.ok(
   'rest must close the conversation window before any mind request',
 );
 assert.ok(
-  sendBody.indexOf('isRestingChatGate') < sendBody.indexOf('beginConversationTurn(stateRef.current, text, Date.now())'),
+  sendBody.indexOf('isRestingChatGate') < sendBody.indexOf('beginConversationTurn(stateRef.current, text, authoritativeNow())'),
   'rest must close before fact learning or conversation evolution',
 );
 

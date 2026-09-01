@@ -17,3 +17,4 @@ import './ui_copy_parity_checks';
 import './health_checks';
 import './grounded_speech_checks';
 import './object_interaction_checks';
+import './accelerated_time_checks';

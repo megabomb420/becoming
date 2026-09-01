@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { GameState, Memory, ObjectType, OfflineActivity, ReturnTrace, ReturnTraceKind, RoomObject } from '../types';
 import { generateDreamAfterSleep } from './innerLifeSystem';
 import { advanceNeeds, applyNeedDelta, getSleepBlocker } from './needsSystem';
@@ -153,7 +154,7 @@ function applyOfflineSelfCare(state: GameState): GameState {
 export function simulateOfflineTime(
   state: GameState,
   awayMs: number,
-  now = Date.now(),
+  now = authoritativeNow(),
   timezoneOffsetAt: TimezoneOffsetAt = timestamp => new Date(timestamp).getTimezoneOffset(),
 ): { state: GameState; activities: OfflineActivity[] } {
   const activities: OfflineActivity[] = [];

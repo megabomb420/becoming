@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   BondStage,
   CreatureDream,
@@ -175,7 +176,7 @@ function seededStance(state: GameState, topic: string) {
   return Math.max(-0.9, Math.min(0.9, raw + optimism));
 }
 
-export function createInnerLifeState(now = Date.now()): InnerLifeState {
+export function createInnerLifeState(now = authoritativeNow()): InnerLifeState {
   return {
     dreams: [],
     opinions: [],
@@ -194,7 +195,7 @@ export function createInnerLifeState(now = Date.now()): InnerLifeState {
   };
 }
 
-export function migrateInnerLifeState(value?: Partial<InnerLifeState> | null, now = Date.now()): InnerLifeState {
+export function migrateInnerLifeState(value?: Partial<InnerLifeState> | null, now = authoritativeNow()): InnerLifeState {
   const fallback = createInnerLifeState(now);
   if (!value) return fallback;
   return {
@@ -436,7 +437,7 @@ function conversationMood(state: GameState, sentiment: number): string {
   return topic ? 'curious' : state.emotionalState;
 }
 
-export function evolveInnerLifeFromConversation(state: GameState, text: string, now = Date.now()): GameState {
+export function evolveInnerLifeFromConversation(state: GameState, text: string, now = authoritativeNow()): GameState {
   if (!state.development.hatched) return state;
   const sentiment = sentimentFromText(text);
   let interests = migrateInterests(state.interests);
@@ -455,7 +456,7 @@ export function evolveInnerLifeFromConversation(state: GameState, text: string, 
   return { ...evolved, emotionalState: conversationMood(evolved, sentiment) };
 }
 
-export function evolveInnerLifeFromObject(state: GameState, type: ObjectType, outcome: ObjectReactionOutcome, now = Date.now()): GameState {
+export function evolveInnerLifeFromObject(state: GameState, type: ObjectType, outcome: ObjectReactionOutcome, now = authoritativeNow()): GameState {
   const effects = OBJECT_TOPICS[type];
   if (!effects) return state;
   const multiplier = outcome === 'love' ? 1.6 : outcome === 'enjoy' ? 1.25 : outcome === 'avoid' ? -1.5 : outcome === 'curious' ? 0.15 : 0;
@@ -494,7 +495,7 @@ function creatureInterestSignalFromClause(clause: string): CreatureInterestSigna
 }
 
 /** Separately records a reply as the creature's own stance, never as user input. */
-export function evolveInnerLifeFromCreatureStatement(state: GameState, text: string, now = Date.now()): GameState {
+export function evolveInnerLifeFromCreatureStatement(state: GameState, text: string, now = authoritativeNow()): GameState {
   if (!state.development.hatched || !text.trim()) return state;
   let interests = migrateInterests(state.interests);
   let opinions = state.innerLife.opinions;
@@ -525,7 +526,7 @@ function selfAwarenessStage(encounters: number, cognitiveLevel: number): SelfAwa
   return 'unaware';
 }
 
-export function evolveSelfAwarenessFromMirror(state: GameState, now = Date.now()): GameState {
+export function evolveSelfAwarenessFromMirror(state: GameState, now = authoritativeNow()): GameState {
   const previous = state.innerLife.selfAwareness;
   const encounters = Math.max(previous.mirrorEncounters + 1, state.objectPreferences.mirror.interactions);
   const stage = selfAwarenessStage(encounters, state.development.cognitiveLevel);
@@ -603,7 +604,7 @@ function compactMemory(memory?: Memory) {
   return memory.content.replace(/^user\s+/i, 'you ').replace(/[.!]$/, '').slice(0, 90);
 }
 
-export function generateDreamAfterSleep(state: GameState, sleptMs: number, now = Date.now()): GameState {
+export function generateDreamAfterSleep(state: GameState, sleptMs: number, now = authoritativeNow()): GameState {
   if (!state.development.hatched || sleptMs < 20 * 60_000) return state;
   if (now - state.innerLife.lastDreamAt < 4 * 60 * 60_000) return state;
   const candidates = [...state.memories]
@@ -666,7 +667,7 @@ function canReveal(current: BondStage, required: BondStage) {
   return BOND_ORDER.indexOf(current) >= BOND_ORDER.indexOf(required);
 }
 
-export function revealPrivateThoughtIfAsked(state: GameState, text: string, now = Date.now()): { state: GameState; reply: string | null } {
+export function revealPrivateThoughtIfAsked(state: GameState, text: string, now = authoritativeNow()): { state: GameState; reply: string | null } {
   const asks = /(?:tell me (?:a )?secret|what do you hide|private thought|powiedz (?:mi )?sekret|masz (?:jakiś |jakis )?sekret|co ukrywasz|prywatna myśl|prywatna mysl)/i.test(text);
   if (!asks) return { state, reply: null };
   const thought = state.innerLife.privateThoughts.find(item => !item.revealedAt && canReveal(state.bond.stage, item.minimumBond));

@@ -22,8 +22,9 @@ import {
   shouldRefreshWeather,
   weatherLocationKey,
 } from './systems/environmentSystem';
+import { authoritativeNow, cadenceDelay, isDevTimeSimulationActive } from './systems/authoritativeTime';
 
-const APP_VERSION = '0.14.9';
+const APP_VERSION = '0.14.11';
 export type PwaUpdateStatus = 'up_to_date' | 'update_available' | 'checking' | 'offline' | 'unknown';
 export type LocalSaveStatus = 'saved' | 'saving' | 'unavailable' | 'unknown';
 
@@ -132,7 +133,7 @@ function App() {
       if (saved && !isHatchableBoot(saved)) {
         // CRITICAL: If the creature has already hatched, never show the egg again.
         // The hatched flag is a permanent lifecycle transition.
-        const now = Date.now();
+        const now = authoritativeNow();
         const awayMs = now - saved.lastSaved;
         let returningState = saved;
         let offlineActivities: OfflineActivity[] = [];
@@ -222,11 +223,14 @@ function App() {
   // refreshes the central WorldEnvironment cache. Needs, behaviour and memory
   // interpret that shared state in their own systems.
   const refreshWorldWeather = useCallback(async (force = false) => {
+    // An accelerated future cannot have truthful live observations. Let any
+    // existing snapshot age out through the normal cache/fallback rules.
+    if (isDevTimeSimulationActive()) return;
     const currentState = gameStateRef.current;
     const world = currentState?.world;
     const location = world?.settings.location;
     if (!currentState || !world || !location || (world.settings.mode !== 'device' && world.settings.mode !== 'city')) return;
-    const now = Date.now();
+    const now = authoritativeNow();
     if (!navigator.onLine) {
       const due = !world.current || now >= world.nextRefreshAt;
       if (due && world.lastError !== 'offline') {
@@ -270,7 +274,7 @@ function App() {
         const selectedMode = previous?.world.settings.mode;
         if (!previous || !selected || (selectedMode !== 'device' && selectedMode !== 'city')) return previous;
         if (weatherLocationKey(selected) !== requestedLocationKey) return previous;
-        const updated = { ...previous, world: failWeatherRefresh(previous.world, 'weather_unavailable', Date.now()) };
+        const updated = { ...previous, world: failWeatherRefresh(previous.world, 'weather_unavailable', authoritativeNow()) };
         gameStateRef.current = updated;
         queueSave(updated);
         return updated;
@@ -341,7 +345,7 @@ function App() {
         // Physiology, rest and daily moments stop with the life. The save
         // stays, the room stays, only the body no longer changes.
         if (isDead(prev)) return prev;
-        const now = Date.now();
+        const now = authoritativeNow();
         const advanced = advanceHealth(advanceNeeds(prev, now), now);
         const updated = ensureDailyMoment(applyCircadianSleep(advanced, now), now);
         queueSave(updated);
@@ -349,7 +353,7 @@ function App() {
       });
     };
     advance();
-    needsTimerRef.current = setInterval(advance, 30_000);
+    needsTimerRef.current = setInterval(advance, cadenceDelay(30_000));
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') advance();
     };
@@ -461,6 +465,11 @@ function App() {
       <div className="h-screen w-screen overflow-hidden relative">
         <Room state={safeState} onStateChange={handleStateChange} onReset={handleReset} version={APP_VERSION} buildId={__BUILD_ID__} pwaUpdateStatus={pwaUpdateStatus} localSaveStatus={localSaveStatus} onCheckForUpdate={checkForPwaUpdate} />
       </div>
+      {import.meta.env.DEV && import.meta.env.MODE === 'simulation' ? (
+        <div className="fixed left-2 top-2 z-[100] rounded-md border border-amber-300/60 bg-black/85 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-amber-200 pointer-events-none">
+          Dev simulation · 1 creature day / 1 real minute
+        </div>
+      ) : null}
       <PwaUpdateNotice language={uiLanguage(safeState.conversation.language)} needRefresh={needRefresh} setNeedRefresh={setNeedRefresh} updateServiceWorker={updateServiceWorker} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
     </>
   );

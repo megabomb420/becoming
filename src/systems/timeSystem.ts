@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { WorldEnvironment } from '../types';
 import { getEffectiveStimulus, weatherFreshness } from './environmentSystem';
 
@@ -187,7 +188,7 @@ function solarSchedule(timestamp: number, world: WorldEnvironment | null | undef
 }
 
 export function getTimeOfDay(
-  timestamp = Date.now(),
+  timestamp = authoritativeNow(),
   worldOrOffset: WorldEnvironment | number | null = null,
   fallbackOffset = defaultTimezoneOffset(timestamp),
 ): TimeOfDay {
@@ -308,7 +309,7 @@ const GOLDEN: Palette = {
   ambient: [238, 151, 96, 0.29], veilColor: [142, 76, 82, 0.09], starOpacity: 0.03, brightness: 0.92,
 };
 
-export function getRoomLighting(time: TimeOfDay, world: WorldEnvironment | null = null, now = Date.now()): RoomLighting {
+export function getRoomLighting(time: TimeOfDay, world: WorldEnvironment | null = null, now = authoritativeNow()): RoomLighting {
   const baseAmount = time.solarFactor;
   const warmPalette = time.minuteOfDay < (time.sunriseMinute + time.sunsetMinute) / 2 ? DAWN : GOLDEN;
   const warmth = time.twilightWarmth * (0.36 + 0.38 * (1 - Math.abs(0.5 - baseAmount) * 2));

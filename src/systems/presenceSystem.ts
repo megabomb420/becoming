@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { AbsenceEpisode, ConversationLanguage, GameState, OfflineActivity, PresenceState, RelationshipModel, ReturnTrace, UserRoutine } from '../types';
 import { getRestSchedule } from './lifePathSystem';
 import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
@@ -14,7 +15,7 @@ function calendarDay(timestamp: number): number {
   return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000);
 }
 
-export function createPresenceState(now = Date.now()): PresenceState {
+export function createPresenceState(now = authoritativeNow()): PresenceState {
   return {
     firstOpenedAt: now,
     lastOpenedAt: now,
@@ -44,7 +45,7 @@ function migrateReturnTrace(value: Partial<ReturnTrace> | null | undefined): Ret
   };
 }
 
-export function migratePresenceState(value: Partial<PresenceState> | null | undefined, fallbackTimestamp = Date.now()): PresenceState {
+export function migratePresenceState(value: Partial<PresenceState> | null | undefined, fallbackTimestamp = authoritativeNow()): PresenceState {
   const base = createPresenceState(fallbackTimestamp);
   if (!value) return base;
   return {
@@ -164,7 +165,7 @@ function evolveVisitRoutine(relationship: RelationshipModel, hour: number, now: 
   };
 }
 
-export function registerReturn(state: GameState, awayMs: number, now = Date.now(), activities: OfflineActivity[] = []): GameState {
+export function registerReturn(state: GameState, awayMs: number, now = authoritativeNow(), activities: OfflineActivity[] = []): GameState {
   const presence = migratePresenceState(state.presence, state.identity.birthTimestamp);
   const today = dayKey(now);
   const previousDay = calendarDay(presence.lastOpenedAt);

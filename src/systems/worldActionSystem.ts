@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   CreatureBehavior,
   GameState,
@@ -194,7 +195,7 @@ export function semanticActionToWorldIntent(action: SemanticWorldAction | null |
 export function createRoomObject(
   type: ObjectType,
   position: { x: number; y: number },
-  now = Date.now(),
+  now = authoritativeNow(),
   offeredFromConversation = false,
 ): RoomObject {
   return {
@@ -213,7 +214,7 @@ export function offerObjectFromInventory(
   state: GameState,
   type: ObjectType,
   position: { x: number; y: number },
-  now = Date.now(),
+  now = authoritativeNow(),
 ): WorldActionExecution {
   const intent: WorldIntent = { kind: 'offer_object', objectType: type };
   if (!state.inventory.includes(type)) {
@@ -253,7 +254,7 @@ export function applyWorldObjectReaction(
   target: { x: number; y: number },
   localizedActivity: string,
   initiatedByUser: boolean,
-  now = Date.now(),
+  now = authoritativeNow(),
 ): GameState {
   const object = state.roomObjects.find(item => item.id === objectId);
   if (!object) return state;
@@ -317,7 +318,7 @@ export function applyWorldObjectReaction(
 export function performImmediateWorldAction(
   state: GameState,
   intent: WorldIntent,
-  now = Date.now(),
+  now = authoritativeNow(),
 ): WorldActionExecution {
   if (intent.kind === 'wake') {
     if (state.sleepState !== 'sleeping') return { state, result: { intent, status: 'already_satisfied' } };
@@ -508,6 +509,6 @@ export function applyConversationMicroReaction(state: GameState, text: string): 
   return { emotion: object ? 'curious' : 'attentive', behavior: object ? 'observing' : 'reacting', object };
 }
 
-export function smallSip(state: GameState, now = Date.now()): GameState {
+export function smallSip(state: GameState, now = authoritativeNow()): GameState {
   return applyNeedDelta(state, { hydration: 4, bladder: -2 }, now);
 }

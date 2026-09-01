@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { CreatureIdentity, CreatureAppearance, GameState, DevelopmentState, Needs, PersonalityTraits, RelationshipModel, SocialLearningState, ConversationState, ObjectType } from '../types';
 import { createBondState, createObjectPreferences } from './relationshipSystem';
 import { createLifePathState } from './lifePathSystem';
@@ -50,9 +51,9 @@ const ALL_INVENTORY_ITEMS: ObjectType[] = [
   'apple', 'broccoli', 'ball', 'blanket', 'cushion', 'brush', 'jingle_toy', 'paper', 'pencil', 'box', 'stone', 'mirror',
 ];
 
-export function createNewCreature(name: string | null = null, seed = Date.now()): GameState {
+export function createNewCreature(name: string | null = null, seed = authoritativeNow(), now = authoritativeNow()): GameState {
   const rand = seededRandom(seed);
-  const birthTime = Date.now();
+  const birthTime = now;
 
   const identity: CreatureIdentity = {
     id: `creature-${seed}`,

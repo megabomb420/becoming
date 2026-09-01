@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { GameState, MemoryBookEntry, Needs, ObjectType } from '../types';
 import { migrateBondState, migrateObjectPreferences } from './relationshipSystem';
@@ -318,8 +319,8 @@ export function serializeGameState(state: GameState): string {
   const envelope: SaveEnvelope = {
     format: SAVE_FORMAT,
     version: SAVE_FORMAT_VERSION,
-    exportedAt: Date.now(),
-    state: { ...state, lastSaved: Date.now() },
+    exportedAt: authoritativeNow(),
+    state: { ...state, lastSaved: authoritativeNow() },
   };
   return JSON.stringify(envelope, null, 2);
 }
@@ -469,10 +470,10 @@ export async function loadGameStateForBoot(
 
 async function writeGameState(state: GameState): Promise<void> {
   const db = await getDB();
-  const toSave = { ...state, lastSaved: Date.now() };
+  const toSave = { ...state, lastSaved: authoritativeNow() };
   await db.put('gameState', toSave, 'current');
   if (Math.random() < 0.1) {
-    await db.put('snapshots', { timestamp: Date.now(), state: toSave });
+    await db.put('snapshots', { timestamp: authoritativeNow(), state: toSave });
   }
 }
 

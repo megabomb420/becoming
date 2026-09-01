@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { GameState, MemoryBookEntry } from '../types';
 import { addMemoryBookEntry } from './persistence';
 
@@ -5,7 +6,7 @@ export async function generateMemoryBookEntry(state: GameState): Promise<MemoryB
   const day = Math.floor(state.development.chronologicalAge / (24 * 60 * 60 * 1000)) + 1;
   
   // Check for significant events in recent memories
-  const recentMemories = state.memories.filter(m => Date.now() - m.timestamp < 24 * 60 * 60 * 1000);
+  const recentMemories = state.memories.filter(m => authoritativeNow() - m.timestamp < 24 * 60 * 60 * 1000);
   
   if (recentMemories.length === 0) return null;
 
@@ -29,7 +30,7 @@ export async function generateMemoryBookEntry(state: GameState): Promise<MemoryB
   const entry: MemoryBookEntry = {
     day,
     text,
-    timestamp: Date.now(),
+    timestamp: authoritativeNow(),
   };
 
   await addMemoryBookEntry(entry);
