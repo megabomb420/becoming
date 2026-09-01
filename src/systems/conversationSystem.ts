@@ -12,7 +12,6 @@ import { advanceDevelopmentFromConversation, getDevelopmentLabel, syncDevelopmen
 import { attemptImitation, findExistingObservation, parseUserStatement, recordObservation } from './socialLearningSystem';
 import { recordBondEvent } from './relationshipSystem';
 import { evolveLifePath, evolveLifePathFromCreatureStatement, evolveLifePathFromImitation, getLifePathTitle, getRestSchedule } from './lifePathSystem';
-import { getSleepBlocker } from './needsSystem';
 import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
 import {
   clearPendingDisclosure,
@@ -47,18 +46,14 @@ export function isCannedRoomSpeech(text: string | null | undefined): boolean {
     || /^(it is quiet today|cicho tu dzisiaj)[.?!]?$/i.test(trimmed);
 }
 
-/** Their rest is not a conversation window. True while sleeping, in a rest
- * phase, or drowsy (unless a body need is keeping them up). The gate blocks
- * DeepSeek, fact learning and transcripts; the room stays quiet — no canned
- * murmur, silence is valid. */
+/** Their rest is not a conversation window. True while sleeping or in a rest
+ * phase. Drowsy alone is only dozing off, not asleep: they may still take a
+ * short, sleepy conversation (DeepSeek may run). Their solar night still
+ * closes the window regardless of sleepState. */
 export function isRestingChatGate(state: GameState, now = Date.now()): boolean {
   if (state.sleepState === 'sleeping') return true;
   const rest = isCreatureRestPhase(getTimeOfDay(now, state.world), getRestSchedule(state.lifePath));
-  const upForCare = Boolean(getSleepBlocker(state));
-  // A body need may keep them physically awake, but it does not turn their
-  // rest into a conversation window. Care remains available through the room.
   if (rest) return true;
-  if (state.sleepState === 'drowsy' && !upForCare) return true;
   return false;
 }
 

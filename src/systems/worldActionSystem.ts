@@ -12,6 +12,7 @@ import {
   drinkCreature,
   feedCreature,
   getSleepBlocker,
+  NEED_URGENCY_THRESHOLDS,
   useToilet,
   useToiletCommanded,
   wakeUp,
@@ -329,7 +330,14 @@ export function performImmediateWorldAction(
     if (blocker) return { state, result: { intent, status: 'blocked', reason: blocker } };
     const time = getTimeOfDay(now, state.world);
     const schedule = getRestSchedule(state.lifePath);
-    if (!creatureMaySleep(time, state.needs.energy, schedule)) {
+    // A command may settle a body that is already dozing off, visibly tired
+    // (energy below the attention threshold), or in its rest phase. It must
+    // not rewrite their solar day: wide awake and full of energy during their
+    // wake, the night still belongs to the clock.
+    const maySettle = state.sleepState === 'drowsy'
+      || state.needs.energy < NEED_URGENCY_THRESHOLDS.attention
+      || creatureMaySleep(time, state.needs.energy, schedule);
+    if (!maySettle) {
       return { state, result: { intent, status: 'refused', reason: 'not_tired' } };
     }
     // They may settle. The room walks to a blanket or curls up; this is not a command.
@@ -437,7 +445,7 @@ export function groundedWorldReply(result: WorldActionResult, language: 'pl' | '
     return polish ? `Nie widzę tu ${label}.` : `I cannot find the ${label} here.`;
   }
   if (result.status === 'refused') {
-    if (result.reason === 'not_tired') return polish ? 'Nie chcę jeszcze spać. Mam za dużo energii.' : 'I do not want to sleep yet. I have too much energy.';
+    if (result.reason === 'not_tired') return polish ? 'To jeszcze mój dzień. Położę się, gdy nadejdzie noc.' : 'It is still my day. I will settle when my night comes.';
     if (result.reason === 'wary') return polish ? 'Nie przy tej pogodzie. Zostanę w środku.' : 'Not this weather. I will stay inside.';
     if (result.reason === 'night_rest') return polish ? 'U mnie noc. Zostaję i śpię.' : 'It is night for me. I am staying in to sleep.';
     if (result.reason === 'day_sleep') return polish ? 'Teraz jest mój sen. Wyjdę, jak zrobi się ciemno.' : 'This is my sleep. I will go out when it is dark.';

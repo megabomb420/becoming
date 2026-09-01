@@ -81,6 +81,7 @@ export interface CreatureClockOverlay {
   schedule: 'diurnal' | 'nocturnal';
   rest: boolean;
   sleeping: boolean;
+  drowsy: boolean;
   localTime: string;
 }
 
@@ -411,6 +412,7 @@ function creatureClock(state: GameState, now: number): CreatureClockOverlay {
     schedule,
     rest: isCreatureRestPhase(time, schedule),
     sleeping: state.sleepState === 'sleeping',
+    drowsy: state.sleepState === 'drowsy',
     localTime: formatLocalClock(time),
   };
 }
