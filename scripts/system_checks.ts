@@ -12,3 +12,4 @@ import './persistence_checks';
 import './bowel_bladder_checks';
 import './cognition_gaps_checks';
 import './pointer_release_checks';
+import './thin_mind_payload_checks';
