@@ -13,7 +13,7 @@ import { getRankedInterests } from './innerLifeSystem';
 import { getAbsenceSummary } from './presenceSystem';
 import { getAdoptedSharedPhrases } from './sharedLanguageSystem';
 import { wantsOutdoors } from './environmentSystem';
-import { getTimeOfDay, isCreatureRestPhase } from './timeSystem';
+import { getTimeOfDay, isCreatureRestPhase, formatLocalClock } from './timeSystem';
 import { getTurnstileToken } from './turnstile';
 import { getHealthBand, isDead } from './healthSystem';
 
@@ -46,6 +46,21 @@ type ApiReply = {
 
 export type CreatureMindRequestKind = 'reply' | 'self';
 
+// A real body action the local autonomy has already decided to take. The mind
+// may phrase one short natural line about it, or stay silent; the action
+// proceeds regardless and is never gated on the reply.
+export type SelfCareKind = 'pee' | 'poop' | 'wash' | 'eat' | 'drink' | 'sleep';
+
+export interface SelfCareAboutTo {
+  action: SelfCareKind;
+}
+
+export interface CreatureSituation {
+  place: 'indoor' | 'outdoors';
+  activity: string | null;
+  aboutTo?: SelfCareAboutTo;
+}
+
 export interface LifePathMindOverlay {
   layer: 'curiosity' | 'leaning' | 'identity' | 'rejection';
   id?: string;
@@ -65,6 +80,7 @@ export interface CreatureClockOverlay {
   schedule: 'diurnal' | 'nocturnal';
   rest: boolean;
   sleeping: boolean;
+  localTime: string;
 }
 
 export interface CreatureMindRequest {
@@ -78,6 +94,9 @@ export interface CreatureMindRequest {
   };
   messages: ApiMessage[];
   promptKind?: 'self';
+  // One authoritative record of what the body is doing right now, decided by
+  // local systems: place, current activity, and an optional real about-to act.
+  situation?: CreatureSituation;
   lifePath?: LifePathMindOverlay;
   influence?: ReturnType<typeof influenceProfile>;
   innerLife?: Record<string, unknown>;
@@ -336,6 +355,7 @@ function creatureClock(state: GameState, now: number): CreatureClockOverlay {
     schedule,
     rest: isCreatureRestPhase(time, schedule),
     sleeping: state.sleepState === 'sleeping',
+    localTime: formatLocalClock(time),
   };
 }
 
@@ -365,7 +385,7 @@ export function shouldCreatureSelfSpeak(state: GameState, now = Date.now()): boo
 
 export function buildCreatureMindRequest(
   state: GameState,
-  options: { kind?: CreatureMindRequestKind; now?: number } = {},
+  options: { kind?: CreatureMindRequestKind; now?: number; aboutTo?: SelfCareAboutTo } = {},
 ): CreatureMindRequest {
   const now = options.now ?? Date.now();
   const care = careContext(state);
@@ -383,6 +403,14 @@ export function buildCreatureMindRequest(
     summary: (getAbsenceSummary(state, episode) || '').slice(0, 180),
   })).filter(item => item.summary);
 
+  // One authoritative situation: local systems decide the facts, DeepSeek only
+  // supplies language. There is exactly one clock, one place, one activity.
+  const situation: CreatureSituation = {
+    place: state.world.place,
+    activity: state.currentActivity?.slice(0, 60) ?? null,
+  };
+  if (options.aboutTo) situation.aboutTo = options.aboutTo;
+
   const body: CreatureMindRequest = {
     creature: {
       name: (state.identity.name || 'the creature').slice(0, 40),
@@ -397,6 +425,7 @@ export function buildCreatureMindRequest(
       clock: creatureClock(state, now),
     },
     messages: toModelHistory(state.conversation.messages),
+    situation,
   };
 
   if (options.kind === 'self') body.promptKind = 'self';
@@ -430,7 +459,7 @@ export interface CreatureReply {
 
 export async function requestCreatureReply(
   state: GameState,
-  options: { kind?: CreatureMindRequestKind } = {},
+  options: { kind?: CreatureMindRequestKind; aboutTo?: SelfCareAboutTo } = {},
 ): Promise<CreatureReply> {
   if (!API_URL) throw new Error('The private AI endpoint is not configured.');
   const controller = new AbortController();

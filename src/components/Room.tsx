@@ -38,7 +38,6 @@ import {
 } from '../systems/developmentSystem';
 
 import { shouldInitiateConversation, generateInitiatedTopic, clearInitiatedTopic } from '../systems/socialLearningSystem';
-import { getSelfCareLine, SelfCareKind } from '../systems/selfCareSpeech';
 import {
   chooseObjectReaction,
   chooseAutonomousMoment,
@@ -103,8 +102,8 @@ import {
   wantsOutdoors,
   WINDOW_PLACE,
 } from '../systems/environmentSystem';
-import { appendCreatureMessage, beginConversationTurn, getSleepingTalkReply } from '../systems/conversationSystem';
-import { isLlmAvailable, requestCreatureReply, shouldCreatureSelfSpeak } from '../systems/llmConversation';
+import { appendCreatureMessage, beginConversationTurn, isRestingChatGate } from '../systems/conversationSystem';
+import { isLlmAvailable, requestCreatureReply, SelfCareKind, shouldCreatureSelfSpeak } from '../systems/llmConversation';
 import {
   applyWorldObjectReaction,
   applyConversationMicroReaction,
@@ -126,6 +125,12 @@ import {
   getSelfCareThreshold,
   isDead,
 } from '../systems/healthSystem';
+import {
+  DRAG_THRESHOLD_PX,
+  isObjectDragMoved,
+  isPointInRect,
+  resolveObjectRelease,
+} from '../systems/objectInput';
 import DeathScreen from './DeathScreen';
 
 interface RoomProps {
@@ -347,7 +352,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [showCare, setShowCare] = useState(false);
   const [showNeeds, setShowNeeds] = useState(false);
   const [inventoryGroupId, setInventoryGroupId] = useState('care');
-  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [resetArmed, setResetArmed] = useState(false);
@@ -360,12 +364,15 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [firstMoment, setFirstMoment] = useState<MeaningfulFirst | null>(null);
   const [careEffect, setCareEffect] = useState<CareRitualEffect>(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
-  const quietTalkReply = getSleepingTalkReply(state, clockNow);
+  const quietTalkReply = isRestingChatGate(state, clockNow);
 
   // Drag state
   const [draggingType, setDraggingType] = useState<ObjectType | null>(null);
   const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
   const [draggingObjectId, setDraggingObjectId] = useState<string | null>(null);
+  // True once a pointer session crosses the drag threshold; shows the
+  // drag-to-inventory target while a room object is being moved.
+  const [dragMoved, setDragMoved] = useState(false);
 
   // Creature movement
   const [creaturePos, setCreaturePos] = useState(state.position);
@@ -402,6 +409,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const dragSessionRef = useRef<DragSession | null>(null);
   const roomRef = useRef<HTMLDivElement>(null);
   const inventoryTrayRef = useRef<HTMLDivElement>(null);
+  const dropTargetRef = useRef<HTMLDivElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Keep refs in sync with latest state
@@ -545,19 +553,28 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         });
   }, [onStateChange]);
 
-  // A mature mind narrates its own body before a self-care trip. The line is
-  // a local, non-remembered bubble — never DeepSeek, never history, throttled
-  // so a restless night does not become a monologue.
+  // Local autonomy has decided a real body action. The mind may phrase one
+  // short natural line about the true about_to action — with the authoritative
+  // clock, place and activity in its context — or stay silent. The action
+  // proceeds regardless; a failed mind call means silence, never a canned
+  // substitute. Only a mature mind narrates its own body.
   const announceSelfCare = useCallback((kind: SelfCareKind) => {
     const now = Date.now();
     const last = lastSelfCareSpeechRef.current;
     if (now - (last.any ?? 0) < 120_000) return;
     if (now - (last[kind] ?? 0) < 360_000) return;
-    const line = getSelfCareLine(stateRef.current, kind, now);
-    if (!line) return;
+    const current = stateRef.current;
+    if (current.development.stage !== 'mature') return;
+    if (!isLlmAvailable()) return;
     last.any = now;
     last[kind] = now;
-    triggerSpeech(line, false);
+    void requestCreatureReply(current, { kind: 'self', aboutTo: { action: kind } })
+      .then(result => {
+        if (result.reply.trim()) triggerSpeech(result.reply, false);
+      })
+      .catch(() => {
+        // The body acts; silence is valid.
+      });
   }, [triggerSpeech]);
 
   useEffect(() => {
@@ -670,7 +687,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       ));
     }
 
-    setSelectedObjectId(null);
     clearActionTimers();
     activeObjectRef.current = object.id;
     setIsMoving(false);
@@ -1072,7 +1088,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       initiateTimerRef.current = setTimeout(() => {
         const currentState = stateRef.current;
         if (isDead(currentState)) return;
-        if (getSleepingTalkReply(currentState)) {
+        if (isRestingChatGate(currentState)) {
           checkInitiate();
           return;
         }
@@ -1168,8 +1184,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, wakeFromTouch]);
 
   // ========== OBJECT INPUT ==========
-  // A short press places/uses an object. A moved pointer repositions it. This
-  // keeps the primary interaction reliable on phones without removing drag.
+  // One physical interaction model: a tap uses, a drag moves, and dragging a
+  // room object onto the inventory target puts it away. The release decision
+  // is resolved by the pure classifier so tap and drag can never blur.
   const putAwayRoomObject = (objectId: string) => {
     const object = stateRef.current.roomObjects.find(item => item.id === objectId);
     if (!object) return;
@@ -1188,7 +1205,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       creatureBehavior: prev.sleepState === 'sleeping' ? 'sleeping' : 'idle',
       currentActivity: prev.sleepState === 'sleeping' ? 'sleeping' : null,
     }));
-    setSelectedObjectId(current => current === objectId ? null : current);
   };
 
   const placeInventoryObject = (type: ObjectType, position?: { x: number; y: number }) => {
@@ -1206,7 +1222,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       roomObjects: [...prev.roomObjects, object],
       inventory: prev.inventory.filter(item => item !== type),
     }));
-    setSelectedObjectId(object.id);
     setShowInventory(false);
   };
 
@@ -1221,6 +1236,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       moved: false,
       pointerId: e.pointerId,
     };
+    setDragMoved(false);
     setDraggingType(session.type);
     setDraggingObjectId(session.objectId ?? null);
     const rect = roomRef.current?.getBoundingClientRect();
@@ -1229,6 +1245,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
 
   const resetPointerSession = () => {
     dragSessionRef.current = null;
+    setDragMoved(false);
     setDraggingType(null);
     setDraggingObjectId(null);
   };
@@ -1237,8 +1254,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     const session = dragSessionRef.current;
     if (!session) return;
     e.preventDefault();
-    if (Math.hypot(e.clientX - session.startX, e.clientY - session.startY) > 8) {
+    if (isObjectDragMoved(Math.hypot(e.clientX - session.startX, e.clientY - session.startY), DRAG_THRESHOLD_PX)) {
       session.moved = true;
+      setDragMoved(true);
     }
     const rect = roomRef.current?.getBoundingClientRect();
     if (rect) setDragPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -1260,32 +1278,30 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     }
 
     const trayRect = inventoryTrayRef.current?.getBoundingClientRect();
-    const droppedInTray = Boolean(
-      showInventory
-      && trayRect
-      && e.clientX >= trayRect.left
-      && e.clientX <= trayRect.right
-      && e.clientY >= trayRect.top
-      && e.clientY <= trayRect.bottom,
-    );
+    const droppedInTray = Boolean(showInventory && trayRect && isPointInRect(e.clientX, e.clientY, trayRect));
+    const dropBarRect = dropTargetRef.current?.getBoundingClientRect();
+    const droppedOnDropBar = Boolean(dropBarRect && isPointInRect(e.clientX, e.clientY, dropBarRect));
 
-    if (session.source === 'room' && session.objectId && session.moved && droppedInTray) {
-      putAwayRoomObject(session.objectId);
+    const outcome = resolveObjectRelease(session, droppedInTray || droppedOnDropBar, showInventory);
+    if (outcome === 'place_auto') {
+      placeInventoryObject(session.type);
       resetPointerSession();
       return;
     }
-
-    if (!session.moved) {
-      if (session.source === 'inventory') {
-        placeInventoryObject(session.type);
-      } else if (session.objectId) {
-        if (showInventory) {
-          putAwayRoomObject(session.objectId);
+    if (outcome === 'use' && session.objectId) {
+      const object = stateRef.current.roomObjects.find(obj => obj.id === session.objectId);
+      if (object) {
+        if (stateRef.current.sleepState === 'sleeping') {
+          showCreatureCue({ icon: '·', label: t('is sleeping too deeply right now', 'teraz śpi zbyt mocno'), tone: 'ambient' }, 2400);
         } else {
-          const object = stateRef.current.roomObjects.find(obj => obj.id === session.objectId);
-          if (object) setSelectedObjectId(object.id);
+          beginObjectInteraction(object, true);
         }
       }
+      resetPointerSession();
+      return;
+    }
+    if (outcome === 'put_away' && session.objectId) {
+      putAwayRoomObject(session.objectId);
       resetPointerSession();
       return;
     }
@@ -1295,9 +1311,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       y: ((e.clientY - rect.top) / rect.height) * 100,
     });
 
-    if (session.source === 'inventory') {
+    if (outcome === 'place_at') {
       placeInventoryObject(session.type, position);
-    } else if (session.objectId) {
+    } else if (outcome === 'reposition' && session.objectId) {
       const current = stateRef.current.roomObjects.find(obj => obj.id === session.objectId);
       if (current) {
         const movedObject = { ...current, ...position };
@@ -1305,7 +1321,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           ...prev,
           roomObjects: prev.roomObjects.map(obj => obj.id === session.objectId ? movedObject : obj),
         }));
-        setSelectedObjectId(session.objectId);
       }
     }
 
@@ -1326,7 +1341,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     activeObjectRef.current = null;
     behaviorRef.current = state.sleepState === 'sleeping' ? 'sleeping' : 'idle';
     setIsMoving(false);
-    setSelectedObjectId(null);
     setCreaturePos(state.position);
     onStateChange(prev => ({
       ...prev,
@@ -1582,11 +1596,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       return;
     }
 
-    const sleepingReply = getSleepingTalkReply(stateRef.current);
-    if (sleepingReply) {
-      // Words do not steal their night. Touch and "wake up" still can.
+    if (isRestingChatGate(stateRef.current)) {
+      // Words do not steal their night. Their rest is not a conversation
+      // window: no DeepSeek call, no transcript entry, no canned murmur.
       setShowChat(false);
-      triggerSpeech(sleepingReply, false);
       return;
     }
 
@@ -1608,10 +1621,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setMindState('connecting');
     try {
       const mindReply = await requestCreatureReply(turn.state);
-      const quiet = getSleepingTalkReply(stateRef.current);
-      if (quiet) {
-        triggerSpeech(quiet, false);
-      } else {
+      if (!isRestingChatGate(stateRef.current)) {
         const semanticIntent = semanticActionToWorldIntent(mindReply.action);
         if (semanticIntent) {
           setShowChat(false);
@@ -1620,6 +1630,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           triggerSpeech(mindReply.reply);
         }
       }
+      // If they settled while the mind was answering, the late line is
+      // discarded; a resting body does not act on late suggestions.
       setMindState('online');
     } catch (error) {
       console.warn('AI reply unavailable; no substitute line.', error);
@@ -1681,9 +1693,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     .filter(({ preference }) => preference.exposures >= 2 && Math.abs(preference.affinity) >= 3)
     .sort((a, b) => Math.abs(b.preference.affinity) - Math.abs(a.preference.affinity))
     .slice(0, 3);
-  const selectedObject = selectedObjectId
-    ? state.roomObjects.find(object => object.id === selectedObjectId) ?? null
-    : null;
   const activeInventoryGroup = INVENTORY_GROUPS.find(group => group.id === inventoryGroupId) ?? INVENTORY_GROUPS[0];
   const activeInventoryItems = activeInventoryGroup.items.filter(type => state.inventory.includes(type));
   const healthCue = getHealthCue(state);
@@ -1837,8 +1846,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           key={obj.id}
           aria-label={showInventory
             ? (polish ? `Odłóż: ${objectLabel(obj.type, true)}` : `Put away ${objectLabel(obj.type, false)}`)
-            : (polish ? `Opcje: ${objectLabel(obj.type, true)}` : `Options for ${objectLabel(obj.type, false)}`)}
-          title={showInventory ? t('Put away', 'Odłóż') : t('Use or put away', 'Użyj lub odłóż')}
+            : (polish ? `Użyj: ${objectLabel(obj.type, true)}` : `Use ${objectLabel(obj.type, false)}`)}
+          title={showInventory ? t('Put away', 'Odłóż') : t('Use', 'Użyj')}
           className="absolute z-20 select-none p-3 -m-3 bg-transparent border-0 transition-opacity duration-700"
           style={{
             left: `${obj.x}%`,
@@ -1850,9 +1859,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           }}
           onPointerDown={(e) => startPointerSession({ source: 'room', type: obj.type, objectId: obj.id }, e)}
           onClick={(e) => {
+            // Keyboard activation: a tap uses, or puts away while the shelf is open.
             if (e.detail === 0) {
               if (showInventory) putAwayRoomObject(obj.id);
-              else setSelectedObjectId(obj.id);
+              else if (stateRef.current.sleepState === 'sleeping') {
+                showCreatureCue({ icon: '·', label: t('is sleeping too deeply right now', 'teraz śpi zbyt mocno'), tone: 'ambient' }, 2400);
+              } else {
+                beginObjectInteraction(obj, true);
+              }
             }
           }}
         >
@@ -1870,34 +1884,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
         </button>
       ))}
 
-      {/* A placed thing has an explicit, reversible lifecycle. Selecting it
-          never guesses whether the player meant "use" or "put away". */}
-      {selectedObject && !showInventory && draggingObjectId !== selectedObject.id && (
+      {/* While a room object is being dragged, a quiet shelf target appears at
+          the bottom. Dropping there puts the object away; it disappears with
+          the drag. No permanent toolbar. */}
+      {dragMoved && draggingObjectId && (
         <div
-          className="absolute z-40 -translate-x-1/2 -translate-y-full animate-cue-pop"
-          style={{
-            left: `${Math.max(24, Math.min(76, selectedObject.x))}%`,
-            top: `${Math.max(52, selectedObject.y - 9)}%`,
-          }}
+          ref={dropTargetRef}
+          className="absolute bottom-36 left-1/2 z-40 -translate-x-1/2 pointer-events-none"
+          aria-hidden="true"
         >
-          <div className="relative flex items-center gap-1 rounded-2xl border border-warm-200/12 bg-[#211e1a]/96 p-1.5 shadow-2xl backdrop-blur-xl">
-            <span className="px-2 text-[10px] font-serif text-warm-100/60">{objectLabel(selectedObject.type, polish)}</span>
-            <button
-              type="button"
-              onClick={() => beginObjectInteraction(selectedObject)}
-              className="min-h-11 min-w-11 rounded-xl bg-warm-100/90 px-3 py-2 text-[10px] font-serif text-room-dark active:scale-95"
-            >
-              {t('Use', 'Użyj')}
-            </button>
-            <button
-              type="button"
-              onClick={() => putAwayRoomObject(selectedObject.id)}
-              className="min-h-11 rounded-xl border border-warm-200/10 px-3 py-2 text-[10px] font-serif text-warm-100/70 active:scale-95"
-            >
-              {t('Put away', 'Odłóż')}
-            </button>
-            <button type="button" aria-label={t('Close', 'Zamknij')} onClick={() => setSelectedObjectId(null)} className="grid h-11 w-11 place-items-center text-sm text-warm-200/45">×</button>
-            <span className="absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-[#211e1a]/96 border-b border-r border-warm-200/12" aria-hidden="true" />
+          <div className="flex items-center gap-2 rounded-full border border-warm-300/30 bg-room-dark/94 px-4 py-2 shadow-2xl backdrop-blur-md">
+            <GlyphIcon name="shelf" size={16} />
+            <span className="text-[10px] font-serif text-warm-100/85">{t('Put away', 'Odłóż')}</span>
           </div>
         </div>
       )}

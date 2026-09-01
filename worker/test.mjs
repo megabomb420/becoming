@@ -352,6 +352,50 @@ assert.equal(cleanPayload({
   messages: [{ role: 'user', content: 'Hi' }],
 }).creature.clock, undefined);
 
+// The clock may carry one local time string from the same authoritative
+// source; anything that is not a time is stripped.
+const timedClock = cleanPayload({
+  creature: {
+    name: 'Timed',
+    stage: 'sentences',
+    language: 'en',
+    clock: { phase: 'day', schedule: 'diurnal', rest: false, sleeping: false, localTime: '14:32', hack: 'yes' },
+  },
+  messages: [{ role: 'user', content: 'Hi' }],
+});
+assert.equal(timedClock.creature.clock.localTime, '14:32');
+assert.equal('hack' in timedClock.creature.clock, false);
+assert.equal(cleanPayload({
+  creature: { name: 'BadTime', stage: 'sentences', language: 'en', clock: { phase: 'day', schedule: 'diurnal', rest: false, sleeping: false, localTime: 'never' } },
+  messages: [{ role: 'user', content: 'Hi' }],
+}).creature.clock.localTime, undefined);
+
+// SITUATION is the authoritative record: place/activity ride through, and an
+// aboutTo action is allowed only from the local allowlist (never a command).
+const situationPayload = cleanPayload({
+  creature: { name: 'Situ', stage: 'mature', language: 'en' },
+  promptKind: 'self',
+  situation: { place: 'indoor', activity: 'walking to the bowl', aboutTo: { action: 'drink', target: 'hack' } },
+  messages: [],
+});
+assert.equal(situationPayload.situation.place, 'indoor');
+assert.equal(situationPayload.situation.activity, 'walking to the bowl');
+assert.deepEqual(situationPayload.situation.aboutTo, { action: 'drink' }, 'unknown aboutTo targets are stripped');
+assert.match(systemPrompt(situationPayload), /SITUATION is the authoritative record/);
+assert.match(systemPrompt(situationPayload), /"aboutTo":\{"action":"drink"\}/);
+assert.equal(cleanPayload({
+  creature: { name: 'SituBad', stage: 'sentences', language: 'en' },
+  promptKind: 'self',
+  situation: { place: 'outdoors', aboutTo: { action: 'reset_save' } },
+  messages: [],
+}).situation.aboutTo, undefined);
+assert.equal(cleanPayload({
+  creature: { name: 'SituPlace', stage: 'sentences', language: 'en' },
+  promptKind: 'self',
+  situation: { place: 'hack' },
+  messages: [],
+}).situation.place, 'indoor', 'a bad place falls back to indoor');
+
 const selfPayload = cleanPayload({
   creature: { name: 'Self', stage: 'sentences', language: 'pl', mood: 'hungry' },
   promptKind: 'self',

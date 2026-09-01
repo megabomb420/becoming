@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.5
+> **Version:** 0.14.6
 > **Last Updated:** 2026-09-01
 
 ---
@@ -65,6 +65,8 @@ becoming/
 │   ├── needs_time_checks.ts     # Needs, offline, local-time, timezone, DST checks
 │   ├── weather_environment_checks.ts # Open-Meteo, cache, solar light, reaction checks
 │   ├── persona_overlay_checks.ts # Thin mind payload, earned overlays, DeepSeek-only bubbles
+│   ├── grounded_speech_checks.ts # Authoritative clock/situation context, about_to, no fallback speech
+│   ├── object_interaction_checks.ts # Tap uses, drag moves, drag-to-inventory puts away
 │   ├── chapter_quality_checks.ts # Local chapter summaries without a second model call
 │   ├── creation_mastery_checks.ts # Box dens, stone keepsakes, shared ball games
 │   └── gen_icons.py             # PWA icon generation
@@ -75,6 +77,7 @@ becoming/
 │   │   ├── creatureFactory.ts  # Birth/egg generation, seeded traits
 │   │   ├── needsSystem.ts      # Nine physical/emotional needs, urgency, care actions
 │   │   ├── healthSystem.ts     # Hidden health axis: stages, illness, recovery, death
+│   │   ├── objectInput.ts      # Pure tap/drag/reposition/put-away pointer semantics
 │   │   ├── timeSystem.ts       # Sunrise/sunset phases, timezone and smooth room lighting
 │   │   ├── weatherService.ts   # Rounded location, Open-Meteo fetch/geocoding and parsing
 │   │   ├── environmentSystem.ts # Cache state, stimuli, gameplay interpretation and preference
@@ -150,8 +153,8 @@ becoming/
 | Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
 | Creature-initiated chat | ✅ | Creature can start conversations based on observations |
-| Chat interface | ✅ | Full-screen conversation with constrained responses. Sleeping lives murmur instead of opening a mind |
-| Live AI mind | 🚧 | DeepSeek replies through a private backend; the browser never receives the API key. The thin request includes their solar clock. 0.12.5 stops canned room lines and local fallback on worker failure. The empty production-failure path is live-proven; a successful clock-aware model reply is not yet live-proven |
+| Chat interface | ✅ | Full-screen conversation with constrained responses. Their rest is a closed conversation window: quiet, no mind call |
+| Live AI mind | 🚧 | DeepSeek replies through a private backend; the browser never receives the API key. Every request carries one authoritative clock, place, activity and situation; self-care announcements ride the same `/chat` with the true about-to action and fail empty. 0.12.5 stops canned room lines and local fallback on worker failure. The empty production-failure path is live-proven; a successful clock-aware model reply is not yet live-proven |
 | Life paths | ✅ | 12 slowly forming lifestyles shaped by conversation, objects, repeated choices, consequences, and recovery |
 | Crossbreeds | ✅ | Compatible dominant tendencies combine into named hybrid identities such as Fog Gamer, Chill Sage, or Gentle Anchor |
 | Daily moments | ✅ | One authored dilemma per creature-day, offered only in their wake. Night-life hours wait for a settled nocturnal life |
@@ -184,14 +187,15 @@ becoming/
 | Physical return traces | ✅ | Offline simulation moves or uses objects, continues a mark, touches the mirror, or changes the chosen rest place before dialogue explains anything |
 | Daily care physiology | ✅ | Hidden cleanliness, bladder, and bowel needs extend hunger; food affects later bathroom timing, body language replaces meters, and care never causes guilt |
 | Toilet, washing, and cleaning | ✅ | A compact care sheet opens food, toilet, washing, and room cleaning; pee/poop remain as tappable floor traces until cleaned, with bounded offline simulation |
-| Care-aware conversation | ✅ | The care overlay reaches DeepSeek only when a need is not comfortable. Rare self-speak can mention hunger, bathroom, dirt, weather-affinity, or wanting out without exposing values, shaming, or inventing danger |
+| Care-aware conversation | ✅ | The care overlay reaches DeepSeek only when a need is not comfortable. Rare self-speak can mention hunger, bathroom, dirt, weather-affinity, or wanting out without exposing values, shaming, or inventing danger. Self-care announcements are DeepSeek-voiced: local autonomy decides the real action, the mind gets the true about-to fact, and silence beats any canned substitute |
+| Object handling | ✅ | One physical model: a tap uses a placed object, a drag repositions it, and dragging it onto the shelf target puts it away. No Use/Put away popup, no permanent toolbar; the shelf-open tap and keyboard paths remain accessible |
 | Health lifecycle | ✅ | A hidden body axis moves `healthy → strained → ill → critical → recovery or death` from sustained bad body state (never from absence alone). Illness persists over real time, affects appetite, energy, movement, sleep and self-care, and is readable only through body language, care copy and quiet speech. At the end of a prolonged critical state the life ends persistently: the save stays, reload does not resurrect, physiology/autonomy/offline simulation and the mind stop, Memory Book and backups keep everything, and only the explicit Start over begins another life |
 
 ### 🚧 Partial / Placeholder
 
 | Feature | State | Gap |
 |---|---|---|
-| DeepSeek-only room bubbles | 🚧 | Canned idle/touch/autonomy lines and local worker fallback are absent. The mind receives their rest/wake clock. Production Worker failure was live-proven empty on a real save; successful DeepSeek speech remains unproven because Turnstile rejected the controlled browser. |
+| DeepSeek-only room bubbles | 🚧 | Canned idle/touch/autonomy lines and local worker fallback are absent; self-care announcements are mind-voiced through the same `/chat` with an about-to situation. The mind receives one authoritative rest/wake clock, place and activity. Production Worker failure was live-proven empty on a real save; successful DeepSeek speech remains unproven because Turnstile rejected the controlled browser. The updated Worker (situation whitelist) deploys separately via wrangler. |
 | Outdoor visits | 🚧 | Real-save wake visits were live-proven manually with a solar sky and Dublin weather, then autonomously in rain through the creature's own return. The expanded sky dropped its mullion and curtains and grounded state used the real condition. Ordinary-night refusal, settled-night-life permission, and sleeping-outside return still rely on deterministic checks. |
 | Notifications | 🚧 | Architecture prepared but no push notification logic. |
 
@@ -711,7 +715,7 @@ The melt was too wide and spilled past the head outline. The flush is smaller an
 
 ### v0.14.0 — A mature mind says what its body is doing
 
-Self-care was already autonomous from hatching — the creature walks to the bowl, the litter box, the basin and the blanket on its own. What a mature mind adds is the voice: before the trip, it says so, in its own tone. A degen says "Gonna take a shit."; a monk asks for a little privacy; a plain soul just says "Gotta pee." / "Idę kupę." English is the canonical copy, Polish the bundled translation, and the tone follows the committed life path or the dominant personality traits. The lines are local one-liners — never DeepSeek, never conversation history, never while asleep, throttled so a restless night does not become a monologue. No new loop: the announcements ride the existing seven-second room cadence and the same need thresholds as always.
+Self-care was already autonomous from hatching — the creature walks to the bowl, the litter box, the basin and the blanket on its own. What a mature mind adds is the voice: before the trip, it says so, in its own tone. At the time this shipped as local one-liners; since v0.14.6 the wording comes from DeepSeek with the true about-to action in context (see below). The throttled announcements still ride the existing seven-second room cadence and the same need thresholds as always.
 
 ### v0.14.4 — Care state stays settled; the mind proposes bounded actions
 
@@ -733,6 +737,21 @@ The creature's body now has one quiet hidden axis: `healthy → strained → ill
 - **Migration is safe.** Existing v0.14.4 living saves keep identity, memories, personality, life path, objects and history and receive a healthy initial state (wellness 100, no illness); they can never become retroactively ill. A backup round-trip of a real alive or dead health state is preserved and re-validated. The boot/openDB contract is untouched — no schema change, DB version stays 1.
 - **Honest boundaries.** From a well-fed start, an ordinary absence never creates a bad body state, so a single long absence does not kill — that is the explicit causal contract, not a loophole. Neglect kills the same way it sickens: repeated sessions without care ratchet needs down into the danger ramps, or the app is left open while the body starves. Deterministic checks cover a short absence staying healthy, a single accident causing nothing, sustained bad physiology worsening health, coherent stage progression, recovery over time, active/offline model equality, autonomous self-care reducing deterioration, migration, personality/path protection, no second timer, the intact 0.14.4 toilet/semantic-action contract, and death persisting through reload with physiology, autonomy, offline life, mind, backup and Start over all behaving.
 
+### v0.14.6 — DeepSeek is the voice; objects answer to a tap
+
+Two production polish slices: the creature's language now comes from the mind, and room objects are physical again.
+
+**DeepSeek is the source of creature speech.** Local code decides every fact — clock, solar phase, rest/wake, needs, autonomy, current activity, place, weather, persistence — and DeepSeek supplies the natural wording. The root cause of the wrong day/night lines was `selfCareSpeech.ts`: canned one-liners like "I am crashing. Night." could fire at 2pm because they were tone-picked tables, not grounded facts. That module is deleted. The rest-phase murmur is gone too: a resting creature is a closed conversation window — quiet, no mind call, no canned line.
+
+- **One authoritative context.** Every mind request carries a single `clock` (phase, schedule, rest, sleeping, localTime) plus a new `situation` block: `place` (indoor/outdoors), the exact `activity`, and — for self-care — `aboutTo` (a real action local autonomy already decided). The Worker whitelists all of it (`cleanSituation`, `SITUATION_PROMPT`) and never lets the model claim a different time, place, action or state. No conflicting time representations exist: one `getTimeOfDay` call feeds phase and localTime together.
+- **Self-care announcements ride `/chat`.** `announceSelfCare` now sends `requestCreatureReply(state, { kind: 'self', aboutTo: { action } })` — the mind may phrase one short line about the true about-to action, or stay silent (empty replies are valid). The canonical action always continues: notice → walk → react runs regardless of the reply, a failed call means silence, and nothing is ever gated on the model. Mature-stage gate and the existing 2/6-minute throttle are kept.
+- **Silence beats fake fallback.** Worker/Turnstile/model failure → the action happens, the bubble stays empty. `groundedWorldReply` remains the fast-path ack for direct world commands and the return greeting stays a clock-grounded presence ritual — both are facts decided locally, not pretended mind speech; everything else in the bubble is DeepSeek.
+- **Reasoning is selective; ordinary embodied speech stays fast.** The provider contract keeps `thinking: { type: 'disabled' }` for every request: all current turns (conversation, self-speak, announcements) are embodied speech where latency matters more than deliberation. Per-request thinking budgets are deferred until `deepseek-v4-flash` thinking is live-verified; the design note is a local complexity heuristic setting a `reasoning` flag the Worker would map to a thinking budget.
+
+**Objects answer to a tap.** The Use / Put away popup is gone. `objectInput.ts` is a pure classifier: a tap on a placed object starts the canonical use flow, a drag repositions it (threshold 12 px, no long-press), and dragging it onto a shelf target that appears only during the drag puts it away. The open shelf keeps the accessible path: with the tray open, tapping (or keyboard-activating) a room object puts it away — no permanent toolbar. Inventory drags still place at the release point; taps still auto-place.
+
+Deterministic checks: daytime payload says day (with localTime), night payload says night and rest, sleep/wake matches the authoritative time system, `aboutTo` reaches the Worker allowlist and the model as a fact, canned speech cannot be a fallback, a failed mind call still runs the action without speech, development and path overlays still constrain the voice, and Room keeps exactly its four intervals (no second speech loop). Object checks cover tap→Use, popup gone, drag→reposition without Use, drop-on-target→Put away, inventory place paths, the 12 px threshold, pointer capture and touch-action isolation, and the intact reaction/life-path pipeline. `npm run check` is green. The updated Worker (`cleanSituation`, `cleanClock.localTime`, `SITUATION_PROMPT`) is in this commit but deploys separately via wrangler.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -742,13 +761,15 @@ The creature's body now has one quiet hidden axis: `healthy → strained → ill
 
 ### Logic / UX
 - **Sound is intentionally minimal:** Current cues are short interaction tones rather than voiced creature vocalizations.
-- **Object drag on mobile:** Pointer events should work on most mobile browsers, but long-press vs drag detection could conflict with browser gestures on some devices.
+- **Object drag on mobile:** Pointer events should work on most mobile browsers, but drag-vs-browser-gesture conflicts can still appear on some devices; the 12 px threshold and pointer capture are covered deterministically, not on physical devices.
 - **Offline simulation is intentionally bounded:** It applies one visible, state-backed return trace rather than simulating long chains of unseen actions.
 - **Needs balance needs longitudinal play data:** The model is deterministic and protected against punishment, but exact day-to-day rates should be revisited after multi-day physical-device sessions. The same applies to the health thresholds in 0.14.5: the intended shape (a short absence is safe, weeks of real neglect sicken, recovery takes days) is covered deterministically, but the exact pressure ramps and day counts deserve live tuning.
 - **Weather preference balance needs real seasons:** Reaction cadence and affinity growth are bounded and deterministic, but multi-week saves across heat, snow and storms should guide later tuning.
 
 ### Architecture
 - **AI depends on the private gateway:** If the Worker or model provider is unavailable, the room bubble stays empty rather than inventing a local line. World-command replies remain the grounded local fact.
+- **The Worker deploys separately from the app:** the 0.14.6 Worker changes (`cleanSituation`, `cleanClock.localTime`, `SITUATION_PROMPT`) ship in the repo but need a `wrangler deploy` to affect the live endpoint; until then the app still works (unknown keys are dropped and self-care announcements fail empty).
+- **Selective reasoning is designed, not yet wired:** every current request keeps `thinking` disabled for speed; per-request thinking budgets await live verification of `deepseek-v4-flash` thinking.
 - **Public gateway still needs monitoring:** Turnstile, native rate limits, and a Durable Object daily quota now bound anonymous access, but thresholds and false positives need production observation. This is defence in depth, not a promise that a public endpoint can never be abused.
 - **Coverage is targeted, not comprehensive:** Needs, care, weather parsing/privacy/cache, solar time, migration, offline time, dates, timezones, DST, and day phases are covered; older conversation, social-learning, age-floor, and drag-gesture cases still need broader unit coverage.
 
@@ -757,20 +778,22 @@ The creature's body now has one quiet hidden axis: `healthy → strained → ill
 ## 7. Recommended Next Steps
 
 ### Priority: High
-1. **Finish live proof of the mind** — On a normal physical browser that passes production Turnstile, record one successful clock-aware DeepSeek room bubble on a real save. Manual and autonomous rainy outside, autonomous return, and the empty Worker-failure path are already live-proven. Persistence on 0.12.12+ is believed good on a clean profile; do not treat old hung IndexedDB queues as a current boot bug.
-2. **Live-prove an illness and recovery arc on a real save** — the 0.14.5 health model is deterministic and covered by checks, but a physical-device pass should watch the qualitative stages appear through body language and care copy, then recover over a few days of care, and (on a sacrificial save) confirm the quiet death screen, reload persistence and Start over.
-3. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, and daily moments from that, not from a single session. 0.13 makes a day *possible*; live weeks still have to prove it.
-4. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
+1. **Finish live proof of the mind** — On a normal physical browser that passes production Turnstile, record one successful clock-aware DeepSeek room bubble on a real save, and one DeepSeek self-care announcement with the about_to situation. Manual and autonomous rainy outside, autonomous return, and the empty Worker-failure path are already live-proven. Persistence on 0.12.12+ is believed good on a clean profile; do not treat old hung IndexedDB queues as a current boot bug.
+2. **Deploy the updated Worker and watch it** — the 0.14.6 `cleanSituation`/`SITUATION_PROMPT` changes go live via `wrangler deploy`; then confirm clock-grounded speech and about_to announcements on a real save.
+3. **Live-prove an illness and recovery arc on a real save** — the 0.14.5 health model is deterministic and covered by checks, but a physical-device pass should watch the qualitative stages appear through body language and care copy, then recover over a few days of care, and (on a sacrificial save) confirm the quiet death screen, reload persistence and Start over.
+4. **Weeks with one creature** — the honest completeness risk: after many days, is it still someone, or a menu of systems? Tune paths, weather, sleep inversion, chapters, and daily moments from that, not from a single session. 0.13 makes a day *possible*; live weeks still have to prove it.
+5. **Music creation** — only if a future object can be made without adding a second cadence or a dashboard.
 
 ### Priority: Medium
-4. **Physical-device polish pass** — verify location permission wording, vibration and long-press drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
-5. **Gateway observability** — watch Turnstile failures, native rate-limit decisions, daily quota usage, and DeepSeek errors in Cloudflare before tuning production thresholds.
-6. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
+6. **Physical-device polish pass** — verify location permission wording, vibration and tap-vs-drag behaviour on actual iOS Safari and Android Chrome; responsive browser checks now pass.
+7. **Gateway observability** — watch Turnstile failures, native rate-limit decisions, daily quota usage, and DeepSeek errors in Cloudflare before tuning production thresholds.
+8. **Selective reasoning** — once `deepseek-v4-flash` thinking is live-verified, wire the local complexity heuristic to a per-request thinking budget for complex turns only.
+9. **Expand automated coverage** — add unit tests for conversation parsing, social learning, age floors, and pointer/drag gestures.
 
 ### Priority: Low / Future
-7. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
-8. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
-9. **Notifications** — gentle, non-manipulative PWA notifications.
+10. **Voice conversation** — add optional speech input and age-appropriate creature vocal output.
+11. **Optional encrypted sync** — only if a future account-free design can preserve the current local-first privacy model.
+12. **Notifications** — gentle, non-manipulative PWA notifications.
 
 ---
 
@@ -778,13 +801,16 @@ The creature's body now has one quiet hidden axis: `healthy → strained → ill
 
 - **No permanent raw-stat dashboard.** Body language remains the first signal. A compact room cue and optional descriptive care sheet may expose playable urgency and the helpful action, but never raw percentages, optimisation-heavy meters, personality scores, or life-path scores.
 - **A real sky, never an accelerated clock.** With weather enabled, the selected place's real local time and sunrise/sunset define the sky. With weather disabled, a seasonal solar fallback follows device-local time. The game never accelerates the sun or invents an unexplained night toggle.
-- **Their night, not the player's.** Ordinary lives sleep on solar night and wake on solar day. A committed party animal, alcoholic, or degen inverts that clock. Visit hours, night-shift play, dock commands, and late chat must not rewrite it. Return greetings, visit rituals, outdoor urge, daily moments, and the mind’s CLOCK overlay follow that same clock. Talking while they sleep is a murmur, not a mind. Leanings and recovery stay diurnal. Touch and “wake up” may wake them; they settle again if it is still their rest.
+- **Their night, not the player's.** Ordinary lives sleep on solar night and wake on solar day. A committed party animal, alcoholic, or degen inverts that clock. Visit hours, night-shift play, dock commands, and late chat must not rewrite it. Return greetings, visit rituals, outdoor urge, daily moments, and the mind’s CLOCK overlay follow that same clock. Talking during their rest is a closed window, not a murmur: no mind call, no transcript, silence. Leanings and recovery stay diurnal. Touch and “wake up” may wake them; they settle again if it is still their rest.
 - **Their day, not the session.** A life continues through wake hours the player did not watch. Autonomous outdoor visits and daily moments belong to that wake. Weather affinity colours the sky; it is not a permission slip to exist outside.
 - **Weather is interpreted, not scored.** Open-Meteo supplies observations only. `WorldEnvironment` translates them into bounded stimuli, and gameplay combines those with needs, personality, preferences and memories before a reaction. No rule maps a condition directly to happiness loss.
 - **Location minimisation.** Geolocation is opt-in, high accuracy is disabled, coordinates are rounded to two decimals before requests or persistence, manual city selection remains available, and disabling weather stops forecast refreshes.
 - **Local-first with one optional observation source.** All core systems and the last successful weather state run from IndexedDB. Open-Meteo enriches the world when enabled. AI remains reserved for higher-level cognition and is composed as a thin always-on prompt plus earned overlays; weather still degrades offline, while room speech does not invent a substitute line.
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
 - **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
+- **Local systems decide reality; DeepSeek supplies creature language; silence beats fake fallback.** Local code owns every fact — clock, solar phase, rest/wake, needs, autonomy, current activity, place, weather, persistence — and sends one authoritative context per speech opportunity (`clock` + `situation`, including a real `aboutTo` action for self-care). The model phrases natural language from those facts and can never contradict them, diagnose, decide death, or mutate GameState. When the Worker, Turnstile or model fails, the real action still happens and the creature stays silent; no canned substitute line is ever invented. Local UI cues (body-language captions, reaction labels, grounded world-command acks, the clock-grounded return greeting) stay local because they are facts, not pretended mind speech.
+- **Reasoning is selective; ordinary embodied speech stays fast.** Every current mind request is embodied speech (conversation, self-speak, self-care announcements), so the provider contract keeps `thinking` disabled and replies stay quick. Per-request thinking budgets for genuinely complex turns are deferred until `deepseek-v4-flash` thinking is live-verified; the planned design is a local complexity heuristic setting a `reasoning` flag the Worker maps to a thinking budget — never a separate classifier call.
+- **Tap uses; drag moves; drag to inventory puts away.** Placed objects follow one physical model with no Use/Put away popup and no permanent toolbar: a tap starts the canonical use flow, a drag (12 px threshold, no long-press) repositions, and dropping a dragged room object on the shelf target that appears only during the drag puts it away. The open shelf and keyboard activation keep an accessible put-away path. The release decision is a pure classifier, so a drag can never fall through to Use.
 - **The LLM is not a hidden assistant.** The Worker rejects role replacement and generic work-product requests before inference, redacts poisoned history, and validates output before returning it.
 - **Bounded semantic world actions.** DeepSeek may propose an allowlisted world action as a controlled output channel; local validation and canonical execution remain the only way state changes. The model can never mutate GameState directly or reach persistence, settings, reset, or navigation.
 - **Public AI is verified and bounded.** The browser obtains a short-lived, action-bound Turnstile token; the Worker validates it server-side and fail-closed, enforces exact routes/origins, native per-client and aggregate-IP limits, a Durable Object daily quota, strict request/provider byte bounds, and hardened response headers. The site key is public; the Turnstile and DeepSeek secrets stay encrypted in Cloudflare.
@@ -833,7 +859,9 @@ request.onsuccess = () => location.reload();
 | How touch boundaries work | `src/systems/boundarySystem.ts` |
 | How shared sayings are adopted | `src/systems/sharedLanguageSystem.ts` |
 | How bounded AI requests are created | `src/systems/llmConversation.ts` |
+| How the authoritative speech context (clock + situation) is built | `src/systems/llmConversation.ts` + `worker/src/index.js` |
 | How the private AI boundary is enforced | `worker/src/index.js` |
+| How tap/drag object semantics work | `src/systems/objectInput.ts` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
 | How the weather window and settings are drawn | `src/components/WeatherLayer.tsx` + `src/components/WeatherControls.tsx` |
 | How room objects are drawn | `src/components/ObjectIcon.tsx` |
