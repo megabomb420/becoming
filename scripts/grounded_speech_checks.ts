@@ -68,6 +68,13 @@ function hatched(name: string, seed: number): GameState {
   assert.equal(asleepBody.creature.mood, 'asleep');
   assert.equal(isRestingChatGate(asleep, NOW), true, 'a sleeping creature is a closed conversation window');
   assert.equal(shouldCreatureSelfSpeak(asleep, NOW), false);
+
+  const dozing = { ...awake, sleepState: 'drowsy' as const };
+  const dozingBody = buildCreatureMindRequest(dozing, { now: NOW });
+  assert.equal(dozingBody.creature.clock?.sleeping, false, 'drowsy must not overload sleeping');
+  assert.equal(dozingBody.creature.clock?.drowsy, true, 'the clock tells the mind they are only dozing');
+  assert.equal(dozingBody.creature.mood, 'sleepy', 'drowsy maps to a sleepy mood, not asleep');
+  assert.equal(isRestingChatGate(dozing, NOW), false, 'drowsy during their wake is still a short conversation window');
 }
 
 // 4. A real about_to action reaches DeepSeek through the bounded situation

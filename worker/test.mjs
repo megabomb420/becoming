@@ -343,6 +343,7 @@ assert.deepEqual(clockedPayload.creature.clock, {
   schedule: 'diurnal',
   rest: true,
   sleeping: true,
+  drowsy: false,
 });
 assert.match(systemPrompt(clockedPayload), /CLOCK is this creature's solar day/);
 assert.match(systemPrompt(clockedPayload), /no moon/i);
@@ -351,6 +352,25 @@ assert.equal(cleanPayload({
   creature: { name: 'BadClock', stage: 'sentences', language: 'en', clock: { phase: 'hack', schedule: 'ai' } },
   messages: [{ role: 'user', content: 'Hi' }],
 }).creature.clock, undefined);
+
+// Drowsy is dozing off, not asleep: the clock carries a separate drowsy flag
+// so the model may answer a short sleepy reply without claiming to be asleep.
+const dozingClock = cleanPayload({
+  creature: {
+    name: 'Dozing',
+    stage: 'sentences',
+    language: 'en',
+    mood: 'sleepy',
+    clock: { phase: 'day', schedule: 'diurnal', rest: false, sleeping: false, drowsy: true, hack: 'no' },
+  },
+  messages: [{ role: 'user', content: 'Hi' }],
+});
+assert.equal(dozingClock.creature.clock.sleeping, false, 'drowsy must not overload sleeping');
+assert.equal(dozingClock.creature.clock.drowsy, true, 'the clock carries the drowsy flag');
+const dozingPrompt = systemPrompt(dozingClock);
+assert.match(dozingPrompt, /only dozing off, not asleep/);
+assert.match(dozingPrompt, /never claim "I am already asleep"/);
+assert.doesNotMatch(dozingPrompt, /mood is "asleep" or "sleepy"/, 'sleepy must no longer be lumped in with asleep');
 
 // The clock may carry one local time string from the same authoritative
 // source; anything that is not a time is stripped.

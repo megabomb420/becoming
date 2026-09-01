@@ -27,6 +27,8 @@ const base = createHatchedCreature(createNewCreature('World', 4117));
 assert.deepEqual(parseWorldIntent('Masz, dam ci jabłko.'), { kind: 'offer_object', objectType: 'apple' });
 assert.deepEqual(parseWorldIntent('Please play with the ball'), { kind: 'use_object', objectType: 'ball' });
 assert.deepEqual(parseWorldIntent('Napij się wody'), { kind: 'drink', objectType: 'water_bowl' });
+assert.deepEqual(parseWorldIntent('idź spać'), { kind: 'sleep' });
+assert.deepEqual(parseWorldIntent('go to sleep'), { kind: 'sleep' });
 assert.deepEqual(parseWorldIntent('użyj poduszki'), { kind: 'use_object', objectType: 'cushion' });
 assert.deepEqual(parseWorldIntent('play with the jingle toy'), { kind: 'use_object', objectType: 'jingle_toy' });
 assert.deepEqual(parseWorldIntent('daj mi szczotkę'), { kind: 'offer_object', objectType: 'brush' });
@@ -134,6 +136,52 @@ const sleepAsked = performImmediateWorldAction({
 }, { kind: 'sleep' }, NOW);
 assert.equal(sleepAsked.result.status, 'success');
 assert.equal(sleepAsked.state.sleepState, 'awake', 'asking them to rest must not force sleep');
+
+// Commanded sleep may settle a body that is already dozing or visibly tired
+// (energy below the attention threshold), but it cannot rewrite their solar
+// day: wide awake with energy during their wake, the refusal is a clock line.
+const utcNoonWorld = {
+  ...base,
+  world: {
+    ...base.world,
+    settings: {
+      ...base.world.settings,
+      mode: 'city' as const,
+      location: {
+        source: 'city' as const,
+        name: 'UTC',
+        latitude: 51.5,
+        longitude: 0,
+        timezone: 'UTC',
+        countryCode: 'GB',
+        country: 'UTC',
+      },
+    },
+  },
+};
+const tiredDaySleep = performImmediateWorldAction({
+  ...utcNoonWorld,
+  needs: { ...utcNoonWorld.needs, energy: 30 },
+}, { kind: 'sleep' }, NOW);
+assert.equal(tiredDaySleep.result.status, 'success', 'a visibly tired body (energy below the attention threshold) may be asked to settle during its day');
+const drowsySleep = performImmediateWorldAction({
+  ...utcNoonWorld,
+  sleepState: 'drowsy' as const,
+  needs: { ...utcNoonWorld.needs, energy: 90 },
+}, { kind: 'sleep' }, NOW);
+assert.equal(drowsySleep.result.status, 'success', 'a dozing creature may be asked to settle');
+const dayHighEnergy = performImmediateWorldAction(utcNoonWorld, { kind: 'sleep' }, NOW);
+assert.equal(dayHighEnergy.result.status, 'refused', 'a wide-awake, full-energy creature cannot be commanded into its night');
+assert.equal(dayHighEnergy.result.reason, 'not_tired');
+assert.doesNotMatch(groundedWorldReply(dayHighEnergy.result, 'en'), /too much energy/i, 'the English refusal must not claim a fake surplus of energy');
+assert.doesNotMatch(groundedWorldReply(dayHighEnergy.result, 'pl'), /za dużo energii|za duzo energii/i, 'the Polish refusal must not claim a fake surplus of energy');
+assert.match(groundedWorldReply(dayHighEnergy.result, 'en'), /my day/i, 'the refusal is a clock line about their day');
+assert.match(groundedWorldReply(dayHighEnergy.result, 'pl'), /mój dzień/i, 'the Polish refusal is a clock line about their day');
+const alreadySleeping = performImmediateWorldAction({
+  ...utcNoonWorld,
+  sleepState: 'sleeping' as const,
+}, { kind: 'sleep' }, NOW);
+assert.equal(alreadySleeping.result.status, 'already_satisfied', 'an already sleeping creature simply stays asleep');
 
 const cameCloser = beginComeHere(base, { x: 50, y: 74 });
 assert.deepEqual(cameCloser.position, { x: 50, y: 74 });
@@ -316,7 +364,7 @@ const restDay = Date.UTC(2027, 5, 15, 14, 0);
 assert.equal(isRestingChatGate(sleeper, restNight), true, 'a sleeping creature is a closed conversation window');
 assert.equal(isRestingChatGate({ ...sleeper, sleepState: 'awake' }, restDay), false, 'an awake day creature can talk');
 assert.equal(isRestingChatGate({ ...sleeper, sleepState: 'awake' }, restNight), true, 'an ordinary night is rest, not a chat');
-assert.equal(isRestingChatGate({ ...sleeper, sleepState: 'drowsy' }, restDay), true, 'drowsy rest is not a conversation window');
+assert.equal(isRestingChatGate({ ...sleeper, sleepState: 'drowsy' }, restDay), false, 'drowsy during their wake is only dozing, not a closed conversation window');
 assert.equal(
   isRestingChatGate({ ...sleeper, sleepState: 'drowsy', needs: { ...sleeper.needs, hunger: 4 } }, restNight),
   true,
