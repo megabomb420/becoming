@@ -9,3 +9,8 @@ import './self_care_speech_checks';
 import './chapter_quality_checks';
 import './creation_mastery_checks';
 import './persistence_checks';
+import './bowel_bladder_checks';
+import './cognition_gaps_checks';
+import './pointer_release_checks';
+import './thin_mind_payload_checks';
+import './ui_copy_parity_checks';

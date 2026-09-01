@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.0
+> **Version:** 0.14.1
 > **Last Updated:** 2026-09-01
 
 ---

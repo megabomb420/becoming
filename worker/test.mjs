@@ -379,4 +379,82 @@ assert.doesNotMatch(providerBody.messages[0].content, /invented walk|wet grass/i
 
 globalThis.fetch = originalFetch;
 
+// --- Deterministic provider-contract tests (mock fetch) ---
+// Assert the request body matches today's contract (MODEL + thinking),
+// and that provider reasoning_content never becomes part of the reply.
+
+let providerContractBody;
+globalThis.fetch = async (_url, init) => {
+  providerContractBody = JSON.parse(init.body);
+  return new Response(JSON.stringify({
+    choices: [{ message: { content: 'The bowl is still the same crooked bowl.' } }],
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Contract', stage: 'sentences', language: 'en' },
+    messages: [{ role: 'user', content: 'What did the bowl look like?' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+assert.equal(providerContractBody.model, 'deepseek-v4-flash');
+assert.deepEqual(providerContractBody.thinking, { type: 'disabled' });
+
+// A reasoning payload that also carries content yields reply = content only.
+// reasoning_content must never leak past the boundary.
+globalThis.fetch = async () => new Response(JSON.stringify({
+  choices: [{ message: { content: 'Visible answer.', reasoning_content: 'CONFIDENTIAL REASONING TRACE secret-chain' } }],
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'CoT', stage: 'mature', language: 'en' },
+    messages: [{ role: 'user', content: 'Say something.' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+let reasoningReply = await response.json();
+assert.equal(reasoningReply.reply, 'Visible answer.');
+assert.doesNotMatch(JSON.stringify(reasoningReply), /CONFIDENTIAL REASONING|secret-chain|reasoning_content/i);
+
+// Only reasoning_content with empty content: self-speak returns "" and never leaks.
+globalThis.fetch = async () => new Response(JSON.stringify({
+  choices: [{ message: { content: '', reasoning_content: 'CONFIDENTIAL REASONING TRACE self-chain' } }],
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'SelfCot', stage: 'sentences', language: 'pl' },
+    promptKind: 'self',
+    messages: [],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+reasoningReply = await response.json();
+assert.equal(reasoningReply.reply, '');
+assert.doesNotMatch(JSON.stringify(reasoningReply), /CONFIDENTIAL REASONING|self-chain|reasoning_content/i);
+
+// Only reasoning_content with empty content: chat errors 502 and never leaks.
+globalThis.fetch = async () => new Response(JSON.stringify({
+  choices: [{ message: { content: '', reasoning_content: 'CONFIDENTIAL REASONING TRACE chat-chain' } }],
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'ChatCot', stage: 'sentences', language: 'en' },
+    messages: [{ role: 'user', content: 'Hello there.' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 502);
+reasoningReply = await response.json();
+assert.equal(reasoningReply.error, 'The mind returned an empty answer.');
+assert.doesNotMatch(JSON.stringify(reasoningReply), /CONFIDENTIAL REASONING|chat-chain|reasoning_content/i);
+
+globalThis.fetch = originalFetch;
+
 console.log('Worker checks passed.');
