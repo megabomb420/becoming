@@ -28,10 +28,11 @@ import {
   requestCurrentWeatherLocation,
   roundCoordinates,
   searchCities,
+  selectWeatherDay,
   WeatherServiceError,
 } from '../src/systems/weatherService';
 import { advanceNeeds } from '../src/systems/needsSystem';
-import { getRoomLighting, getTimeOfDay } from '../src/systems/timeSystem';
+import { getLocalDateKey, getRoomLighting, getTimeOfDay } from '../src/systems/timeSystem';
 import { migrateGameState } from '../src/systems/persistence';
 import { GameState, WeatherLocation, WeatherSnapshot } from '../src/types';
 
@@ -90,7 +91,10 @@ assert.ok(forecastUrl.includes('latitude=53.35'));
 assert.ok(forecastUrl.includes('longitude=-6.26'));
 assert.ok(!forecastUrl.includes('53.349805'), 'precise device coordinates must never enter the API URL');
 assert.ok(forecastUrl.includes('current=temperature_2m'));
-assert.ok(forecastUrl.includes('hourly=precipitation_probability'));
+assert.ok(forecastUrl.includes('hourly=temperature_2m'));
+assert.ok(forecastUrl.includes('temperature_2m'));
+assert.ok(forecastUrl.includes('weather_code'));
+assert.ok(forecastUrl.includes('wind_speed_10m'));
 assert.ok(forecastUrl.includes('daily=sunrise'));
 
 const forecastPayload = {
@@ -104,11 +108,16 @@ const forecastPayload = {
     weather_code: 61,
     cloud_cover: 84,
     wind_speed_10m: 26,
+    wind_direction_10m: 247,
     is_day: 1,
   },
   hourly: {
-    time: ['2026-08-23T12:00', '2026-08-23T13:00'],
-    precipitation_probability: [38, 62],
+    time: ['2026-08-22T23:00', '2026-08-23T00:00', '2026-08-23T12:00', '2026-08-23T13:00', '2026-08-24T00:00'],
+    temperature_2m: [12.1, 11.8, 17.4, 18.2, 12.1],
+    weather_code: [3, 3, 61, 2, 3],
+    precipitation_probability: [20, 24, 38, 62, 28],
+    wind_speed_10m: [14, 13, 26, 24, 16],
+    wind_direction_10m: [220, 225, 247, 250, 260],
   },
   daily: {
     time: ['2026-08-23', '2026-08-24'],
@@ -131,11 +140,21 @@ assert.equal(fetched.precipitationProbability, 38);
 assert.equal(fetched.condition, 'rain');
 assert.equal(fetched.cloudCover, 84);
 assert.equal(fetched.windSpeedKph, 26);
+assert.equal(fetched.windDirectionDeg, 247);
 assert.equal(fetched.isDay, true);
 assert.equal(fetched.sunrise, '2026-08-23T06:17');
 assert.equal(fetched.sunset, '2026-08-23T20:36');
 assert.equal(fetched.dailyMinC, 11.2);
 assert.equal(fetched.dailyMaxC, 19.6);
+assert.equal(fetched.hourlyForecast?.length, 5);
+assert.equal(fetched.dailyForecast?.length, 2);
+const dublinToday = selectWeatherDay(fetched, '2026-08-23');
+assert.equal(dublinToday?.hours.length, 3, 'hourly forecast must include only the selected location calendar date');
+assert.ok(dublinToday?.hours.every(hour => hour.localTime.startsWith('2026-08-23')));
+assert.equal(dublinToday?.hours[1].condition, 'rain');
+assert.equal(dublinToday?.hours[1].precipitationProbability, 38);
+assert.equal(dublinToday?.hours[1].windSpeedKph, 26);
+assert.equal(selectWeatherDay(fetched, '2026-08-25'), null);
 
 const geocodePayload = {
   results: [{
@@ -191,6 +210,8 @@ assert.equal(shouldRefreshWeather(cached, now + 4 * HOUR, false), false);
 const failed = failWeatherRefresh(cached, 'offline', now + WEATHER_REFRESH_MS);
 assert.equal(failed.current, cached.current, 'network failure must retain the last known weather snapshot');
 assert.equal(failed.status, 'stale');
+const offlineForecast = failWeatherRefresh(worldWith(fetched), 'offline', now + WEATHER_REFRESH_MS);
+assert.equal(selectWeatherDay(offlineForecast.current!, '2026-08-24')?.hours.length, 1, 'the cached second local day must remain available across midnight while offline');
 assert.ok(getEffectiveStimulus(failed, now + 24 * HOUR).intensity > 0, 'offline mode should retain a softened last-known environment');
 assert.equal(getEffectiveStimulus(disableWeather(cached), now).intensity, 0);
 
@@ -216,6 +237,7 @@ const tokyoSnapshot = snapshot({
 });
 const tokyoWorld = receiveWeatherSnapshot(setWeatherLocation(createWorldEnvironment(), tokyoLocation, 'unknown'), tokyoSnapshot);
 assert.equal(Math.floor(getTimeOfDay(Date.UTC(2026, 7, 23, 12, 0), tokyoWorld).minuteOfDay / 60), 21);
+assert.equal(getLocalDateKey(Date.UTC(2026, 7, 23, 23, 30), tokyoWorld), '2026-08-24', 'Today must follow the selected weather location, not UTC or the device date');
 assert.equal(Math.floor(getTimeOfDay(Date.UTC(2026, 7, 23, 12, 0), disableWeather(tokyoWorld), 0).minuteOfDay / 60), 12, 'turning weather off must return to the device-local clock');
 
 const summerWorld = worldWith(snapshot({

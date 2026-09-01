@@ -4,7 +4,9 @@ import {
   Memory,
   Needs,
   WeatherCondition,
+  WeatherDailyForecast,
   WeatherErrorCode,
+  WeatherHourlyForecast,
   WeatherLocation,
   WeatherPreference,
   WeatherSnapshot,
@@ -185,6 +187,35 @@ function validSnapshot(value: unknown): WeatherSnapshot | null {
     ? candidate.condition as WeatherCondition
     : classifyWeatherCode(code);
   if (typeof candidate.sunrise !== 'string' || typeof candidate.sunset !== 'string') return null;
+  const hourlyForecast: WeatherHourlyForecast[] = Array.isArray(candidate.hourlyForecast)
+    ? candidate.hourlyForecast.flatMap(value => {
+      const hour = value as Partial<WeatherHourlyForecast> | null;
+      if (!hour || typeof hour.localTime !== 'string' || !Number.isFinite(hour.temperatureC) || !Number.isFinite(hour.weatherCode)) return [];
+      const hourCode = Number(hour.weatherCode);
+      return [{
+        localTime: hour.localTime,
+        temperatureC: Number(hour.temperatureC),
+        weatherCode: hourCode,
+        condition: WEATHER_CONDITIONS.includes(hour.condition as WeatherCondition)
+          ? hour.condition as WeatherCondition
+          : classifyWeatherCode(hourCode),
+        precipitationProbability: Number.isFinite(hour.precipitationProbability)
+          ? clamp(Number(hour.precipitationProbability), 0, 100)
+          : null,
+        windSpeedKph: Number.isFinite(hour.windSpeedKph) ? Math.max(0, Number(hour.windSpeedKph)) : null,
+        windDirectionDeg: Number.isFinite(hour.windDirectionDeg)
+          ? ((Number(hour.windDirectionDeg) % 360) + 360) % 360
+          : null,
+      }];
+    }).slice(0, 72)
+    : [];
+  const dailyForecast: WeatherDailyForecast[] = Array.isArray(candidate.dailyForecast)
+    ? candidate.dailyForecast.flatMap(value => {
+      const day = value as Partial<WeatherDailyForecast> | null;
+      if (!day || typeof day.date !== 'string' || typeof day.sunrise !== 'string' || typeof day.sunset !== 'string' || !Number.isFinite(day.minC) || !Number.isFinite(day.maxC)) return [];
+      return [{ date: day.date, sunrise: day.sunrise, sunset: day.sunset, minC: Number(day.minC), maxC: Number(day.maxC) }];
+    }).slice(0, 3)
+    : [];
   return {
     locationKey: candidate.locationKey,
     fetchedAt: finite(candidate.fetchedAt, 0),
@@ -199,12 +230,23 @@ function validSnapshot(value: unknown): WeatherSnapshot | null {
     condition,
     cloudCover: clamp(finite(candidate.cloudCover, 25), 0, 100),
     windSpeedKph: Math.max(0, finite(candidate.windSpeedKph, 0)),
+    windDirectionDeg: Number.isFinite(candidate.windDirectionDeg)
+      ? ((Number(candidate.windDirectionDeg) % 360) + 360) % 360
+      : null,
     isDay: Boolean(candidate.isDay),
     sunrise: candidate.sunrise,
     sunset: candidate.sunset,
     dailyDate: typeof candidate.dailyDate === 'string' ? candidate.dailyDate : candidate.sunrise.slice(0, 10),
     dailyMinC: finite(candidate.dailyMinC, finite(candidate.temperatureC, 18)),
     dailyMaxC: finite(candidate.dailyMaxC, finite(candidate.temperatureC, 18)),
+    hourlyForecast,
+    dailyForecast: dailyForecast.length > 0 ? dailyForecast : [{
+      date: typeof candidate.dailyDate === 'string' ? candidate.dailyDate : candidate.sunrise.slice(0, 10),
+      sunrise: candidate.sunrise,
+      sunset: candidate.sunset,
+      minC: finite(candidate.dailyMinC, finite(candidate.temperatureC, 18)),
+      maxC: finite(candidate.dailyMaxC, finite(candidate.temperatureC, 18)),
+    }],
   };
 }
 
@@ -648,15 +690,15 @@ export function recordEnvironmentReaction(state: GameState, reaction: Environmen
 
 export function getWeatherConditionLabel(condition: WeatherCondition, language: 'pl' | 'en') {
   const labels: Record<WeatherCondition, [string, string]> = {
-    clear: ['clear', 'bezchmurnie'],
-    partly_cloudy: ['broken light', 'przejaśnienia'],
-    overcast: ['overcast', 'pochmurno'],
-    fog: ['fog', 'mgła'],
-    drizzle: ['drizzle', 'mżawka'],
-    rain: ['rain', 'deszcz'],
-    snow: ['snow', 'śnieg'],
-    storm: ['storm', 'burza'],
-    unknown: ['outside', 'na zewnątrz'],
+    clear: ['Sunny', 'Słonecznie'],
+    partly_cloudy: ['Partly cloudy', 'Częściowo pochmurno'],
+    overcast: ['Overcast', 'Pochmurno'],
+    fog: ['Foggy', 'Mglisto'],
+    drizzle: ['Drizzle', 'Mżawka'],
+    rain: ['Rainy', 'Deszczowo'],
+    snow: ['Snowy', 'Śnieżnie'],
+    storm: ['Storm', 'Burza'],
+    unknown: ['Weather', 'Pogoda'],
   };
   return labels[condition][language === 'pl' ? 1 : 0];
 }

@@ -75,6 +75,24 @@ export interface WeatherLocation {
   country: string | null;
 }
 
+export interface WeatherHourlyForecast {
+  localTime: string;
+  temperatureC: number;
+  weatherCode: number;
+  condition: WeatherCondition;
+  precipitationProbability: number | null;
+  windSpeedKph: number | null;
+  windDirectionDeg: number | null;
+}
+
+export interface WeatherDailyForecast {
+  date: string;
+  sunrise: string;
+  sunset: string;
+  minC: number;
+  maxC: number;
+}
+
 export interface WeatherSnapshot {
   locationKey: string;
   fetchedAt: number;
@@ -89,12 +107,17 @@ export interface WeatherSnapshot {
   condition: WeatherCondition;
   cloudCover: number;
   windSpeedKph: number;
+  windDirectionDeg?: number | null;
   isDay: boolean;
   sunrise: string;
   sunset: string;
   dailyDate: string;
   dailyMinC: number;
   dailyMaxC: number;
+  // Two local calendar days are retained so a cached snapshot can cross local
+  // midnight without accidentally showing the device's or UTC calendar day.
+  hourlyForecast?: WeatherHourlyForecast[];
+  dailyForecast?: WeatherDailyForecast[];
 }
 
 export type ThermalStimulus = 'cold' | 'cool' | 'mild' | 'warm' | 'hot';

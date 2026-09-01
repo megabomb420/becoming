@@ -1,4 +1,9 @@
-import { WeatherLocation, WeatherSnapshot } from '../types';
+import {
+  WeatherDailyForecast,
+  WeatherHourlyForecast,
+  WeatherLocation,
+  WeatherSnapshot,
+} from '../types';
 import { classifyWeatherCode, weatherLocationKey } from './environmentSystem';
 
 const FORECAST_ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
@@ -39,9 +44,16 @@ export function buildForecastUrl(location: Pick<WeatherLocation, 'latitude' | 'l
       'weather_code',
       'cloud_cover',
       'wind_speed_10m',
+      'wind_direction_10m',
       'is_day',
     ].join(','),
-    hourly: 'precipitation_probability',
+    hourly: [
+      'temperature_2m',
+      'weather_code',
+      'precipitation_probability',
+      'wind_speed_10m',
+      'wind_direction_10m',
+    ].join(','),
     daily: 'sunrise,sunset,temperature_2m_min,temperature_2m_max,precipitation_probability_max',
     timezone: 'auto',
     forecast_days: '2',
@@ -91,6 +103,59 @@ function nearestHourlyProbability(hourly: Record<string, unknown>, currentTime: 
     }
   }
   return nearestIndex >= 0 && nearestDistance <= 90 * 60_000 ? Math.max(0, Math.min(100, Number(probabilities[nearestIndex]))) : null;
+}
+
+function optionalNumberAt(value: unknown, index: number): number | null {
+  return Array.isArray(value) && Number.isFinite(value[index]) ? Number(value[index]) : null;
+}
+
+function parseHourlyForecast(hourly: Record<string, unknown>): WeatherHourlyForecast[] {
+  const times = Array.isArray(hourly.time) ? hourly.time : [];
+  return times.flatMap((time, index) => {
+    const temperatureC = optionalNumberAt(hourly.temperature_2m, index);
+    const weatherCode = optionalNumberAt(hourly.weather_code, index);
+    if (typeof time !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(time) || temperatureC === null || weatherCode === null) return [];
+    const probability = optionalNumberAt(hourly.precipitation_probability, index);
+    const windSpeed = optionalNumberAt(hourly.wind_speed_10m, index);
+    const windDirection = optionalNumberAt(hourly.wind_direction_10m, index);
+    return [{
+      localTime: time,
+      temperatureC,
+      weatherCode,
+      condition: classifyWeatherCode(weatherCode),
+      precipitationProbability: probability === null ? null : Math.max(0, Math.min(100, probability)),
+      windSpeedKph: windSpeed === null ? null : Math.max(0, windSpeed),
+      windDirectionDeg: windDirection === null ? null : ((windDirection % 360) + 360) % 360,
+    }];
+  });
+}
+
+function parseDailyForecast(daily: Record<string, unknown>): WeatherDailyForecast[] {
+  const dates = Array.isArray(daily.time) ? daily.time : [];
+  return dates.flatMap((date, index) => {
+    const sunrise = Array.isArray(daily.sunrise) ? daily.sunrise[index] : null;
+    const sunset = Array.isArray(daily.sunset) ? daily.sunset[index] : null;
+    const minC = optionalNumberAt(daily.temperature_2m_min, index);
+    const maxC = optionalNumberAt(daily.temperature_2m_max, index);
+    if (typeof date !== 'string' || typeof sunrise !== 'string' || typeof sunset !== 'string' || minC === null || maxC === null) return [];
+    return [{ date, sunrise, sunset, minC, maxC }];
+  });
+}
+
+export function selectWeatherDay(snapshot: WeatherSnapshot, localDateKey: string) {
+  const daily = snapshot.dailyForecast?.find(day => day.date === localDateKey)
+    ?? (snapshot.dailyDate === localDateKey ? {
+      date: snapshot.dailyDate,
+      sunrise: snapshot.sunrise,
+      sunset: snapshot.sunset,
+      minC: snapshot.dailyMinC,
+      maxC: snapshot.dailyMaxC,
+    } : null);
+  if (!daily) return null;
+  return {
+    ...daily,
+    hours: (snapshot.hourlyForecast ?? []).filter(hour => hour.localTime.slice(0, 10) === localDateKey),
+  };
 }
 
 async function fetchJson(url: string, fetcher: typeof fetch): Promise<unknown> {
@@ -145,12 +210,17 @@ export async function fetchWeather(
     condition: classifyWeatherCode(code),
     cloudCover: Math.max(0, Math.min(100, requiredNumber(current.cloud_cover, 'cloud_cover'))),
     windSpeedKph: Math.max(0, requiredNumber(current.wind_speed_10m, 'wind_speed_10m')),
+    windDirectionDeg: Number.isFinite(current.wind_direction_10m)
+      ? ((Number(current.wind_direction_10m) % 360) + 360) % 360
+      : null,
     isDay: requiredNumber(current.is_day, 'is_day') === 1,
     sunrise: arrayValue(daily.sunrise, dayIndex, (value): value is string => typeof value === 'string', 'sunrise'),
     sunset: arrayValue(daily.sunset, dayIndex, (value): value is string => typeof value === 'string', 'sunset'),
     dailyDate: arrayValue(daily.time, dayIndex, (value): value is string => typeof value === 'string', 'daily.time'),
     dailyMinC: arrayValue(daily.temperature_2m_min, dayIndex, (value): value is number => Number.isFinite(value), 'temperature_2m_min'),
     dailyMaxC: arrayValue(daily.temperature_2m_max, dayIndex, (value): value is number => Number.isFinite(value), 'temperature_2m_max'),
+    hourlyForecast: parseHourlyForecast(hourly),
+    dailyForecast: parseDailyForecast(daily),
   };
 }
 

@@ -170,9 +170,10 @@ function solarSchedule(timestamp: number, world: WorldEnvironment | null | undef
   const dateKey = `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
   const snapshot = world?.current;
   const weatherEnabled = world?.settings.mode === 'device' || world?.settings.mode === 'city';
-  if (weatherEnabled && snapshot && snapshot.dailyDate === dateKey) {
-    const sunriseMinute = parseLocalMinute(snapshot.sunrise);
-    const sunsetMinute = parseLocalMinute(snapshot.sunset);
+  const forecastDay = snapshot?.dailyForecast?.find(day => day.date === dateKey);
+  if (weatherEnabled && snapshot && (forecastDay || snapshot.dailyDate === dateKey)) {
+    const sunriseMinute = parseLocalMinute(forecastDay?.sunrise ?? snapshot.sunrise);
+    const sunsetMinute = parseLocalMinute(forecastDay?.sunset ?? snapshot.sunset);
     if (Number.isFinite(sunriseMinute) && Number.isFinite(sunsetMinute) && sunsetMinute > sunriseMinute) {
       return { sunriseMinute, sunsetMinute };
     }

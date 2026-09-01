@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.6
+> **Version:** 0.14.7
 > **Last Updated:** 2026-09-01
 
 ---
@@ -110,6 +110,7 @@ becoming/
 │   │   ├── ObjectIcon.tsx      # Hand-drawn room-object icon system
 │   │   ├── WeatherLayer.tsx    # Window, clouds, rain, snow, fog, wind and heat atmosphere
 │   │   ├── WeatherControls.tsx # Consent onboarding, city search and weather settings
+│   │   ├── TodayWeatherView.tsx # Selected-place current day and horizontal hourly forecast
 │   │   └── PwaUpdateNotice.tsx # Explicit safe-update prompt
 │   ├── App.tsx                 # Main app flow, offline sync
 │   ├── main.tsx                # Entry point
@@ -144,13 +145,13 @@ becoming/
 | Feeding | ✅ | Explicitly using placed food calls the creature; consumed food returns to the shelf for repeated use |
 | Creature movement | ✅ | Goal-driven state machine: idle → notice → look → approach → react; bounded shared floor coordinates and refresh-rate-independent canvas movement |
 | Touch interactions | ✅ | Tap, stroke (drag), hold on creature canvas |
-| Living world weather | ✅ | Opt-in Open-Meteo weather, rounded device coordinates or manual city search, 45-minute IndexedDB cache, last-known offline fallback, and atmospheric room rendering. Outdoor visits use a solar or last-known sky on their wake |
+| Living world weather | ✅ | Opt-in Open-Meteo weather, rounded device coordinates or manual city search, 45-minute IndexedDB cache, last-known offline fallback, atmospheric room rendering, and a dedicated Today view filtered to the selected place's local date. Outdoor visits use a solar or last-known sky on their wake |
 | Solar day / night | ✅ | The selected place's real local clock plus sunrise, sunset, `is_day`, cloud and condition data drive night → dawn → day → golden hour → dusk → night without fixed switch hours |
 | Sleep / wake cycle | ✅ | Ordinary lives sleep on their solar night and wake on their solar day, independent of when the player is around. A committed party/alcohol/degen life inverts that clock. Exhaustion or urgent hunger/toilet can still interrupt. Touch and chat can wake them; they are not commanded to bed |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
 | Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; the first room waits for a durable write; migration preserves living identity and placed objects; only a successful empty read or `indexedDB.databases()` confirming `becoming-db` is gone enters hatching. Chrome is given one `indexedDB.open` at a time — a timeout never abandons that request to queue another. A worker fallback may read the record while the main open is pending. Busy is never an egg |
 | Memory Book | ✅ | Emergent biography from significant memories |
-| Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
+| Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including the separate Room weather control, horizontal Today forecast, weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
 | Creature-initiated chat | ✅ | Creature can start conversations based on observations |
 | Chat interface | ✅ | Full-screen conversation with constrained responses. Their rest is a closed conversation window: quiet, no mind call |
@@ -752,6 +753,16 @@ Two production polish slices: the creature's language now comes from the mind, a
 
 Deterministic checks: daytime payload says day (with localTime), night payload says night and rest, sleep/wake matches the authoritative time system, `aboutTo` reaches the Worker allowlist and the model as a fact, canned speech cannot be a fallback, a failed mind call still runs the action without speech, development and path overlays still constrain the voice, and Room keeps exactly its four intervals (no second speech loop). Object checks cover tap→Use, popup gone, drag→reposition without Use, drop-on-target→Put away, inventory place paths, the 12 px threshold, pointer capture and touch-action isolation, and the intact reaction/life-path pipeline. `npm run check` is green. The updated Worker (`cleanSituation`, `cleanClock.localTime`, `SITUATION_PROMPT`) is in this commit but deploys separately via wrangler.
 
+### v0.14.7 — Weather gets Today
+
+Weather no longer borrows the Room's clock/care pill. When weather is enabled, a separate 44 px Room control shows its own icon, rounded current temperature, and factual English or Polish condition; stale observations say they are earlier, unavailable data stays unavailable, and disabled weather renders no forecast control. Tapping opens the standalone `TodayWeatherView` rather than enlarging `Room.tsx`.
+
+The Today sheet is intentionally one local day, not a dashboard: current condition and temperature, high/low, current wind, sunrise/sunset, and a horizontal hourly strip with condition, temperature, precipitation probability and wind. There is no weekly forecast and no forecast content enters DeepSeek. The Open-Meteo request now retains two local calendar days of hourly temperature/code/precipitation/wind and daily solar/high/low data inside the existing `WeatherSnapshot`. `App.tsx` remains the only refresh controller with the same five-minute cache check, 45-minute success cadence and 15-minute retry; no polling loop or provider was added.
+
+Today chooses its date through the selected weather location's IANA timezone, then filters Open-Meteo's local timestamps by that exact date. Keeping the second returned local day lets an IndexedDB cache cross the selected place's midnight while offline. Legacy snapshots migrate to a truthful one-day summary with no invented hours; stale/offline state keeps the last observation labelled and explains when no hourly forecast is cached. The same matching daily entry now supplies cached sunrise/sunset to the existing solar clock after midnight.
+
+Deterministic checks cover the extended request, aligned parsing, exact local-date hourly filtering, a Tokyo date differing from UTC/device date, second-day cache rollover, legacy migration and retained stale/offline snapshots. The browser pass covered the rendered Room and Today sheet at 390×844 and 320×568: separate 44 px targets, no page-width overflow, an independently scrolling hourly strip, readable EN/PL condition copy, and no console warnings or errors. `npm run check` is green.
+
 ---
 
 ## 6. Known Remaining Issues
@@ -806,6 +817,7 @@ Deterministic checks: daytime payload says day (with localTime), night payload s
 - **Weather is interpreted, not scored.** Open-Meteo supplies observations only. `WorldEnvironment` translates them into bounded stimuli, and gameplay combines those with needs, personality, preferences and memories before a reaction. No rule maps a condition directly to happiness loss.
 - **Location minimisation.** Geolocation is opt-in, high accuracy is disabled, coordinates are rounded to two decimals before requests or persistence, manual city selection remains available, and disabling weather stops forecast refreshes.
 - **Local-first with one optional observation source.** All core systems and the last successful weather state run from IndexedDB. Open-Meteo enriches the world when enabled. AI remains reserved for higher-level cognition and is composed as a thin always-on prompt plus earned overlays; weather still degrades offline, while room speech does not invent a substitute line.
+- **One weather cache, one cadence, local-calendar presentation.** The Room atmosphere, compact weather control, Today sheet, solar clock and outdoor interpretation all read the same persisted `WorldEnvironment.current` snapshot. Only `App.tsx` refreshes it. Today is selected by the weather location's IANA local date (never UTC or device date by accident), a cached second local day can bridge midnight, and stale/legacy data is labelled rather than completed with invented forecast values. Hourly forecast data is UI-only and never enlarges the bounded DeepSeek weather grounding.
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
 - **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
 - **Local systems decide reality; DeepSeek supplies creature language; silence beats fake fallback.** Local code owns every fact — clock, solar phase, rest/wake, needs, autonomy, current activity, place, weather, persistence — and sends one authoritative context per speech opportunity (`clock` + `situation`, including a real `aboutTo` action for self-care). The model phrases natural language from those facts and can never contradict them, diagnose, decide death, or mutate GameState. When the Worker, Turnstile or model fails, the real action still happens and the creature stays silent; no canned substitute line is ever invented. Local UI cues (body-language captions, reaction labels, grounded world-command acks, the clock-grounded return greeting) stay local because they are facts, not pretended mind speech.
@@ -863,7 +875,7 @@ request.onsuccess = () => location.reload();
 | How the private AI boundary is enforced | `worker/src/index.js` |
 | How tap/drag object semantics work | `src/systems/objectInput.ts` |
 | How the creature is drawn | `src/components/CreatureCanvas.tsx` |
-| How the weather window and settings are drawn | `src/components/WeatherLayer.tsx` + `src/components/WeatherControls.tsx` |
+| How the weather window, Today view and settings are drawn | `src/components/WeatherLayer.tsx` + `src/components/TodayWeatherView.tsx` + `src/components/WeatherControls.tsx` |
 | How room objects are drawn | `src/components/ObjectIcon.tsx` |
 | The main game loop / room | `src/components/Room.tsx` |
 | Personality signatures and autonomy weighting | `src/systems/relationshipSystem.ts` |

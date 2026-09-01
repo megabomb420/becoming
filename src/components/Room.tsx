@@ -9,6 +9,7 @@ import BecomingView from './BecomingView';
 import CareMark from './CareMark';
 import WeatherControls from './WeatherControls';
 import WeatherLayer from './WeatherLayer';
+import TodayWeatherView from './TodayWeatherView';
 import {
   NEED_COPY,
   NEED_ORDER,
@@ -351,6 +352,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const [showInventory, setShowInventory] = useState(false);
   const [showCare, setShowCare] = useState(false);
   const [showNeeds, setShowNeeds] = useState(false);
+  const [showTodayWeather, setShowTodayWeather] = useState(false);
   const [inventoryGroupId, setInventoryGroupId] = useState('care');
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -1730,9 +1732,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
   const visibleNeedSignals = getVisibleNeedSignals(state, 3);
   const dominantNeed = getDominantNeed(state, true);
   const weatherActive = state.world.settings.mode === 'device' || state.world.settings.mode === 'city';
-  const weatherSummary = weatherActive && state.world.current
-    ? `${getWeatherConditionLabel(state.world.current.condition, ui)}, ${Math.round(state.world.current.temperatureC)}°`
+  const weatherConditionLabel = state.world.current
+    ? getWeatherConditionLabel(state.world.current.condition, ui)
     : null;
+  const weatherIsLastKnown = state.world.status === 'stale' || Boolean(state.world.lastError);
   const roomSpeech = state.conversation.lastCreatureMessage;
 
   // A completed life is a quiet room, not a game-over screen. The saved life
@@ -2061,43 +2064,64 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             </button>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowNeeds(true)}
-          aria-label={`${t('Open care and needs', 'Otwórz opiekę i potrzeby')}${weatherSummary ? ` · ${weatherSummary}` : ''}`}
-          className="mx-auto mt-1 flex min-h-9 w-full max-w-md items-center gap-2 rounded-full border border-warm-200/10 bg-room-dark/68 px-3 py-1.5 text-left shadow-lg backdrop-blur-md transition-colors hover:bg-room-dark/82"
-        >
-          <span className="shrink-0 whitespace-nowrap text-[9px] font-serif uppercase tracking-[0.13em] text-warm-200/50">
-            {getPhaseLabel(timeOfDay.phase, ui)} · {formatLocalClock(timeOfDay)}
-          </span>
-          {weatherSummary && state.world.current && (
-            <span className={`shrink-0 whitespace-nowrap text-[9px] font-serif text-warm-200/48 ${state.world.status === 'stale' || state.world.lastError ? 'opacity-55' : ''}`} title={weatherSummary}>
-              <span aria-hidden="true">{getWeatherIcon(state.world.current.condition)}</span> {Math.round(state.world.current.temperatureC)}°
-            </span>
-          )}
-          <span className="h-3 w-px shrink-0 bg-warm-200/10" />
-          {visibleNeedSignals.length > 0 || healthCue ? (
-            <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-              {healthCue && (
-                <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[10px] font-serif" style={{ color: healthCue.tone === 'attention' ? '#e39a82' : '#d6b276' }}>
-                  <span aria-hidden="true">{healthCue.icon}</span>
-                  <span className="max-w-[5.7rem] truncate">{polish ? healthCue.labelPl : healthCue.labelEn}</span>
+        <div className="room-status-row mx-auto mt-1 flex w-full max-w-md gap-2">
+          {weatherActive && (
+            <button
+              type="button"
+              onClick={() => { setShowNeeds(false); setShowTodayWeather(true); }}
+              aria-label={state.world.current && weatherConditionLabel
+                ? `${t('Open today weather', 'Otwórz pogodę na dziś')} · ${Math.round(state.world.current.temperatureC)}° · ${weatherConditionLabel}${weatherIsLastKnown ? ` · ${t('last known', 'ostatnie dane')}` : ''}`
+                : t('Open today weather — weather unavailable', 'Otwórz pogodę na dziś — pogoda niedostępna')}
+              className={`room-weather-control ${weatherIsLastKnown ? 'is-stale' : ''}`}
+            >
+              <span className="room-weather-icon" aria-hidden="true">{state.world.current ? getWeatherIcon(state.world.current.condition) : '·'}</span>
+              <span className="min-w-0 text-left font-serif">
+                <span className="block whitespace-nowrap text-sm leading-none text-warm-100/82">
+                  {state.world.current ? `${Math.round(state.world.current.temperatureC)}°` : t('Weather', 'Pogoda')}
                 </span>
-              )}
-              {visibleNeedSignals.map(signal => (
-                <span key={signal.key} className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[10px] font-serif" style={{ color: urgencyColor(signal.urgency) }}>
-                  <span aria-hidden="true">{signal.icon}</span>
-                  <span className="max-w-[5.7rem] truncate">{getNeedLabel(signal.key, polish)}</span>
+                <span className="mt-1 block max-w-[7rem] truncate whitespace-nowrap text-[8px] leading-none text-warm-200/46">
+                  {weatherConditionLabel
+                    ? `${weatherConditionLabel}${weatherIsLastKnown ? ` · ${t('earlier', 'wcześniej')}` : ''}`
+                    : state.world.status === 'loading' || state.world.status === 'locating'
+                      ? t('Updating', 'Aktualizowanie')
+                      : t('Unavailable', 'Niedostępna')}
                 </span>
-              ))}
-            </span>
-          ) : (
-            <span className="truncate text-[10px] font-serif italic text-warm-200/45">
-              {t('all is calm', 'wszystko spokojne')}
-            </span>
+              </span>
+            </button>
           )}
-          <span className="ml-auto shrink-0 text-[10px] text-warm-200/30" aria-hidden="true">⌄</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setShowNeeds(true)}
+            aria-label={t('Open care and needs', 'Otwórz opiekę i potrzeby')}
+            className="room-needs-control flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-warm-200/10 bg-room-dark/68 px-3 py-1.5 text-left shadow-lg backdrop-blur-md transition-colors hover:bg-room-dark/82"
+          >
+            <span className="shrink-0 whitespace-nowrap text-[9px] font-serif uppercase tracking-[0.13em] text-warm-200/50">
+              {getPhaseLabel(timeOfDay.phase, ui)} · {formatLocalClock(timeOfDay)}
+            </span>
+            <span className="h-3 w-px shrink-0 bg-warm-200/10" />
+            {visibleNeedSignals.length > 0 || healthCue ? (
+              <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                {healthCue && (
+                  <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[10px] font-serif" style={{ color: healthCue.tone === 'attention' ? '#e39a82' : '#d6b276' }}>
+                    <span aria-hidden="true">{healthCue.icon}</span>
+                    <span className="max-w-[5.7rem] truncate">{polish ? healthCue.labelPl : healthCue.labelEn}</span>
+                  </span>
+                )}
+                {visibleNeedSignals.map(signal => (
+                  <span key={signal.key} className="flex min-w-0 items-center gap-1 whitespace-nowrap text-[10px] font-serif" style={{ color: urgencyColor(signal.urgency) }}>
+                    <span aria-hidden="true">{signal.icon}</span>
+                    <span className="max-w-[5.7rem] truncate">{getNeedLabel(signal.key, polish)}</span>
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="truncate text-[10px] font-serif italic text-warm-200/45">
+                {t('all is calm', 'wszystko spokojne')}
+              </span>
+            )}
+            <span className="ml-auto shrink-0 text-[10px] text-warm-200/30" aria-hidden="true">⌄</span>
+          </button>
+        </div>
       </header>
 
       {/* Daily moments are small dilemmas, not quests. Their choice changes
@@ -2318,6 +2342,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             </div>
           </section>
         </div>
+      )}
+
+      {showTodayWeather && (
+        <TodayWeatherView world={state.world} language={ui} now={clockNow} onClose={() => setShowTodayWeather(false)} />
       )}
 
       {showMemoryBook && <MemoryBookView state={state} version={version} onClose={() => setShowMemoryBook(false)} />}
