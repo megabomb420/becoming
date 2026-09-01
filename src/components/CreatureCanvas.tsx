@@ -3,9 +3,11 @@ import { GameState } from '../types';
 import { getLifePathVisual } from '../systems/lifePathSystem';
 import { getDominantNeed, getNeedUrgency } from '../systems/needsSystem';
 import { getEffectiveStimulus } from '../systems/environmentSystem';
+import type { RoomLighting } from '../systems/timeSystem';
 
 interface CreatureCanvasProps {
   state: GameState;
+  lighting?: RoomLighting;
   onTap: () => void;
   onStroke: () => void;
   onHoldStart: () => void;
@@ -27,7 +29,7 @@ function fillCoat(
   ctx.fill();
 }
 
-const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke, onHoldStart, onHoldEnd }) => {
+const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, lighting, onTap, onStroke, onHoldStart, onHoldEnd }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number | null>(null);
@@ -47,9 +49,10 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     targetPosRef.current = { ...state.position };
   }, [state.position.x, state.position.y]);
 
-  const renderEgg = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, time: number) => {
+  const renderEgg = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, time: number, lighting?: RoomLighting) => {
     const pulse = Math.sin(time * 0.002) * 0.03 + 1;
     const wobble = Math.sin(time * 0.001) * 2;
+    const night = lighting ? Math.max(0, 1.02 - lighting.brightness) : 0;
 
     ctx.save();
     ctx.translate(x, y + wobble);
@@ -65,6 +68,15 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.arc(0, 0, 72, 0, Math.PI * 2);
     ctx.fill();
 
+    // A soft floor contact grounds the egg in the same light as the room.
+    const ground = ctx.createRadialGradient(0, 46, 2, 0, 46, 34);
+    ground.addColorStop(0, `rgba(0,0,0,${0.24 + night * 0.12})`);
+    ground.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ground;
+    ctx.beginPath();
+    ctx.ellipse(0, 46, 26, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
     // Egg body — layered cel with subtle mottling
     const gradient = ctx.createRadialGradient(-12, -18, 4, 0, 0, 48);
     gradient.addColorStop(0, '#efe6d4');
@@ -74,6 +86,13 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.beginPath();
     ctx.ellipse(0, 0, 35, 48, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    if (night > 0.04) {
+      ctx.fillStyle = `rgba(30, 28, 23, ${night * 0.22})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 35, 48, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Mottle
     ctx.fillStyle = 'rgba(122, 105, 82, 0.14)';
@@ -90,7 +109,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.stroke();
 
     ctx.restore();
-  }, []);
+  }, [lighting]);
 
   const renderCreature = useCallback((ctx: CanvasRenderingContext2D, x: number, y: number, time: number) => {
     const app = state.identity.appearance;
@@ -267,9 +286,13 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       ctx.globalAlpha = 1;
     }
 
+    const lightDepth = lighting ? Math.max(0, 1.02 - lighting.brightness) : 0;
+    const coatDim = lightDepth * 6.5 + coldStrength * 4 - heatStrength * 2.2;
+    const coatSat = lightDepth * 1.8 + (environment.condition === 'storm' ? environment.intensity * 1.6 : 0);
+
     const fur = (dL: number, dS = 0, alpha = 1) => {
-      const s = Math.max(8, Math.min(62, saturation + dS));
-      const l = Math.max(22, Math.min(86, lightness + dL));
+      const s = Math.max(8, Math.min(62, saturation + dS + coatSat));
+      const l = Math.max(22, Math.min(86, lightness + dL - coatDim));
       return alpha >= 1 ? `hsl(${hue}, ${s}%, ${l}%)` : `hsla(${hue}, ${s}%, ${l}%, ${alpha})`;
     };
     const ink = fur(-34, 8);
@@ -401,8 +424,11 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
     ctx.fill();
     outline();
 
-    // Soft sheen on the crown.
-    fillCoat(ctx, 'rgba(255,255,255,0.24)', -11, -18, 12, 8, -0.5);
+    // Soft sheen on the crown, warmed by the room instead of a cold white.
+    const crownSheen = lighting && lighting.brightness < 0.72
+      ? 'rgba(199,166,108,0.18)'
+      : 'rgba(244,234,212,0.26)';
+    fillCoat(ctx, crownSheen, -11, -18, 12, 8, -0.5);
 
     const attentive = behavior === 'observing' || behavior === 'investigating' || behavior === 'hesitating' || behavior === 'imitating' || behavior === 'proud' || behavior === 'uncomfortable';
     const weatherEyeScale = 1 + weatherCuriosity * 0.06 + stormCaution * 0.04;
@@ -691,7 +717,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       });
       ctx.restore();
     }
-  }, [environmentalStimulus, state]);
+  }, [environmentalStimulus, lighting, state]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -729,7 +755,7 @@ const CreatureCanvas: React.FC<CreatureCanvasProps> = ({ state, onTap, onStroke,
       // CRITICAL: Never render egg if creature has already hatched.
       // The hatched flag is the source of truth for lifecycle state.
       if (!state.development.hatched && state.development.stage === 'egg') {
-        renderEgg(ctx, px, py, time);
+        renderEgg(ctx, px, py, time, lighting);
       } else {
         renderCreature(ctx, px, py, time);
       }

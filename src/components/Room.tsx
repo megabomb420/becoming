@@ -1779,7 +1779,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
             transform: 'translate(-50%, -50%)',
             cursor: 'grab',
             touchAction: 'none',
-            opacity: draggingObjectId === obj.id ? 0.25 : outdoors ? 0.28 : 1,
+            opacity: draggingObjectId === obj.id ? 0.25 : outdoors ? 0.28 : Math.min(1, 0.9 + Math.min(1, Math.max(0, (obj.y - 60) / 16)) * 0.1),
           }}
           onPointerDown={(e) => startPointerSession({ source: 'room', type: obj.type, objectId: obj.id }, e)}
           onClick={(e) => {
@@ -1795,7 +1795,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
               style={{ transform: `translateX(-50%) scaleX(${(0.74 + Math.min(1, Math.max(0, (obj.y - 60) / 34)) * 0.5).toFixed(2)})` }}
               aria-hidden="true"
             />
-            <ObjectIcon type={obj.type} status={obj.state.status} size={58} />
+            <ObjectIcon type={obj.type} status={obj.state.status} size={Math.round(58 * (0.86 + Math.min(1, Math.max(0, (obj.y - 60) / 16)) * 0.22))} className="room-object-icon" />
             {showInventory && (
               <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-warm-100/25 bg-room-dark/95 text-[11px] text-warm-100 shadow-lg" aria-hidden="true">↓</span>
             )}
@@ -1870,6 +1870,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
           position: creaturePos,
           facing: microFacing ?? (creaturePos.x > state.position.x ? 'right' : creaturePos.x < state.position.x ? 'left' : state.facing),
         }}
+        lighting={lighting}
         onTap={handleTapCreature}
         onStroke={handleStrokeCreature}
         onHoldStart={handleHoldStart}

@@ -868,9 +868,13 @@
   width: 3.9rem;
   height: 0.85rem;
   border-radius: 50%;
-  background: rgba(4, 5, 4, 0.38);
+  background: rgba(24, 21, 17, 0.42);
   filter: blur(6px);
   pointer-events: none;
+}
+
+.room-object-icon {
+  filter: drop-shadow(0 6px 8px rgba(8, 7, 6, 0.32)) saturate(0.86) contrast(1.03);
 }
 
 .window-spill {

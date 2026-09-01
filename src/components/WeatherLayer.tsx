@@ -47,6 +47,7 @@ const WeatherLayer: React.FC<WeatherLayerProps> = ({ world, lighting, time, seed
         <div className="window-frame" aria-hidden="true" />
         <div className="window-glass relative h-full overflow-hidden rounded-[inherit] bg-[#14171c]">
           <div className="absolute inset-0 transition-colors duration-[30000ms]" style={{ background: `linear-gradient(180deg, ${lighting.skyTop}, ${lighting.skyBottom})` }} />
+          <div className="absolute inset-0 rounded-[inherit]" style={{ background: `radial-gradient(ellipse at 50% 122%, ${lighting.ambientGlow}, transparent 62%)`, opacity: expanded ? 0.14 : 0.3, transition: 'background 30s linear' }} />
           <div
             className="absolute inset-0 transition-opacity duration-[30000ms]"
             style={{

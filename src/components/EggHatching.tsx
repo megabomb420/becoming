@@ -109,6 +109,7 @@ const EggHatching: React.FC<EggHatchingProps> = ({ onHatch, onNameChosen }) => {
               </span>
             ) : (
               <span className={`relative block transition-transform duration-700 ${stage === 'wobbling' ? 'animate-breathe' : ''} ${stage === 'cracking' ? 'scale-105' : ''}`} aria-hidden="true">
+                <span className="absolute bottom-1 left-1/2 h-3 w-24 -translate-x-1/2 rounded-full bg-[#0d0f0c]/50 blur-[6px]" aria-hidden="true" />
                 <span className="block w-24 h-32 rounded-[51%_49%_45%_55%] border border-white/10" style={{ background: 'radial-gradient(ellipse at 32% 26%, #e3dece, #a49b84 55%, #6e6859)', boxShadow: '0 24px 55px rgba(0,0,0,.42), inset -8px -14px 26px rgba(42,40,33,.24)' }} />
                 {stage === 'cracking' && (
                   <svg className="absolute inset-0 w-24 h-32 text-[#3a3b32]" viewBox="0 0 96 128" fill="none">
