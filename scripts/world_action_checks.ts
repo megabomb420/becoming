@@ -263,7 +263,8 @@ assert.match(roomSource, /const roomSpeech = state\.conversation\.lastCreatureMe
 assert.match(roomSource, /room-header relative z-30 safe-top/);
 assert.match(roomSource, /room-conversation-zone/);
 assert.doesNotMatch(roomSource, /setTimeout\(\(\) => setSpeech\(null\)/, 'the last utterance must not disappear on a timer');
-assert.match(cssSource, /min-height: calc\(7\.25rem \+ env\(safe-area-inset-top\)\)/, 'the mobile header must reserve safe-area space');
+assert.match(cssSource, /min-height: calc\(6rem \+ env\(safe-area-inset-top\)\)/, 'the compact mobile header still reserves safe-area space');
+assert.match(cssSource, /font-size: \.8125rem/, 'the speech bubble must stay compact and less oversized');
 assert.match(roomSource, /beginOutdoorVisit/);
 assert.match(roomSource, /shouldEndOutdoorVisit/);
 assert.match(roomSource, /wantsOutdoors\(currentState, isCreatureRestPhase/, 'autonomous outside must use their rest, not only weather affinity');

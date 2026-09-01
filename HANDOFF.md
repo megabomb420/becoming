@@ -2,7 +2,7 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.8
+> **Version:** 0.14.9
 > **Last Updated:** 2026-09-01
 
 ---
@@ -770,6 +770,16 @@ The pending 0.14.6 Worker clock/situation contract was deployed first, then the 
 Reasoning now follows one path: a small deterministic device heuristic emits only `ordinary` or `complex`; the Worker sanitizes the request, validates that a complex hint is backed by at least two earned context domains, maps it to DeepSeek V4 Flash `thinking: enabled` with `reasoning_effort: low`, and makes the same single provider request. Relevance comes from overlap with earned continuity, inner life/opinions, conflicted identity, and a qualitative close/bonded relationship — never message length or a keyword alone. Self-speak, about-to self-care, care-driven requests and local world-command fast paths stay non-thinking. Provider `reasoning_content` is never read, returned, logged, persisted or placed in history.
 
 Settings ends with a bilingual About / Diagnostics footer containing six bounded items: version plus short build id, truthful one-shot PWA update state, installed-app/browser runtime, local IndexedDB save state, weather-cache freshness/disabled state, and `DeepSeek V4 Flash · ordinary off / complex low`. `App.tsx` owns the existing single service-worker registration; opening Settings calls `registration.update()` once, with no poller or second update system. The browser pass at 390×844 and 320×568 found no horizontal overflow. Deterministic tests cover the conservative local choice, Worker demotion/acceptance, ordinary and complex provider mappings, one provider call, and reasoning privacy. `npm run check` is green.
+
+### v0.14.9 — The room opens up
+
+A visual-only polish pass on the top of the room and the speech bubble; no logic, needs, weather or systems changed. The 0.14.7 Today weather control and the 0.14.8 selective-reasoning/diagnostics work are untouched.
+
+- **Header is compact.** The creature name drops from `text-lg` to `text-base`, the header's reserved height shrinks from 7.25rem to 6rem (+ safe area), and bottom padding tightens — the room is the subject of the window again.
+- **The weather control is lighter.** The Today chip drops from 44 px to 32 px tall and from ~9.6rem to ~7.6rem wide, with a thinner border, lighter shadow, tighter padding, a smaller icon, temperature from `text-sm` to `text-xs`, and the condition label from 8 px to 7.5 px. The Today sheet behavior is unchanged.
+- **The day/time/needs pill is lighter.** It drops from 44 px to 32 px tall with lighter border, shadow, padding and gaps; phase · clock goes from 9 px to 8 px with tighter tracking, so the actual need signals — now 9 px with a wider truncation budget — read immediately.
+- **Speech bubble is smaller.** `room-speech-chip` font drops from .875rem to .8125rem with slightly tighter padding and line-height.
+- Deterministic layout checks now assert the compact header height, the compact bubble font, and the lighter weather/needs controls; `npm run check` is green. Responsive widths are validated by the existing safe-area and mobile-layout checks at 390×844 and 320×568; a physical-device pass remains the honest final step.
 
 ---
 

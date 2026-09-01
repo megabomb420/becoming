@@ -23,7 +23,7 @@ import {
   weatherLocationKey,
 } from './systems/environmentSystem';
 
-const APP_VERSION = '0.14.8';
+const APP_VERSION = '0.14.9';
 export type PwaUpdateStatus = 'up_to_date' | 'update_available' | 'checking' | 'offline' | 'unknown';
 export type LocalSaveStatus = 'saved' | 'saving' | 'unavailable' | 'unknown';
 
