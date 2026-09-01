@@ -434,10 +434,12 @@ export function isPrankster(state: GameState): boolean {
  * or for a prankster, the need still resolves — but leaves a floor trace the
  * player has to clean up.
  */
-export function useToiletCommanded(state: GameState, now = Date.now()): CareActionResult {
+export function useToiletCommanded(state: GameState, now = Date.now(), target: 'pee' | 'poop' | 'current_need' = 'current_need'): CareActionResult {
   const current = advanceNeeds(state, now);
-  const needsPee = current.needs.bladder < 62;
-  const needsPoop = current.needs.bowel < 54;
+  const considerPee = target === 'current_need' || target === 'pee';
+  const considerPoop = target === 'current_need' || target === 'poop';
+  const needsPee = considerPee && current.needs.bladder < 62;
+  const needsPoop = considerPoop && current.needs.bowel < 54;
   if (!needsPee && !needsPoop) return { state: current, performed: false, result: 'not_needed' };
 
   const boxPresent = hasLitterBox(current);

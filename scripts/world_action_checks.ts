@@ -12,6 +12,7 @@ import {
   parseWorldIntent,
   performImmediateWorldAction,
   resultFromObjectReaction,
+  semanticActionToWorldIntent,
 } from '../src/systems/worldActionSystem';
 import {
   createWorldEnvironment,
@@ -30,6 +31,33 @@ assert.deepEqual(parseWorldIntent('użyj poduszki'), { kind: 'use_object', objec
 assert.deepEqual(parseWorldIntent('play with the jingle toy'), { kind: 'use_object', objectType: 'jingle_toy' });
 assert.deepEqual(parseWorldIntent('daj mi szczotkę'), { kind: 'offer_object', objectType: 'brush' });
 assert.equal(parseWorldIntent('Lubię jabłka, ale ty nie musisz.'), null, 'an object mention is not automatically a command');
+// The local fast path stays conservative: first-person, negated, and
+// third-person toilet statements are ordinary conversation, not commands.
+assert.equal(parseWorldIntent('ja idę się wysrać'), null);
+assert.equal(parseWorldIntent('nie wysraj się'), null);
+assert.equal(parseWorldIntent('mój pies zrobił kupę'), null);
+assert.equal(parseWorldIntent('chyba chce ci się kupę'), null);
+
+// Semantic world actions map to canonical local intents; invalid or
+// unallowlisted model actions are rejected before any state changes.
+assert.deepEqual(semanticActionToWorldIntent({ type: 'toilet', target: 'poop' }), { kind: 'toilet', objectType: 'litter_box', target: 'poop' });
+assert.deepEqual(semanticActionToWorldIntent({ type: 'drink' }), { kind: 'drink', objectType: 'water_bowl' });
+assert.deepEqual(semanticActionToWorldIntent({ type: 'use_object', target: 'cushion' }), { kind: 'use_object', objectType: 'cushion' });
+assert.equal(semanticActionToWorldIntent({ type: 'use_object', target: 'guitar' }), null);
+assert.equal(semanticActionToWorldIntent({ type: 'reset_save' }), null);
+assert.equal(semanticActionToWorldIntent(null), null);
+
+const semanticToiletIntent = semanticActionToWorldIntent({ type: 'toilet', target: 'poop' });
+assert.ok(semanticToiletIntent);
+const semanticToilet = performImmediateWorldAction(
+  { ...base, needs: { ...base.needs, bowel: 10, bladder: 90 } },
+  semanticToiletIntent,
+  NOW,
+);
+assert.equal(semanticToilet.result.status, 'success');
+assert.ok(semanticToilet.state.needs.bowel > 70);
+assert.deepEqual(semanticToilet.state.personality, base.personality, 'a semantic world action must not rewrite personality');
+assert.equal(semanticToilet.state.lifePath.primary, base.lifePath.primary, 'a semantic world action must not assign a life path');
 
 const cushionReaction = chooseObjectReaction({ ...base, needs: { ...base.needs, comfort: 20 } }, 'cushion');
 assert.ok(cushionReaction.needDelta.comfort > 0, 'a low-comfort cushion use must restore comfort');

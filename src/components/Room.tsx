@@ -115,6 +115,7 @@ import {
   parseWorldIntent,
   performImmediateWorldAction,
   resultFromObjectReaction,
+  semanticActionToWorldIntent,
   WorldActionResult,
   WorldIntent,
 } from '../systems/worldActionSystem';
@@ -1033,8 +1034,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
       selfSpeakInFlightRef.current = true;
       lastSelfSpeakAtRef.current = Date.now();
       void requestCreatureReply(currentState, { kind: 'self' })
-        .then(text => {
-          if (text.trim()) triggerSpeech(text);
+        .then(result => {
+          if (result.reply.trim()) triggerSpeech(result.reply);
         })
         .catch(() => {})
         .finally(() => {
@@ -1075,6 +1076,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     emitCue('wake');
     const woken = wakeUp(stateRef.current);
     showCreatureCue({ icon: '·', label: t(label, polishLabel), tone: 'notice' }, 2400);
+    stateRef.current = woken;
     onStateChange(woken);
   }, [emitCue, onStateChange, showCreatureCue, t]);
 
@@ -1088,12 +1090,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     if (!boundary.accepted) {
       showCreatureCue({ icon: '·', label: boundary.label || t('needs a moment', 'potrzebuje chwili'), tone: 'notice' }, 2600);
       setTemporaryEmotion('uncertain', 2800);
+      stateRef.current = boundary.state;
       onStateChange(boundary.state);
       return;
     }
     showCreatureCue({ icon: '?', label: t('notices your touch', 'zauważa twój dotyk'), tone: 'notice' }, 1600);
     const updated = recordBondEvent(touchCreature(boundary.state, 'tap'), 'tap');
     setTemporaryEmotion('curious', 2000);
+    stateRef.current = updated;
     onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech, wakeFromTouch]);
 
@@ -1107,12 +1111,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     if (!boundary.accepted) {
       showCreatureCue({ icon: '·', label: boundary.label || t('needs a moment', 'potrzebuje chwili'), tone: 'notice' }, 2600);
       setTemporaryEmotion('uncertain', 2800);
+      stateRef.current = boundary.state;
       onStateChange(boundary.state);
       return;
     }
     showCreatureCue({ icon: '♡', label: t('leans into your hand', 'przysuwa się do twojej dłoni'), tone: 'reaction' }, 2400);
     const updated = recordBondEvent(touchCreature(boundary.state, 'stroke'), 'stroke');
     setTemporaryEmotion('happy', 3000);
+    stateRef.current = updated;
     onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, triggerSpeech, wakeFromTouch]);
 
@@ -1128,12 +1134,14 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     if (!boundary.accepted) {
       showCreatureCue({ icon: '·', label: boundary.label || t('not yet', 'jeszcze nie'), tone: 'notice' }, 2800);
       setTemporaryEmotion('uncertain', 3000);
+      stateRef.current = boundary.state;
       onStateChange(boundary.state);
       return;
     }
     showCreatureCue({ icon: '♡', label: t('settles close', 'układa się blisko'), tone: 'reaction' }, 2600);
     const updated = recordBondEvent(touchCreature(boundary.state, 'hold'), 'hold');
     setTemporaryEmotion('happy', 3000);
+    stateRef.current = updated;
     onStateChange(updated);
   }, [emitCue, onStateChange, setTemporaryEmotion, showCreatureCue, t, wakeFromTouch]);
 
@@ -1345,7 +1353,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     behaviorRef.current = 'toileting';
     setTemporaryEmotion('happy', 3300);
     showCreatureCue({ icon: '○', label: activity, tone: 'reaction' }, 3200);
-    onStateChange({ ...execution.state, emotionalState: 'neutral', creatureBehavior: 'toileting', currentActivity: activity });
+    const toiletState: GameState = { ...execution.state, emotionalState: 'neutral', creatureBehavior: 'toileting', currentActivity: activity };
+    stateRef.current = toiletState;
+    onStateChange(toiletState);
     finishCareAnimation('toileting', 3300);
   };
 
@@ -1369,7 +1379,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     behaviorRef.current = 'washing';
     setTemporaryEmotion('happy', 3500);
     showCreatureCue({ icon: '≈', label: activity, tone: 'reaction' }, 3400);
-    onStateChange({ ...execution.state, emotionalState: 'neutral', creatureBehavior: 'washing', currentActivity: activity });
+    const washState: GameState = { ...execution.state, emotionalState: 'neutral', creatureBehavior: 'washing', currentActivity: activity };
+    stateRef.current = washState;
+    onStateChange(washState);
     finishCareAnimation('washing', 3500);
   };
 
@@ -1388,7 +1400,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setShowCare(false);
     showCreatureCue({ icon: '◇', label: messId ? t('the floor is clean again', 'podłoga znów jest czysta') : t('the room feels clear again', 'w pokoju znów jest czysto'), tone: 'reaction' }, 2600);
     const cleaned = execution.state.roomMess.length === 0 ? { ...execution.state, emotionalState: 'neutral' } : execution.state;
-    onStateChange(messId ? recordBondEvent(cleaned, 'care') : cleaned);
+    const cleanState = messId ? recordBondEvent(cleaned, 'care') : cleaned;
+    stateRef.current = cleanState;
+    onStateChange(cleanState);
   };
 
   const handleOpenFood = () => {
@@ -1569,12 +1583,18 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version }) =
     setIsThinking(true);
     setMindState('connecting');
     try {
-      const reply = await requestCreatureReply(turn.state);
+      const mindReply = await requestCreatureReply(turn.state);
       const quiet = getSleepingTalkReply(stateRef.current);
       if (quiet) {
         triggerSpeech(quiet, false);
       } else {
-        triggerSpeech(reply);
+        const semanticIntent = semanticActionToWorldIntent(mindReply.action);
+        if (semanticIntent) {
+          setShowChat(false);
+          runWorldIntent(semanticIntent);
+        } else {
+          triggerSpeech(mindReply.reply);
+        }
       }
       setMindState('online');
     } catch (error) {
