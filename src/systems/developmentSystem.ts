@@ -511,6 +511,26 @@ export function getDevelopmentStageFromMemory(content: string): DevelopmentStage
   )) ?? null;
 }
 
+const DEVELOPMENT_STAGES: DevelopmentStage[] = ['egg', 'newborn', 'animal', 'communicating', 'first_words', 'combining', 'sentences', 'mature'];
+
+/**
+ * Repairs prose that older versions generated with the raw internal stage id
+ * embedded — for example a dream fragment stored as "reached first_words
+ * floated above the room…". Only genuinely snake-case stage ids (today just
+ * `first_words`) are remapped, because a bare single-word label such as
+ * "animal" is ordinary prose and must never be rewritten. Milestone phrases
+ * keep their canonical form ("Reached First words"). Idempotent: already-clean
+ * prose is returned unchanged.
+ */
+export function mapLegacyStageIdsInProse(text: string): string {
+  if (!text || !text.includes('_')) return text;
+  const pattern = DEVELOPMENT_STAGES.filter(stage => stage.includes('_')).join('|');
+  return text
+    .replace(new RegExp(`\\breached\\s+(${pattern})\\b`, 'gi'), (_match, stage: string) => getDevelopmentMilestoneText(stage as DevelopmentStage, 'en'))
+    .replace(new RegExp(`\\bosiągnęło etap:\\s+(${pattern})\\b`, 'gi'), (_match, stage: string) => getDevelopmentMilestoneText(stage as DevelopmentStage, 'pl'))
+    .replace(new RegExp(`\\b(${pattern})\\b`, 'g'), (stage: string) => getDevelopmentLabel(stage as DevelopmentStage, 'en'));
+}
+
 export function getDevelopmentDescription(stage: DevelopmentStage, language: 'en' | 'pl' = 'en'): string {
   const english = {
     egg: 'Waiting to emerge.',

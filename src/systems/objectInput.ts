@@ -23,17 +23,19 @@ export function isPointInRect(
 /**
  * Decides what a pointer release means for the current drag session:
  * - inventory tap -> place on an auto slot; inventory drag -> place at the spot
- * - room tap (tray closed) -> Use; room tap (tray open) -> Put away
+ * - room tap -> Use (the shelf being open never changes a tap: care and object
+ *   use stay available while the tray is up)
  * - room drag -> reposition, or Put away when released over the inventory target
- * A drag never falls through to Use.
+ * A drag never falls through to Use. Put-away is an explicit separate action:
+ * a drag onto the open tray/drop target, or the dedicated Put away control
+ * shown beside each room object while the shelf is open.
  */
 export function resolveObjectRelease(
   session: { source: 'inventory' | 'room'; moved: boolean; objectId?: string },
   overInventoryTarget: boolean,
-  trayOpen: boolean,
 ): ObjectReleaseOutcome | null {
   if (session.source === 'inventory') return session.moved ? 'place_at' : 'place_auto';
   if (!session.objectId) return null;
   if (session.moved) return overInventoryTarget ? 'put_away' : 'reposition';
-  return trayOpen ? 'put_away' : 'use';
+  return 'use';
 }
