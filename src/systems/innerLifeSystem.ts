@@ -616,6 +616,11 @@ const DEVELOPMENT_DREAM_IMAGES: Record<DevelopmentStage, { en: string; pl: strin
   mature: { en: 'a mind grown whole', pl: 'umysł, który urósł w całość' },
 };
 
+const MISSING_DREAM_IMAGE = {
+  en: 'the room breathing in the dark',
+  pl: 'pokój oddychający w ciemności',
+};
+
 const ABSENCE_DREAM_IMAGE = {
   en: 'the quiet hours of an empty room',
   pl: 'ciche godziny pustego pokoju',
@@ -647,7 +652,7 @@ function memoryTitleImage(content: string): string | null {
 }
 
 function memoryAsDreamImage(memory: Memory | undefined, language: 'en' | 'pl'): string {
-  if (!memory) return 'the room breathing in the dark';
+  if (!memory) return MISSING_DREAM_IMAGE[language];
   const developmentStage = getDevelopmentStageFromMemory(memory.content);
   if (developmentStage) return DEVELOPMENT_DREAM_IMAGES[developmentStage][language];
   if (memory.tags.includes('absence')) return ABSENCE_DREAM_IMAGE[language];
@@ -660,6 +665,18 @@ function memoryAsDreamImage(memory: Memory | undefined, language: 'en' | 'pl'): 
     return USER_FACT_DREAM_IMAGES[kind ?? 'other'][language];
   }
   return memory.content.replace(/^user\s+/i, 'you ').replace(/[.!]$/, '').slice(0, 90);
+}
+
+/**
+ * The one recognisable creature-speech form that retells a stored dream (built
+ * by social-learning dream sharing). Migration limits conversation repair to
+ * these quotes, so ordinary creature speech that happens to contain milestone
+ * copy is never rewritten.
+ */
+const DREAM_RETELLING_PREFIX = /^\s*(?:I had a strange dream:|Miałem dziwny sen:)\s/i;
+
+export function isDreamRetelling(text: string): boolean {
+  return typeof text === 'string' && DREAM_RETELLING_PREFIX.test(text);
 }
 
 /**
@@ -705,10 +722,14 @@ export function generateDreamAfterSleep(state: GameState, sleptMs: number, now =
   const polish = state.conversation.language === 'pl';
   const label = getInterestLabel(topic, polish ? 'pl' : 'en');
   const mood = dreamMood(state);
+  // Polish templates never make the inserted image the subject of an agreeing
+  // verb: quoted pairs take the non-personal plural ("unosiły się") and the
+  // reverse template stays impersonal ("działo się coś … — „image”"), so any
+  // gender or number of image stays grammatical without an inflection engine.
   const fragments = polish ? [
     `${capitalizeFirst(memoryAsDreamImage(first, 'pl'))}, ale każde drzwi prowadziły z powrotem do „${label}”.`,
-    `„${memoryAsDreamImage(first, 'pl')}” unosiło się nad „${memoryAsDreamImage(second, 'pl')}” i nikogo to nie dziwiło.`,
-    `Pokój nie miał ścian. Gdzieś daleko „${memoryAsDreamImage(first, 'pl')}” działo się od końca.`,
+    `„${memoryAsDreamImage(first, 'pl')}” i „${memoryAsDreamImage(second, 'pl')}” unosiły się, i nikogo to nie dziwiło.`,
+    `Pokój nie miał ścian. Gdzieś daleko działo się coś od końca — „${memoryAsDreamImage(first, 'pl')}”.`,
     `„${label}” mówiło twoim głosem. Zadało pytanie, którego po przebudzeniu już nie pamiętałem.`,
   ] : [
     `${capitalizeFirst(memoryAsDreamImage(first, 'en'))}, but every doorway led back to ${label}.`,
