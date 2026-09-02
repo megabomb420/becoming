@@ -7,13 +7,14 @@ import { build } from 'esbuild';
 const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'becoming-system-checks-'));
 const outputFile = path.join(temporaryDirectory, 'system-checks.mjs');
 const projectDirectory = fileURLToPath(new URL('..', import.meta.url));
+const entryPoint = process.argv[2] ?? 'scripts/system_checks.ts';
 
 try {
   await build({
     // fileURLToPath is required on Windows; URL.pathname produces /C:/... and
     // made the repository's own system check fail before any assertion ran.
     absWorkingDir: projectDirectory,
-    entryPoints: ['scripts/system_checks.ts'],
+    entryPoints: [entryPoint],
     outfile: outputFile,
     bundle: true,
     platform: 'node',

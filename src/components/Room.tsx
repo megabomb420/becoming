@@ -107,6 +107,16 @@ import {
 import { appendCreatureMessage, beginConversationTurn, isRestingChatGate } from '../systems/conversationSystem';
 import { isLlmAvailable, requestCreatureReply, SelfCareKind, shouldCreatureSelfSpeak } from '../systems/llmConversation';
 import {
+  beginSelfCareSpeech,
+  canSpeakSelfCare,
+  createSelfCareSpeechPolicy,
+  dominantSpokenCareNeed,
+  failActiveSelfCareSpeech,
+  finishSelfCareSpeech,
+  isSelfCareSpeechCurrent,
+  recordStandaloneSelfCareSpeech,
+} from '../systems/selfCareSpeechPolicy';
+import {
   applyWorldObjectReaction,
   applyConversationMicroReaction,
   beginWorldObjectApproach,
@@ -134,6 +144,7 @@ import {
   resolveObjectRelease,
 } from '../systems/objectInput';
 import DeathScreen from './DeathScreen';
+import { authoritativeNow, cadenceDelay, developmentMinutesPerCadence } from '../systems/authoritativeTime';
 
 interface RoomProps {
   state: GameState;
@@ -370,7 +381,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   const [momentResult, setMomentResult] = useState<string | null>(null);
   const [firstMoment, setFirstMoment] = useState<MeaningfulFirst | null>(null);
   const [careEffect, setCareEffect] = useState<CareRitualEffect>(null);
-  const [clockNow, setClockNow] = useState(() => Date.now());
+  const [clockNow, setClockNow] = useState(() => authoritativeNow());
   const quietTalkReply = isRestingChatGate(state, clockNow);
 
   useEffect(() => {
@@ -411,7 +422,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   const returnTraceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const careEffectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const lastCareSignalRef = useRef(0);
-  const lastSelfCareSpeechRef = useRef<Partial<Record<SelfCareKind | 'any', number>>>({});
+  const selfCareSpeechPolicyRef = useRef(createSelfCareSpeechPolicy());
   const lastSpeechAtRef = useRef(0);
   const lastSelfSpeakAtRef = useRef(0);
   const selfSpeakInFlightRef = useRef(false);
@@ -433,8 +444,8 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   }, [state.emotionalState]);
 
   useEffect(() => {
-    const updateClock = () => setClockNow(Date.now());
-    const interval = setInterval(updateClock, 30_000);
+    const updateClock = () => setClockNow(authoritativeNow());
+    const interval = setInterval(updateClock, cadenceDelay(30_000));
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') updateClock();
     };
@@ -521,7 +532,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     try {
       if (file.size > 2_000_000) throw new Error(polish ? 'Ten backup jest za duży.' : 'This backup is too large.');
       const parsed = parseImportedGameState(await file.text());
-      const now = Date.now();
+      const now = authoritativeNow();
       const awayMs = Math.max(0, now - parsed.lastSaved);
       const imported = awayMs >= 60_000
         ? simulateOfflineTime(parsed, awayMs, now).state
@@ -548,7 +559,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
 
   const triggerSpeech = useCallback((text: string, remember = true) => {
     if (!text.trim()) return;
-    lastSpeechAtRef.current = Date.now();
+    lastSpeechAtRef.current = authoritativeNow();
     setSpeechFresh(true);
     clearTimeout(speechFadeRef.current);
     speechFadeRef.current = setTimeout(() => setSpeechFresh(false), 7000);
@@ -559,7 +570,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
           conversation: {
             ...prev.conversation,
             lastCreatureMessage: text,
-            lastConversationAt: Date.now(),
+            lastConversationAt: authoritativeNow(),
           },
         });
   }, [onStateChange]);
@@ -569,23 +580,22 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   // clock, place and activity in its context — or stay silent. The action
   // proceeds regardless; a failed mind call means silence, never a canned
   // substitute. Only a mature mind narrates its own body.
-  const announceSelfCare = useCallback((kind: SelfCareKind) => {
-    const now = Date.now();
-    const last = lastSelfCareSpeechRef.current;
-    if (now - (last.any ?? 0) < 120_000) return;
-    if (now - (last[kind] ?? 0) < 360_000) return;
+  const announceSelfCare = useCallback((kind: SelfCareKind): number | null => {
     const current = stateRef.current;
-    if (current.development.stage !== 'mature') return;
-    if (!isLlmAvailable()) return;
-    last.any = now;
-    last[kind] = now;
+    if (current.development.stage !== 'mature') return null;
+    if (!isLlmAvailable()) return null;
+    const token = beginSelfCareSpeech(selfCareSpeechPolicyRef.current, current, kind);
+    if (token === null) return null;
     void requestCreatureReply(current, { kind: 'self', aboutTo: { action: kind } })
       .then(result => {
-        if (result.reply.trim()) triggerSpeech(result.reply, false);
+        if (result.reply.trim() && isSelfCareSpeechCurrent(selfCareSpeechPolicyRef.current, token)) {
+          triggerSpeech(result.reply, false);
+        }
       })
       .catch(() => {
         // The body acts; silence is valid.
       });
+    return token;
   }, [triggerSpeech]);
 
   useEffect(() => {
@@ -620,6 +630,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   }, []);
 
   const clearActionTimers = useCallback(() => {
+    failActiveSelfCareSpeech(selfCareSpeechPolicyRef.current);
     clearTimeout(noticeTimerRef.current);
     clearTimeout(movementTimerRef.current);
     clearTimeout(reactionTimerRef.current);
@@ -637,6 +648,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     initiatedByUser: boolean,
     worldIntent?: WorldIntent,
     onWorldResult?: (result: WorldActionResult) => void,
+    selfCareSpeechToken?: number | null,
   ) => {
     setIsMoving(false);
 
@@ -645,6 +657,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     const reactionDuration = reaction.duration;
     const reactionEmotion = reaction.emotion;
     onStateChange(prev => applyWorldObjectReaction(prev, objectId, reaction, target, localizedReaction, initiatedByUser));
+    if (selfCareSpeechToken != null) {
+      finishSelfCareSpeech(selfCareSpeechPolicyRef.current, selfCareSpeechToken, 'completed');
+    }
 
     behaviorRef.current = reaction.behavior;
     showCreatureCue({ icon: reaction.icon, label: localizedReaction, tone: 'reaction' }, reactionDuration);
@@ -678,6 +693,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     object: RoomObject,
     initiatedByUser = true,
     autonomousMomentId?: Parameters<typeof recordAutonomousMoment>[1],
+    selfCareKind?: SelfCareKind,
     worldIntent?: WorldIntent,
     onWorldResult?: (result: WorldActionResult) => void,
   ) => {
@@ -693,12 +709,13 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       const momentId = autonomousMomentId
         ?? (currentState.development.experience.favoriteObject === object.type ? 'favorite_return' : 'bold_test');
       onStateChange(prev => recordMeaningfulFirst(
-        recordAutonomousMoment(prev, momentId, Date.now(), object.type),
+        recordAutonomousMoment(prev, momentId, authoritativeNow(), object.type),
         'first_autonomous_object',
       ));
     }
 
     clearActionTimers();
+    const selfCareSpeechToken = selfCareKind ? announceSelfCare(selfCareKind) : null;
     activeObjectRef.current = object.id;
     setIsMoving(false);
     const currentPos = creaturePosRef.current;
@@ -738,11 +755,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
 
       movementTimerRef.current = setTimeout(() => {
         if (activeObjectRef.current === object.id) {
-          finishObjectInteraction(object.id, object.type, target, initiatedByUser, worldIntent, onWorldResult);
+          finishObjectInteraction(object.id, object.type, target, initiatedByUser, worldIntent, onWorldResult, selfCareSpeechToken);
         }
       }, travelTime);
     }, noticeDelay);
-  }, [clearActionTimers, finishObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue]);
+  }, [announceSelfCare, clearActionTimers, finishObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue]);
 
   const walkToIdlePosition = useCallback((targetInput: { x: number; y: number }, options?: { outdoors?: boolean }) => {
     if (activeObjectRef.current || stateRef.current.sleepState === 'sleeping' || isDead(stateRef.current)) return;
@@ -774,7 +791,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   const startAmbientMoment = useCallback(() => {
     const currentState = stateRef.current;
     if (activeObjectRef.current || currentState.sleepState === 'sleeping' || behaviorRef.current !== 'idle') return;
-    const now = Date.now();
+    const now = authoritativeNow();
     const needSignal = getVisibleNeedSignals(currentState, 1)[0];
     const needMoment = needSignal && (needSignal.urgency === 'urgent' || needSignal.urgency === 'attention') ? {
       icon: needSignal.icon,
@@ -832,7 +849,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     }
 
     onStateChange(prev => {
-      let next = recordAutonomousMoment(prev, moment.id, Date.now(), moment.objectType);
+      let next = recordAutonomousMoment(prev, moment.id, authoritativeNow(), moment.objectType);
       if (moment.id === 'seek_user') next = recordMeaningfulFirst(next, 'first_spontaneous_approach');
       return next;
     });
@@ -887,7 +904,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       if (showChat || showCare || showInventory || activeObjectRef.current || behaviorRef.current !== 'idle') return;
 
       if (currentState.world.place === 'outdoors') {
-        const now = Date.now();
+        const now = authoritativeNow();
         const time = getTimeOfDay(now, currentState.world);
         const schedule = getRestSchedule(currentState.lifePath);
         const restPullsInside = isCreatureRestPhase(time, schedule) && currentState.needs.energy >= 20;
@@ -913,9 +930,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
                 ? { icon: '○', en: 'checks the place where food usually appears', pl: 'sprawdza miejsce, w którym zwykle pojawia się jedzenie' }
                 : null;
 
-      if (careSignal && Date.now() - lastCareSignalRef.current > 38_000) {
+      if (careSignal && authoritativeNow() - lastCareSignalRef.current > 38_000) {
         const label = polish ? careSignal.pl : careSignal.en;
-        lastCareSignalRef.current = Date.now();
+        lastCareSignalRef.current = authoritativeNow();
         behaviorRef.current = 'uncomfortable';
         setTemporaryEmotion('concerned', 3200);
         showCreatureCue({ icon: careSignal.icon, label, tone: 'notice' }, 3100);
@@ -967,17 +984,17 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
         goal = closestOfType(['wash_basin']);
         if (goal) goalKind = 'wash';
       }
-      const now = Date.now();
+      const now = authoritativeNow();
       const time = getTimeOfDay(now, currentState.world);
       const schedule = getRestSchedule(currentState.lifePath);
       const disposition = getCircadianDisposition(time, currentState.needs.energy, false, schedule);
       if (!goal && creatureMaySleep(time, currentState.needs.energy, schedule) && !getSleepBlocker(currentState)) {
         const blanket = closestOfType(['blanket']);
-        announceSelfCare('sleep');
         if (blanket) {
-          beginObjectInteraction(blanket, false);
+          beginObjectInteraction(blanket, false, undefined, 'sleep');
           return;
         }
+        announceSelfCare('sleep');
         onStateChange(putToSleep(currentState, now));
         return;
       }
@@ -992,7 +1009,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       // the normal ambient loop show the individual reaction. This keeps the
       // chain visible: outside stimulus → choice of place → body language.
       if (!goal) {
-        const environmentReaction = chooseEnvironmentReaction(currentState, ui, Date.now());
+        const environmentReaction = chooseEnvironmentReaction(currentState, ui, authoritativeNow());
         if (environmentReaction?.positionHint) {
           const blanket = currentState.roomObjects.find(object => object.type === 'blanket');
           const environmentTarget = environmentReaction.positionHint === 'window'
@@ -1007,12 +1024,12 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
             return;
           }
         }
-        if (wantsOutdoors(currentState, isCreatureRestPhase(time, schedule), schedule === 'nocturnal') && !outdoorVisitBlocked(currentState) && Date.now() - (currentState.world.lastOutdoorAt || 0) > OUTDOOR_COOLDOWN_MS) {
+        if (wantsOutdoors(currentState, isCreatureRestPhase(time, schedule), schedule === 'nocturnal') && !outdoorVisitBlocked(currentState) && authoritativeNow() - (currentState.world.lastOutdoorAt || 0) > OUTDOOR_COOLDOWN_MS) {
           if (dist(currentPos, WINDOW_PLACE) > 8) {
             walkToIdlePosition(WINDOW_PLACE);
             return;
           }
-          const visit = beginOutdoorVisit(currentState, Date.now());
+          const visit = beginOutdoorVisit(currentState, authoritativeNow());
           stateRef.current = visit;
           onStateChange(visit);
           walkToIdlePosition(OUTDOOR_PLACE, { outdoors: true });
@@ -1021,8 +1038,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       }
 
       if (goal) {
-        if (goalKind) announceSelfCare(goalKind);
-        beginObjectInteraction(goal, false);
+        beginObjectInteraction(goal, false, undefined, goalKind ?? undefined);
         return;
       }
       startAmbientMoment();
@@ -1059,10 +1075,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     activityTimerRef.current = setInterval(() => {
       onStateChange(prev => {
         if (isDead(prev)) return prev;
-        const updated = updateDevelopment(prev, 0.5);
+        const updated = updateDevelopment(prev, developmentMinutesPerCadence(), authoritativeNow());
         return { ...updated, needs: { ...prev.needs } };
       });
-    }, 30000);
+    }, cadenceDelay(30_000));
     return () => clearInterval(activityTimerRef.current);
   }, [onStateChange]);
 
@@ -1073,14 +1089,19 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       if (isDead(currentState) || showChat || showCare || activeObjectRef.current || currentState.sleepState === 'sleeping') return;
       if (behaviorRef.current !== 'idle' || selfSpeakInFlightRef.current) return;
       if (!isLlmAvailable()) return;
-      if (Date.now() - lastSpeechAtRef.current < 90_000) return;
-      if (Date.now() - lastSelfSpeakAtRef.current < 180_000) return;
+      if (authoritativeNow() - lastSpeechAtRef.current < 90_000) return;
+      if (authoritativeNow() - lastSelfSpeakAtRef.current < 180_000) return;
       if (!shouldCreatureSelfSpeak(currentState)) return;
+      const careKind = dominantSpokenCareNeed(currentState);
+      if (careKind && !canSpeakSelfCare(selfCareSpeechPolicyRef.current, currentState, careKind)) return;
       selfSpeakInFlightRef.current = true;
-      lastSelfSpeakAtRef.current = Date.now();
+      lastSelfSpeakAtRef.current = authoritativeNow();
       void requestCreatureReply(currentState, { kind: 'self' })
         .then(result => {
-          if (result.reply.trim()) triggerSpeech(result.reply);
+          if (result.reply.trim()) {
+            if (careKind) recordStandaloneSelfCareSpeech(selfCareSpeechPolicyRef.current, currentState, careKind);
+            triggerSpeech(result.reply);
+          }
         })
         .catch(() => {})
         .finally(() => {
@@ -1107,7 +1128,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
           const topic = generateInitiatedTopic(currentState);
           if (topic) {
             setInitiatedTopic(topic.openingLine);
-            onStateChange(prev => appendCreatureMessage(clearInitiatedTopic(prev, topic.observationId), topic.openingLine, Date.now(), { roomBubble: false }));
+            onStateChange(prev => appendCreatureMessage(clearInitiatedTopic(prev, topic.observationId), topic.openingLine, authoritativeNow(), { roomBubble: false }));
             return;
           }
         }
@@ -1376,7 +1397,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   };
 
   const handleToilet = () => {
-    const now = Date.now();
+    const now = authoritativeNow();
     const execution = performImmediateWorldAction(stateRef.current, { kind: 'toilet', objectType: 'litter_box' }, now);
     if (execution.result.status === 'blocked') {
       showCreatureCue({ icon: '·', label: t('is sleeping too deeply right now', 'teraz śpi zbyt mocno'), tone: 'ambient' }, 2400);
@@ -1491,7 +1512,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       return;
     }
     showCreatureCue({ icon: '!', label: polish ? `zauważa: ${objectLabel(type, true)}` : `notices the ${objectLabel(type, false)}`, tone: 'notice' });
-    window.setTimeout(() => beginObjectInteraction(object, true, undefined, intent, completeWorldAction), 180);
+    window.setTimeout(() => beginObjectInteraction(object, true, undefined, undefined, intent, completeWorldAction), 180);
   }, [beginObjectInteraction, completeWorldAction, onStateChange, polish, showCreatureCue]);
 
   const runWorldIntent = useCallback((intent: WorldIntent) => {
@@ -1506,7 +1527,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
         ? stateRef.current.roomObjects.find(item => item.type === desiredType)
         : stateRef.current.roomObjects.find(item => item.type === 'apple' || item.type === 'broccoli');
       if (object) {
-        beginObjectInteraction(object, true, undefined, intent, completeWorldAction);
+        beginObjectInteraction(object, true, undefined, undefined, intent, completeWorldAction);
         return;
       }
       const inventoryType = desiredType ?? stateRef.current.inventory.find(item => item === 'apple' || item === 'broccoli');
@@ -1529,7 +1550,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       }
       const blanket = stateRef.current.roomObjects.find(object => object.type === 'blanket');
       if (blanket) {
-        beginObjectInteraction(blanket, true, undefined, intent, completeWorldAction);
+        beginObjectInteraction(blanket, true, undefined, undefined, intent, completeWorldAction);
         return;
       }
       emitCue('sleep');
@@ -1594,7 +1615,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
 
     const intent = parseWorldIntent(text);
     if (intent) {
-      const turn = beginConversationTurn(stateRef.current, text, Date.now(), { worldAction: true });
+      const turn = beginConversationTurn(stateRef.current, text, authoritativeNow(), { worldAction: true });
       stateRef.current = turn.state;
       onStateChange(turn.state);
       // The object pipeline owns notice → walk → react. A generic conversation
@@ -1614,7 +1635,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       return;
     }
 
-    const turn = beginConversationTurn(stateRef.current, text, Date.now());
+    const turn = beginConversationTurn(stateRef.current, text, authoritativeNow());
     stateRef.current = turn.state;
     onStateChange(turn.state);
 

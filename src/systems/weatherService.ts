@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   WeatherDailyForecast,
   WeatherHourlyForecast,
@@ -176,7 +177,7 @@ async function fetchJson(url: string, fetcher: typeof fetch): Promise<unknown> {
 export async function fetchWeather(
   location: WeatherLocation,
   fetcher: typeof fetch = fetch,
-  now = Date.now(),
+  now = authoritativeNow(),
 ): Promise<WeatherSnapshot> {
   const payload = asRecord(await fetchJson(buildForecastUrl(location), fetcher));
   const current = asRecord(payload.current);

@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   AutonomousMomentId,
   BondEventType,
@@ -176,7 +177,7 @@ export function recordBondEvent(state: GameState, type: BondEventType): GameStat
     personality[trait] = clamp(personality[trait] + delta * resistance);
   });
 
-  const now = Date.now();
+  const now = authoritativeNow();
   const bond: BondState = {
     ...state.bond,
     stage,
@@ -509,7 +510,7 @@ export function recordObjectExperience(
     refusals: previous.refusals + (reaction.outcome === 'avoid' ? 1 : 0),
     lastOutcome: reaction.outcome,
     lastReaction: reaction.id,
-    lastInteracted: Date.now(),
+    lastInteracted: authoritativeNow(),
   };
   const withPreference = {
     ...state,
@@ -697,7 +698,7 @@ interface WeightedAutonomy extends AutonomousChoice {
  * It uses the existing Room heartbeat, so this adds no timer, render loop,
  * model call or persistence cadence.
  */
-export function chooseAutonomousMoment(state: GameState, now = Date.now()): AutonomousChoice | null {
+export function chooseAutonomousMoment(state: GameState, now = authoritativeNow()): AutonomousChoice | null {
   const p = state.personality;
   const signature = getTemperamentSignature(state.personality);
   const experience = state.development.experience;

@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { GameState, ObservedBehaviour, BehaviourType, ImitatedBehaviour, SocialLearningState, Memory } from '../types';
 import { getDueOpenLoop, getOpenLoopPrompt, markOpenLoopAsked } from './continuitySystem';
 
@@ -330,8 +331,8 @@ export function recordObservation(state: GameState, userText: string): GameState
     observations = observations.map(o => o.id === existing.id ? updated : o);
     if (existing.frequency !== updated.frequency) {
       const memory: Memory = {
-        id: `mem-pattern-${Date.now()}`,
-        timestamp: Date.now(),
+        id: `mem-pattern-${authoritativeNow()}`,
+        timestamp: authoritativeNow(),
         content: `user ${updated.frequency} ${updated.action}s ${updated.target}`,
         importance: 5,
         emotionalValence: updated.perceivedReward > 0 ? 0.3 : -0.1,
@@ -344,14 +345,14 @@ export function recordObservation(state: GameState, userText: string): GameState
     }
   } else {
     const newObs: ObservedBehaviour = {
-      id: `obs-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: `obs-${authoritativeNow()}-${Math.random().toString(36).slice(2, 7)}`,
       behaviourType: parsed.behaviourType!,
       action: parsed.action!,
       target: parsed.target!,
       context: parsed.context!,
       frequency: 'once',
       exposureCount: 1,
-      timestamp: Date.now(),
+      timestamp: authoritativeNow(),
       perceivedUserEmotion: parsed.perceivedUserEmotion!,
       perceivedReward: parsed.perceivedReward!,
       perceivedNegativeOutcome: parsed.perceivedNegativeOutcome!,
@@ -360,12 +361,12 @@ export function recordObservation(state: GameState, userText: string): GameState
       mentioned: false,
       imitated: false,
       creatureOpinion: null,
-      lastThoughtAbout: Date.now(),
+      lastThoughtAbout: authoritativeNow(),
     };
     observations = [...observations, newObs];
     const memory: Memory = {
-      id: `mem-obs-${Date.now()}`,
-      timestamp: Date.now(),
+      id: `mem-obs-${authoritativeNow()}`,
+      timestamp: authoritativeNow(),
       content: `user ${newObs.action}ed ${newObs.target}`,
       importance: 3,
       emotionalValence: newObs.perceivedReward > 0 ? 0.2 : -0.1,
@@ -442,19 +443,19 @@ export function attemptImitation(state: GameState, obsId: string): GameState {
   // a cute reward loop. It may copy ordinary flaws, but forms caution here.
   if (obs.behaviourType === 'substance') opinion = 'disliked';
 
-  const updatedObs = { ...obs, imitated: true, creatureOpinion: opinion, lastThoughtAbout: Date.now() };
+  const updatedObs = { ...obs, imitated: true, creatureOpinion: opinion, lastThoughtAbout: authoritativeNow() };
   const imitated: ImitatedBehaviour = {
     observedId: obs.id,
     action: obs.action,
     target: obs.target,
-    adoptedAt: Date.now(),
+    adoptedAt: authoritativeNow(),
     adherence: decision.strength,
     reason: decision.reason,
     rejected: opinion === 'disliked',
   };
   const memory: Memory = {
-    id: `mem-imitate-${Date.now()}`,
-    timestamp: Date.now(),
+    id: `mem-imitate-${authoritativeNow()}`,
+    timestamp: authoritativeNow(),
     content: opinion === 'liked'
       ? `tried ${obs.action}ing ${obs.target} like user, liked it`
       : opinion === 'disliked'
@@ -586,7 +587,7 @@ export function markObservationMentioned(state: GameState, obsId: string): GameS
     socialLearning: {
       ...state.socialLearning,
       observations: state.socialLearning.observations.map(o =>
-        o.id === obsId ? { ...o, mentioned: true, lastThoughtAbout: Date.now() } : o
+        o.id === obsId ? { ...o, mentioned: true, lastThoughtAbout: authoritativeNow() } : o
       ),
     },
   };
@@ -615,7 +616,7 @@ export function shouldInitiateConversation(state: GameState): boolean {
   if (development.cognitiveLevel < 25) return false;
   if (development.stage === 'egg' || development.stage === 'newborn' || development.stage === 'animal') return false;
 
-  const timeSinceLast = Date.now() - socialLearning.lastBehaviourQuestion;
+  const timeSinceLast = authoritativeNow() - socialLearning.lastBehaviourQuestion;
   if (timeSinceLast < 5 * 60 * 1000) return false;
 
   const askableObs = socialLearning.observations.filter(
@@ -706,7 +707,7 @@ export function generateInitiatedTopic(state: GameState): InitiatedTopic | null 
 
   const scored = askableObs.map(obs => ({
     obs,
-    score: obs.exposureCount * 10 + (obs.perceivedReward > 0 ? 5 : 0) + (Date.now() - obs.timestamp) / 86400000,
+    score: obs.exposureCount * 10 + (obs.perceivedReward > 0 ? 5 : 0) + (authoritativeNow() - obs.timestamp) / 86400000,
   }));
   scored.sort((a, b) => b.score - a.score);
   const chosen = scored[0].obs;
@@ -757,7 +758,7 @@ export function clearInitiatedTopic(state: GameState, topicId?: string): GameSta
     } : withLoop.innerLife,
     socialLearning: {
       ...withLoop.socialLearning,
-      lastBehaviourQuestion: Date.now(),
+      lastBehaviourQuestion: authoritativeNow(),
     },
   };
 }

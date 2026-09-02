@@ -1,3 +1,4 @@
+import { authoritativeNow } from '../systems/authoritativeTime';
 import React from 'react';
 import { WorldEnvironment } from '../types';
 import { getWeatherConditionLabel, getWeatherIcon } from '../systems/environmentSystem';
@@ -37,7 +38,7 @@ function windArrow(degrees: number | null | undefined) {
   return <span aria-hidden="true" className="inline-block" style={{ transform: `rotate(${Number(degrees)}deg)` }}>↑</span>;
 }
 
-const TodayWeatherView: React.FC<TodayWeatherViewProps> = ({ world, language, now = Date.now(), onClose }) => {
+const TodayWeatherView: React.FC<TodayWeatherViewProps> = ({ world, language, now = authoritativeNow(), onClose }) => {
   const polish = language === 'pl';
   const t = (english: string, polishText: string) => polish ? polishText : english;
   const snapshot = world.current;

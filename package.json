@@ -1,17 +1,19 @@
 {
   "name": "becoming",
   "private": true,
-  "version": "0.14.10",
+  "version": "0.14.12",
   "type": "module",
   "engines": {
     "node": ">=22.12"
   },
   "scripts": {
     "dev": "vite --host --port 7100",
-    "build": "tsc && vite build",
+    "dev:simulation": "vite --mode simulation --host --port 7101 --strictPort",
+    "build": "tsc && vite build && node scripts/verify_production_time.mjs",
     "preview": "vite preview",
     "test": "npm run test:systems && npm run test:worker",
     "test:systems": "node scripts/run_system_checks.mjs",
+    "test:simulation": "node scripts/run_system_checks.mjs scripts/accelerated_time_checks.ts",
     "test:worker": "node worker/test.mjs",
     "check": "npm run test && npm run build"
   },

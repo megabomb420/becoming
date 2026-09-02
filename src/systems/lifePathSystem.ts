@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   DailyMoment,
   GameState,
@@ -337,7 +338,7 @@ function recalculate(value: LifePathState, now: number, detail?: string): LifePa
   };
 }
 
-export function createLifePathState(personality: PersonalityTraits, now = Date.now()): LifePathState {
+export function createLifePathState(personality: PersonalityTraits, now = authoritativeNow()): LifePathState {
   return recalculate({
     scores: seededScores(personality),
     evidence: emptyEvidence(),
@@ -352,10 +353,11 @@ export function createLifePathState(personality: PersonalityTraits, now = Date.n
     lastDailyMomentDay: -1,
     pendingMoment: null,
     resolvedMomentIds: [],
+    recentDailyMomentTemplateIds: [],
   }, now);
 }
 
-export function migrateLifePathState(value: Partial<LifePathState> | null | undefined, personality: PersonalityTraits, now = Date.now()): LifePathState {
+export function migrateLifePathState(value: Partial<LifePathState> | null | undefined, personality: PersonalityTraits, now = authoritativeNow()): LifePathState {
   const fallback = createLifePathState(personality, now);
   if (!value) return fallback;
   const hasSourceAwareEvidence = Boolean(value.evidence && LIFE_PATH_IDS.every(id => value.evidence?.[id]));
@@ -385,6 +387,9 @@ export function migrateLifePathState(value: Partial<LifePathState> | null | unde
     lastDailyMomentDay: Number.isFinite(value.lastDailyMomentDay) ? value.lastDailyMomentDay! : -1,
     pendingMoment: hydrateDailyMoment(value.pendingMoment ?? null),
     resolvedMomentIds: Array.isArray(value.resolvedMomentIds) ? value.resolvedMomentIds.slice(-60) : [],
+    recentDailyMomentTemplateIds: Array.isArray(value.recentDailyMomentTemplateIds)
+      ? value.recentDailyMomentTemplateIds.filter(id => typeof id === 'string').slice(-4)
+      : [],
   }, now);
 }
 
@@ -413,7 +418,7 @@ function applyObservedBehaviour(
   return LIFE_PATH_IDS.filter(id => scores[id] !== before[id]);
 }
 
-export function bootstrapLifePathState(personality: PersonalityTraits, observations: ObservedBehaviour[], now = Date.now()): LifePathState {
+export function bootstrapLifePathState(personality: PersonalityTraits, observations: ObservedBehaviour[], now = authoritativeNow()): LifePathState {
   const base = createLifePathState(personality, now);
   const scores = { ...base.scores };
   const evidence = { ...base.evidence };
@@ -457,7 +462,7 @@ function addScore(scores: Record<LifePathId, number>, id: LifePathId, amount: nu
   scores[id] = clamp(scores[id] + amount);
 }
 
-export function evolveLifePath(state: GameState, userText: string, now = Date.now()): GameState {
+export function evolveLifePath(state: GameState, userText: string, now = authoritativeNow()): GameState {
   if (!state.development.hatched) return state;
   const current = migrateLifePathState(state.lifePath, state.personality, now);
   const scores = { ...current.scores };
@@ -543,7 +548,7 @@ function recordPathEvidence(previous: LifePathEvidence, signal: CreaturePathSign
 }
 
 /** Records only the creature's own expressed stance, after its reply exists. */
-export function evolveLifePathFromCreatureStatement(state: GameState, text: string, now = Date.now()): GameState {
+export function evolveLifePathFromCreatureStatement(state: GameState, text: string, now = authoritativeNow()): GameState {
   if (!state.development.hatched || !text.trim()) return state;
   const current = migrateLifePathState(state.lifePath, state.personality, now);
   const scores = { ...current.scores };
@@ -569,7 +574,7 @@ export function evolveLifePathFromCreatureStatement(state: GameState, text: stri
 }
 
 /** Converts a completed imitation attempt into the creature's own evidence. */
-export function evolveLifePathFromImitation(state: GameState, observationId: string, now = Date.now()): GameState {
+export function evolveLifePathFromImitation(state: GameState, observationId: string, now = authoritativeNow()): GameState {
   const observation = state.socialLearning.observations.find(item => item.id === observationId);
   const imitation = state.socialLearning.imitated.find(item => item.observedId === observationId);
   if (!observation || !imitation) return state;
@@ -609,7 +614,7 @@ const OBJECT_EFFECTS: Partial<Record<ObjectType, Partial<Record<LifePathId, numb
   apple: { caretaker: 0.5, gymbro: 0.7 },
 };
 
-export function evolveLifePathFromObject(state: GameState, type: ObjectType, outcome: ObjectReactionOutcome, now = Date.now()): GameState {
+export function evolveLifePathFromObject(state: GameState, type: ObjectType, outcome: ObjectReactionOutcome, now = authoritativeNow()): GameState {
   const effects = OBJECT_EFFECTS[type];
   if (!effects || !state.development.hatched) return state;
   const current = migrateLifePathState(state.lifePath, state.personality, now);
@@ -635,10 +640,11 @@ export function evolveLifePathFromObject(state: GameState, type: ObjectType, out
   return { ...state, lifePath: recalculate({ ...current, scores, evidence }, now) };
 }
 
-type MomentTemplate = Omit<DailyMoment, 'id' | 'day'> & { when?: 'night_life' };
+type MomentTemplate = Omit<DailyMoment, 'id' | 'day' | 'templateId'> & { templateId: string; when?: 'night_life' };
 
 const MOMENT_TEMPLATES: MomentTemplate[] = [
   {
+    templateId: 'late_night_mind',
     title: '2:17 AM',
     titlePl: '2:17 w nocy',
     when: 'night_life',
@@ -651,6 +657,7 @@ const MOMENT_TEMPLATES: MomentTemplate[] = [
     ],
   },
   {
+    templateId: 'easy_bet',
     title: 'The Easy Bet',
     titlePl: 'Łatwy zakład',
     prompt: 'A glowing chart promises that one reckless move could change everything.',
@@ -662,6 +669,7 @@ const MOMENT_TEMPLATES: MomentTemplate[] = [
     ],
   },
   {
+    templateId: 'someone_needs_you',
     title: 'Someone Needs You',
     titlePl: 'Ktoś cię potrzebuje',
     prompt: 'A tired voice asks for help at the worst possible time.',
@@ -673,6 +681,7 @@ const MOMENT_TEMPLATES: MomentTemplate[] = [
     ],
   },
   {
+    templateId: 'the_bottle',
     title: 'The Bottle',
     titlePl: 'Butelka',
     when: 'night_life',
@@ -685,6 +694,7 @@ const MOMENT_TEMPLATES: MomentTemplate[] = [
     ],
   },
   {
+    templateId: 'room_archaeology',
     title: 'Room Archaeology',
     titlePl: 'Archeologia pokoju',
     prompt: 'The mess has developed layers. It is becoming either a problem or a culture.',
@@ -696,6 +706,7 @@ const MOMENT_TEMPLATES: MomentTemplate[] = [
     ],
   },
   {
+    templateId: 'mirror_challenge',
     title: 'Mirror Challenge',
     titlePl: 'Wyzwanie lustra',
     prompt: 'The reflection asks a rude question: what are you actually building?',
@@ -707,6 +718,7 @@ const MOMENT_TEMPLATES: MomentTemplate[] = [
     ],
   },
   {
+    templateId: 'the_thread',
     title: 'The Thread',
     titlePl: 'Nić',
     prompt: 'Three unrelated details suddenly look related. How far should the theory go?',
@@ -718,6 +730,7 @@ const MOMENT_TEMPLATES: MomentTemplate[] = [
     ],
   },
   {
+    templateId: 'no_invitation',
     title: 'No Invitation',
     titlePl: 'Bez zaproszenia',
     when: 'night_life',
@@ -733,11 +746,13 @@ const MOMENT_TEMPLATES: MomentTemplate[] = [
 
 function hydrateDailyMoment(moment: DailyMoment | null): DailyMoment | null {
   if (!moment) return null;
-  const template = MOMENT_TEMPLATES.find(candidate => candidate.title === moment.title)
+  const template = MOMENT_TEMPLATES.find(candidate => candidate.templateId === moment.templateId)
+    ?? MOMENT_TEMPLATES.find(candidate => candidate.title === moment.title)
     ?? MOMENT_TEMPLATES.find(candidate => candidate.choices.some(choice => moment.choices.some(saved => saved.id === choice.id)));
   if (!template) return moment;
   return {
     ...moment,
+    templateId: moment.templateId ?? template.templateId,
     titlePl: moment.titlePl ?? template.titlePl,
     promptPl: moment.promptPl ?? template.promptPl,
     choices: moment.choices.map(saved => {
@@ -751,7 +766,20 @@ function hydrateDailyMoment(moment: DailyMoment | null): DailyMoment | null {
   };
 }
 
-export function ensureDailyMoment(state: GameState, now = Date.now()): GameState {
+const RECENT_DAILY_MOMENT_WINDOW = 4;
+
+function dailyMomentScore(seed: number, day: number, primaryIndex: number, templateId: string): number {
+  let hash = (seed ^ Math.imul(day, 0x9e3779b1) ^ Math.imul(primaryIndex + 1, 0x85ebca6b)) >>> 0;
+  for (let index = 0; index < templateId.length; index += 1) {
+    hash = Math.imul(hash ^ templateId.charCodeAt(index), 0x01000193) >>> 0;
+  }
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x7feb352d) >>> 0;
+  hash ^= hash >>> 15;
+  return hash >>> 0;
+}
+
+export function ensureDailyMoment(state: GameState, now = authoritativeNow()): GameState {
   if (!state.development.hatched || state.development.cognitiveLevel < 12) return state;
   if (state.sleepState === 'sleeping') return state;
   const schedule = getRestSchedule(state.lifePath);
@@ -764,17 +792,24 @@ export function ensureDailyMoment(state: GameState, now = Date.now()): GameState
     ? MOMENT_TEMPLATES
     : MOMENT_TEMPLATES.filter(template => template.when !== 'night_life');
   const primaryIndex = path.primary ? LIFE_PATH_IDS.indexOf(path.primary) : 0;
-  const index = Math.abs(state.identity.seed + day * 31 + primaryIndex * 17) % pool.length;
-  const template = pool[index];
-  const { when: _when, ...authored } = template;
-  const pendingMoment: DailyMoment = { ...authored, id: `moment-${day}-${index}`, day };
+  const recent = new Set(path.recentDailyMomentTemplateIds.slice(-RECENT_DAILY_MOMENT_WINDOW));
+  const withoutRecent = pool.filter(template => !recent.has(template.templateId));
+  const candidates = withoutRecent.length > 0 ? withoutRecent : pool;
+  const template = candidates.reduce((best, candidate) => (
+    dailyMomentScore(state.identity.seed, day, primaryIndex, candidate.templateId)
+      < dailyMomentScore(state.identity.seed, day, primaryIndex, best.templateId)
+      ? candidate
+      : best
+  ));
+  const { when: _when, templateId, ...authored } = template;
+  const pendingMoment: DailyMoment = { ...authored, templateId, id: `moment-${day}-${templateId}`, day };
   if (path.resolvedMomentIds.includes(pendingMoment.id)) {
     return { ...state, lifePath: { ...path, lastDailyMomentDay: day } };
   }
   return { ...state, lifePath: { ...path, pendingMoment } };
 }
 
-export function resolveDailyMoment(state: GameState, choiceId: string, now = Date.now()): GameState {
+export function resolveDailyMoment(state: GameState, choiceId: string, now = authoritativeNow()): GameState {
   const moment = state.lifePath?.pendingMoment;
   if (!moment) return state;
   const choice = moment.choices.find(item => item.id === choiceId);
@@ -796,6 +831,9 @@ export function resolveDailyMoment(state: GameState, choiceId: string, now = Dat
     pendingMoment: null,
     lastDailyMomentDay: moment.day,
     resolvedMomentIds: [...current.resolvedMomentIds, moment.id].slice(-60),
+    recentDailyMomentTemplateIds: moment.templateId
+      ? [...current.recentDailyMomentTemplateIds, moment.templateId].slice(-RECENT_DAILY_MOMENT_WINDOW)
+      : current.recentDailyMomentTemplateIds,
   }, now, state.conversation.language === 'pl' ? (choice.resultPl ?? choice.result) : choice.result);
   const bondDelta = choice.bondEffect ?? 0;
   return {

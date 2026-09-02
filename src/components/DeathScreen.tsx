@@ -1,3 +1,4 @@
+import { authoritativeNow } from '../systems/authoritativeTime';
 import React, { useState } from 'react';
 import { GameState } from '../types';
 import CreatureCanvas from './CreatureCanvas';
@@ -26,7 +27,7 @@ const DeathScreen: React.FC<DeathScreenProps> = ({ state, version, onReset }) =>
   const [showMemoryBook, setShowMemoryBook] = useState(false);
   const [resetArmed, setResetArmed] = useState(false);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
-  const now = Date.now();
+  const now = authoritativeNow();
   const timeOfDay = getTimeOfDay(now, state.world);
   const lighting = getRoomLighting(timeOfDay, state.world, now);
 

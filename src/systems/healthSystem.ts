@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { GameState, HealthStage, HealthState, Memory } from '../types';
 
 // Health is one quiet axis on the existing physiology heartbeat. There is no
@@ -163,7 +164,7 @@ function departureMemory(state: GameState, now: number): Memory {
  * (App) and the offline pass — it owns no timer. Elapsed time is real time in
  * both modes, so active and offline progression use the exact same model.
  */
-export function advanceHealth(state: GameState, now = Date.now()): GameState {
+export function advanceHealth(state: GameState, now = authoritativeNow()): GameState {
   if (state.development.stage === 'egg' || !state.development.hatched) return state;
   if (isDead(state)) return state;
 

@@ -1,3 +1,4 @@
+import { authoritativeNow } from '../systems/authoritativeTime';
 import React, { FormEvent, useMemo, useState } from 'react';
 import { GameState, WeatherLocation } from '../types';
 import {
@@ -28,7 +29,7 @@ function placeLabel(location: WeatherLocation, language: 'pl' | 'en') {
 }
 
 function relativeUpdate(fetchedAt: number, language: 'pl' | 'en') {
-  const minutes = Math.max(0, Math.floor((Date.now() - fetchedAt) / 60_000));
+  const minutes = Math.max(0, Math.floor((authoritativeNow() - fetchedAt) / 60_000));
   if (minutes < 2) return language === 'pl' ? 'przed chwilą' : 'just now';
   if (minutes < 60) return language === 'pl' ? `${minutes} min temu` : `${minutes} min ago`;
   const hours = Math.floor(minutes / 60);

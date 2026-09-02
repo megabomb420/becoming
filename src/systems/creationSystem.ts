@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { CreationStage, CreatureCreation, GameState, Memory, ObjectType } from '../types';
 import { getRankedInterests } from './innerLifeSystem';
 import { getLifePathTitle } from './lifePathSystem';
@@ -64,13 +65,13 @@ export function migrateCreations(value: Partial<CreatureCreation>[] | null | und
   return value.slice(-40).flatMap(item => {
     if (!item || !allowed.has(item.stage as CreationStage)) return [];
     return [{
-      id: typeof item.id === 'string' ? item.id.slice(0, 80) : `creation-${item.stage}-${Number(item.createdAt) || Date.now()}`,
+      id: typeof item.id === 'string' ? item.id.slice(0, 80) : `creation-${item.stage}-${Number(item.createdAt) || authoritativeNow()}`,
       stage: item.stage as CreationStage,
       title: typeof item.title === 'string' ? item.title.slice(0, 80) : String(item.stage),
       description: typeof item.description === 'string' ? item.description.slice(0, 320) : '',
       glyph: typeof item.glyph === 'string' ? item.glyph.slice(0, 32) : '·',
       inspiration: typeof item.inspiration === 'string' ? item.inspiration.slice(0, 48) : 'the room',
-      createdAt: Number.isFinite(item.createdAt) ? Number(item.createdAt) : Date.now(),
+      createdAt: Number.isFinite(item.createdAt) ? Number(item.createdAt) : authoritativeNow(),
     }];
   });
 }
@@ -156,7 +157,7 @@ function addCreation(state: GameState, stage: CreationStage, now: number): GameS
 export function evolveCreationFromObject(
   state: GameState,
   type: ObjectType,
-  now = Date.now(),
+  now = authoritativeNow(),
   initiatedByUser = false,
 ): GameState {
   if (type === 'paper' || type === 'pencil') {

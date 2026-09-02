@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { GameState, Memory, Needs, RoomMess, RoomMessType } from '../types';
 import { generateDreamAfterSleep } from './innerLifeSystem';
 import { getRestSchedule } from './lifePathSystem';
@@ -35,7 +36,7 @@ export function migrateRoomMess(value: unknown): RoomMess[] {
       type: mess.type,
       x: Math.max(12, Math.min(88, Number.isFinite(mess.x) ? Number(mess.x) : 50)),
       y: Math.max(60, Math.min(77, Number.isFinite(mess.y) ? Number(mess.y) : 68)),
-      createdAt: Number.isFinite(mess.createdAt) ? Number(mess.createdAt) : Date.now(),
+      createdAt: Number.isFinite(mess.createdAt) ? Number(mess.createdAt) : authoritativeNow(),
     }];
   }).slice(-6);
 }
@@ -199,7 +200,7 @@ export function updateNeeds(state: GameState, deltaMinutes: number): Needs {
 
 export function advanceNeeds(
   state: GameState,
-  now = Date.now(),
+  now = authoritativeNow(),
   mode: 'active' | 'offline' = 'active',
   sleepingMinutes?: number,
 ): GameState {
@@ -352,7 +353,7 @@ export function getSleepBlocker(state: GameState): NeedKey | null {
   return physical.find(key => getNeedUrgency(state.needs[key]) === 'urgent') ?? null;
 }
 
-export function applyNeedDelta(state: GameState, delta: Partial<Needs>, now = Date.now()): GameState {
+export function applyNeedDelta(state: GameState, delta: Partial<Needs>, now = authoritativeNow()): GameState {
   const current = advanceNeeds(state, now);
   const needs = { ...current.needs };
   for (const key of NEED_ORDER) {
@@ -375,7 +376,7 @@ function careMemory(state: GameState, content: string, tags: string[], now: numb
   };
 }
 
-export function feedCreature(state: GameState, foodType: string, now = Date.now()): GameState {
+export function feedCreature(state: GameState, foodType: string, now = authoritativeNow()): GameState {
   const hungry = state.needs.hunger < 48;
   // An unwell body loses appetite: food still helps, but a full portion is no
   // longer finished. Care objects stay ordinary — this is not medicine.
@@ -393,7 +394,7 @@ export function feedCreature(state: GameState, foodType: string, now = Date.now(
   return next;
 }
 
-export function drinkCreature(state: GameState, now = Date.now()): GameState {
+export function drinkCreature(state: GameState, now = authoritativeNow()): GameState {
   return applyNeedDelta(state, { hydration: 46, bladder: -13, comfort: 2 }, now);
 }
 
@@ -405,7 +406,7 @@ function addFirstCareMemory(state: GameState, tag: string, content: string, now:
   };
 }
 
-export function useToilet(state: GameState, now = Date.now()): CareActionResult {
+export function useToilet(state: GameState, now = authoritativeNow()): CareActionResult {
   const current = advanceNeeds(state, now);
   const needsPee = current.needs.bladder < 62;
   const needsPoop = current.needs.bowel < 54;
@@ -441,7 +442,7 @@ export function isPrankster(state: GameState): boolean {
  * or for a prankster, the need still resolves — but leaves a floor trace the
  * player has to clean up.
  */
-export function useToiletCommanded(state: GameState, now = Date.now(), target: 'pee' | 'poop' | 'current_need' = 'current_need'): CareActionResult {
+export function useToiletCommanded(state: GameState, now = authoritativeNow(), target: 'pee' | 'poop' | 'current_need' = 'current_need'): CareActionResult {
   const current = advanceNeeds(state, now);
   const considerPee = target === 'current_need' || target === 'pee';
   const considerPoop = target === 'current_need' || target === 'poop';
@@ -489,7 +490,7 @@ export function useToiletCommanded(state: GameState, now = Date.now(), target: '
   return { state: next, performed: true, result: needsPee && needsPoop ? 'both' : needsPoop ? 'poop' : 'pee', soiled: boxPresent ? 'prank' : 'no_box', count: mess.length };
 }
 
-export function washCreature(state: GameState, now = Date.now()): CareActionResult {
+export function washCreature(state: GameState, now = authoritativeNow()): CareActionResult {
   const current = advanceNeeds(state, now);
   if (current.needs.hygiene >= 92) return { state: current, performed: false, result: 'already_clean' };
   return {
@@ -507,7 +508,7 @@ export function washCreature(state: GameState, now = Date.now()): CareActionResu
   };
 }
 
-export function cleanRoomMess(state: GameState, messId?: string, now = Date.now()): CareActionResult {
+export function cleanRoomMess(state: GameState, messId?: string, now = authoritativeNow()): CareActionResult {
   const current = state.roomMess ?? [];
   const removed = messId ? current.filter(mess => mess.id === messId) : current;
   if (removed.length === 0) return { state, performed: false, result: 'already_tidy', count: 0 };
@@ -519,7 +520,7 @@ export function cleanRoomMess(state: GameState, messId?: string, now = Date.now(
   return { state: { ...next, roomMess }, performed: true, result: 'cleaned', count: removed.length };
 }
 
-export function putToSleep(state: GameState, now = Date.now()): GameState {
+export function putToSleep(state: GameState, now = authoritativeNow()): GameState {
   const current = advanceNeeds(state, now);
   return {
     ...current,
@@ -530,7 +531,7 @@ export function putToSleep(state: GameState, now = Date.now()): GameState {
 }
 
 /** Sleep only if the body is ready. Urgent hunger or toilet still wins. */
-export function settleIfSleepy(state: GameState, now = Date.now()): GameState {
+export function settleIfSleepy(state: GameState, now = authoritativeNow()): GameState {
   if (state.sleepState === 'sleeping') return state;
   if (getSleepBlocker(state)) return state;
   const schedule = getRestSchedule(state.lifePath);
@@ -539,7 +540,7 @@ export function settleIfSleepy(state: GameState, now = Date.now()): GameState {
 }
 
 /** Their solar clock, not the player's hours. Wake on their morning; sleep on their night. */
-export function applyCircadianSleep(state: GameState, now = Date.now()): GameState {
+export function applyCircadianSleep(state: GameState, now = authoritativeNow()): GameState {
   const time = getTimeOfDay(now, state.world);
   const schedule = getRestSchedule(state.lifePath);
   if (state.sleepState === 'sleeping') {
@@ -549,7 +550,7 @@ export function applyCircadianSleep(state: GameState, now = Date.now()): GameSta
   return settleIfSleepy(state, now);
 }
 
-export function wakeUp(state: GameState, now = Date.now()): GameState {
+export function wakeUp(state: GameState, now = authoritativeNow()): GameState {
   const sleepStart = state.sleepStartTimestamp ?? state.needsUpdatedAt ?? state.lastSaved;
   const rested = advanceNeeds(state, now, 'active', state.currentActivity === 'sleeping' ? Math.max(0, now - sleepStart) / 60_000 : 0);
   const sleptDuration = state.currentActivity === 'sleeping' ? Math.max(0, now - sleepStart) : 0;
@@ -562,7 +563,7 @@ export function wakeUp(state: GameState, now = Date.now()): GameState {
   return generateDreamAfterSleep(awakeState, sleptDuration, now);
 }
 
-export function touchCreature(state: GameState, touchType: 'tap' | 'stroke' | 'hold', now = Date.now()): GameState {
+export function touchCreature(state: GameState, touchType: 'tap' | 'stroke' | 'hold', now = authoritativeNow()): GameState {
   const comfortBoost = touchType === 'stroke' ? 15 : touchType === 'hold' ? 20 : 5;
   const socialBoost = touchType === 'stroke' ? 10 : 5;
   let next = applyNeedDelta(state, { comfort: comfortBoost, social: socialBoost }, now);

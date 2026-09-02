@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   EnvironmentalStimulus,
   GameState,
@@ -282,7 +283,7 @@ export function migrateWorldEnvironment(value: unknown): WorldEnvironment {
   const status = mode === 'disabled'
     ? 'disabled'
     : current
-      ? (Date.now() - current.fetchedAt > WEATHER_STALE_MS ? 'stale' : 'ready')
+      ? (authoritativeNow() - current.fetchedAt > WEATHER_STALE_MS ? 'stale' : 'ready')
       : enabled
         ? 'idle'
         : 'idle';
@@ -362,7 +363,7 @@ export function markWeatherPermissionFailure(
   };
 }
 
-export function beginWeatherRefresh(world: WorldEnvironment, now = Date.now()): WorldEnvironment {
+export function beginWeatherRefresh(world: WorldEnvironment, now = authoritativeNow()): WorldEnvironment {
   return { ...world, status: 'loading', lastAttemptAt: now, lastError: null };
 }
 
@@ -381,7 +382,7 @@ export function receiveWeatherSnapshot(world: WorldEnvironment, snapshot: Weathe
 export function failWeatherRefresh(
   world: WorldEnvironment,
   error: Extract<WeatherErrorCode, 'offline' | 'weather_unavailable'>,
-  now = Date.now(),
+  now = authoritativeNow(),
 ): WorldEnvironment {
   return {
     ...world,
@@ -392,7 +393,7 @@ export function failWeatherRefresh(
   };
 }
 
-export function shouldRefreshWeather(world: WorldEnvironment, now = Date.now(), online = true) {
+export function shouldRefreshWeather(world: WorldEnvironment, now = authoritativeNow(), online = true) {
   if (!online || (world.settings.mode !== 'device' && world.settings.mode !== 'city')) return false;
   if (!world.settings.location || world.status === 'loading') return false;
   if (!world.current) return now >= world.nextRefreshAt;
@@ -400,7 +401,7 @@ export function shouldRefreshWeather(world: WorldEnvironment, now = Date.now(), 
   return now >= Math.max(world.nextRefreshAt, world.current.fetchedAt + WEATHER_REFRESH_MS);
 }
 
-export function weatherFreshness(world: WorldEnvironment, now = Date.now()) {
+export function weatherFreshness(world: WorldEnvironment, now = authoritativeNow()) {
   if ((world.settings.mode !== 'device' && world.settings.mode !== 'city') || !world.current) return 0;
   const age = Math.max(0, now - world.current.fetchedAt);
   if (age <= WEATHER_STALE_MS) return 1;
@@ -409,7 +410,7 @@ export function weatherFreshness(world: WorldEnvironment, now = Date.now()) {
   return 0.15;
 }
 
-export function getEffectiveStimulus(world: WorldEnvironment, now = Date.now()): EnvironmentalStimulus {
+export function getEffectiveStimulus(world: WorldEnvironment, now = authoritativeNow()): EnvironmentalStimulus {
   const freshness = weatherFreshness(world, now);
   if (freshness <= 0) return { ...NEUTRAL_ENVIRONMENTAL_STIMULUS };
   return {
@@ -427,7 +428,7 @@ export function getEffectiveStimulus(world: WorldEnvironment, now = Date.now()):
 export function getEnvironmentalNeedMultiplier(
   state: Pick<GameState, 'world' | 'personality'>,
   key: keyof Needs,
-  now = Date.now(),
+  now = authoritativeNow(),
 ) {
   const stimulus = getEffectiveStimulus(state.world, now);
   let multiplier = 1;
@@ -474,7 +475,7 @@ function pick<T>(items: T[], seed: number) {
 export function chooseEnvironmentReaction(
   state: GameState,
   language: 'pl' | 'en',
-  now = Date.now(),
+  now = authoritativeNow(),
 ): EnvironmentReaction | null {
   const stimulus = getEffectiveStimulus(state.world, now);
   if (!state.world.current || stimulus.intensity < 0.14 || now - state.world.lastReactionAt < 12 * 60_000) return null;
@@ -663,7 +664,7 @@ function reactionMemory(state: GameState, reaction: EnvironmentReaction, now: nu
   };
 }
 
-export function recordEnvironmentReaction(state: GameState, reaction: EnvironmentReaction, now = Date.now()): GameState {
+export function recordEnvironmentReaction(state: GameState, reaction: EnvironmentReaction, now = authoritativeNow()): GameState {
   const previous = state.world.preferences[reaction.condition] ?? emptyPreference();
   const preference: WeatherPreference = {
     affinity: clamp(previous.affinity + reaction.preferenceDelta, -100, 100),
@@ -756,7 +757,7 @@ export function outdoorVisitBlocked(state: GameState): 'unavailable' | 'sleeping
   return null;
 }
 
-export function shouldEndOutdoorVisit(state: GameState, now = Date.now()) {
+export function shouldEndOutdoorVisit(state: GameState, now = authoritativeNow()) {
   if (state.world.place !== 'outdoors') return false;
   if (state.sleepState === 'sleeping') return true;
   if (state.world.settings.mode === 'disabled') return true;
@@ -795,7 +796,7 @@ function outdoorActivity(state: GameState) {
   return language === 'pl' ? `na dworze (${label})` : `outside (${label})`;
 }
 
-export function beginOutdoorVisit(state: GameState, now = Date.now()): GameState {
+export function beginOutdoorVisit(state: GameState, now = authoritativeNow()): GameState {
   if (state.world.place === 'outdoors') return state;
   const condition = state.world.current?.condition ?? 'unknown';
   const alreadyRemembered = state.memories.some(memory => memory.tags.includes('outdoors'));
@@ -824,7 +825,7 @@ export function beginOutdoorVisit(state: GameState, now = Date.now()): GameState
   };
 }
 
-export function endOutdoorVisit(state: GameState, now = Date.now()): GameState {
+export function endOutdoorVisit(state: GameState, now = authoritativeNow()): GameState {
   if (state.world.place !== 'outdoors') return state;
   return {
     ...state,

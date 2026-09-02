@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import {
   AutonomousMomentId,
   DevelopmentExperienceState,
@@ -184,7 +185,7 @@ function meaningfulFirstCopy(id: MeaningfulFirstId): Omit<MeaningfulFirst, 'time
   return copy[id];
 }
 
-export function recordMeaningfulFirst(state: GameState, id: MeaningfulFirstId, now = Date.now()): GameState {
+export function recordMeaningfulFirst(state: GameState, id: MeaningfulFirstId, now = authoritativeNow()): GameState {
   const experience = migrateDevelopmentExperience(state.development.experience, state.identity.seed);
   if (experience.firsts.some(first => first.id === id)) return state;
   const first: MeaningfulFirst = { ...meaningfulFirstCopy(id), timestamp: now, announced: false };
@@ -231,7 +232,7 @@ export function markMeaningfulFirstAnnounced(state: GameState, id: MeaningfulFir
 export function recordAutonomousMoment(
   state: GameState,
   id: AutonomousMomentId,
-  now = Date.now(),
+  now = authoritativeNow(),
   objectType?: ObjectType,
 ): GameState {
   const experience = migrateDevelopmentExperience(state.development.experience, state.identity.seed);
@@ -265,7 +266,7 @@ function strongestFavorite(state: GameState): ObjectType | null {
  * create another gameplay loop: it gives important changes one shared memory
  * language and lets Room stage them once, without extra timers or AI calls.
  */
-export function observeDevelopmentSignals(previous: GameState, nextInput: GameState, now = Date.now()): GameState {
+export function observeDevelopmentSignals(previous: GameState, nextInput: GameState, now = authoritativeNow()): GameState {
   let next = nextInput;
   const favorite = strongestFavorite(next);
   const currentExperience = migrateDevelopmentExperience(next.development.experience, next.identity.seed);
@@ -305,7 +306,7 @@ export function getStageFromLevels(cognitive: number, language: number, hatched:
   return 'egg';
 }
 
-export function updateDevelopment(state: GameState, activeMinutes: number): GameState {
+export function updateDevelopment(state: GameState, activeMinutes: number, now = authoritativeNow()): GameState {
   const personality = state.personality;
   const stimulation = state.needs.stimulation;
   const social = state.needs.social;
@@ -336,9 +337,9 @@ export function updateDevelopment(state: GameState, activeMinutes: number): Game
   // Check for stage transitions and create memories
   if (newStage !== state.development.stage) {
     const stageMemories: Memory[] = [{
-      id: `mem-stage-${Date.now()}`,
-      timestamp: Date.now(),
-      content: `reached ${newStage}`,
+      id: `mem-stage-${now}`,
+      timestamp: now,
+      content: getDevelopmentMilestoneText(newStage, 'en'),
       importance: 8,
       emotionalValence: 0.6,
       tags: ['development', 'milestone'],
@@ -354,7 +355,7 @@ export function updateDevelopment(state: GameState, activeMinutes: number): Game
       firstWords.forEach((word, i) => {
         newVocab.push({
           word,
-          learnedAt: Date.now() + i * 1000,
+          learnedAt: now + i * 1000,
           confidence: 0.3,
           contexts: ['early'],
           usageCount: 0,
@@ -385,11 +386,11 @@ const AGE_FLOORS = [
 function addGrowthMilestone(previous: GameState, next: GameState): GameState {
   if (next.development.stage === previous.development.stage) return next;
 
-  const now = Date.now();
+  const now = authoritativeNow();
   const memory: Memory = {
     id: `mem-stage-${now}`,
     timestamp: now,
-    content: `reached ${next.development.stage}`,
+    content: getDevelopmentMilestoneText(next.development.stage, 'en'),
     importance: 8,
     emotionalValence: 0.6,
     tags: ['development', 'milestone'],
@@ -420,7 +421,7 @@ function addGrowthMilestone(previous: GameState, next: GameState): GameState {
  * Real time provides a minimum level of development. Conversation and play can
  * make a creature grow faster, but being left alone can never make it younger.
  */
-export function syncDevelopmentWithAge(state: GameState, now = Date.now()): GameState {
+export function syncDevelopmentWithAge(state: GameState, now = authoritativeNow()): GameState {
   if (!state.development.hatched) return state;
 
   const chronologicalAge = Math.max(
@@ -448,7 +449,7 @@ export function syncDevelopmentWithAge(state: GameState, now = Date.now()): Game
 }
 
 /** One conversation is a meaningful learning event, not just another timer tick. */
-export function advanceDevelopmentFromConversation(state: GameState, now = Date.now()): GameState {
+export function advanceDevelopmentFromConversation(state: GameState, now = authoritativeNow()): GameState {
   const aged = syncDevelopmentWithAge(state, now);
   const cognitiveGain = 1.7 + aged.personality.curiosity / 100;
   const languageGain = 1.05 + aged.personality.sociability / 160;
@@ -493,6 +494,23 @@ export function getDevelopmentLabel(stage: DevelopmentStage, language: 'en' | 'p
   return language === 'pl' ? polish : english;
 }
 
+export function getDevelopmentMilestoneText(stage: DevelopmentStage, language: 'en' | 'pl' = 'en'): string {
+  const label = getDevelopmentLabel(stage, language);
+  return language === 'pl' ? `Osiągnęło etap: ${label}` : `Reached ${label}`;
+}
+
+export function getDevelopmentStageFromMemory(content: string): DevelopmentStage | null {
+  const match = content.trim().match(/^(?:reached|osiągnęło etap:)\s+(.+)$/i);
+  if (!match) return null;
+  const value = match[1].trim().toLocaleLowerCase();
+  const stages: DevelopmentStage[] = ['egg', 'newborn', 'animal', 'communicating', 'first_words', 'combining', 'sentences', 'mature'];
+  return stages.find(stage => (
+    stage === value
+    || getDevelopmentLabel(stage, 'en').toLocaleLowerCase() === value
+    || getDevelopmentLabel(stage, 'pl').toLocaleLowerCase() === value
+  )) ?? null;
+}
+
 export function getDevelopmentDescription(stage: DevelopmentStage, language: 'en' | 'pl' = 'en'): string {
   const english = {
     egg: 'Waiting to emerge.',
@@ -528,15 +546,15 @@ export function learnWord(state: GameState, word: string, context: string): Game
 
   const entry: VocabularyEntry = {
     word,
-    learnedAt: Date.now(),
+    learnedAt: authoritativeNow(),
     confidence: 0.2 + Math.random() * 0.3,
     contexts: [context],
     usageCount: 0,
   };
 
   const memory: Memory = {
-    id: `mem-word-${Date.now()}`,
-    timestamp: Date.now(),
+    id: `mem-word-${authoritativeNow()}`,
+    timestamp: authoritativeNow(),
     content: `learned word "${word}"`,
     importance: 6,
     emotionalValence: 0.7,

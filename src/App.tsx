@@ -22,8 +22,10 @@ import {
   shouldRefreshWeather,
   weatherLocationKey,
 } from './systems/environmentSystem';
+import { authoritativeNow, cadenceDelay, isDevTimeSimulationActive } from './systems/authoritativeTime';
+import { SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS, SaveScheduler } from './systems/saveScheduler';
 
-const APP_VERSION = '0.14.9';
+const APP_VERSION = '0.14.11';
 export type PwaUpdateStatus = 'up_to_date' | 'update_available' | 'checking' | 'offline' | 'unknown';
 export type LocalSaveStatus = 'saved' | 'saving' | 'unavailable' | 'unknown';
 
@@ -35,7 +37,8 @@ function App() {
   const [pwaUpdateStatus, setPwaUpdateStatus] = useState<PwaUpdateStatus>(navigator.onLine ? 'unknown' : 'offline');
   const [localSaveStatus, setLocalSaveStatus] = useState<LocalSaveStatus>('unknown');
   const gameStateRef = useRef<GameState | null>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveSchedulerRef = useRef<SaveScheduler | null>(null);
+  const pendingSaveRef = useRef<GameState | null>(null);
   const needsTimerRef = useRef<ReturnType<typeof setInterval>>();
   const retryTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const resettingRef = useRef(false);
@@ -132,7 +135,7 @@ function App() {
       if (saved && !isHatchableBoot(saved)) {
         // CRITICAL: If the creature has already hatched, never show the egg again.
         // The hatched flag is a permanent lifecycle transition.
-        const now = Date.now();
+        const now = authoritativeNow();
         const awayMs = now - saved.lastSaved;
         let returningState = saved;
         let offlineActivities: OfflineActivity[] = [];
@@ -182,21 +185,30 @@ function App() {
     };
   }, [runBoot]);
 
-  // Auto-save
+  // Auto-save. The scheduler keeps the production one-second idle debounce but
+  // caps the pending window, so a continuous update stream (the 1440× harness
+  // drives several cadences at one real second) flushes every few seconds
+  // instead of re-arming the debounce forever and never persisting.
   const queueSave = useCallback((state: GameState) => {
-    clearTimeout(saveTimerRef.current);
+    if (!saveSchedulerRef.current) {
+      saveSchedulerRef.current = new SaveScheduler(SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS, () => {
+        const snapshot = pendingSaveRef.current;
+        pendingSaveRef.current = null;
+        if (!snapshot) return;
+        void saveGameState(snapshot)
+          .then(() => setLocalSaveStatus('saved'))
+          .catch(() => setLocalSaveStatus('unavailable'));
+      });
+    }
+    pendingSaveRef.current = state;
     setLocalSaveStatus('saving');
-    saveTimerRef.current = setTimeout(() => {
-      void saveGameState(state)
-        .then(() => setLocalSaveStatus('saved'))
-        .catch(() => setLocalSaveStatus('unavailable'));
-    }, 1000);
+    saveSchedulerRef.current.update();
   }, []);
 
   const prepareForUpdate = useCallback(async () => {
     updatingRef.current = true;
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = undefined;
+    saveSchedulerRef.current?.cancel();
+    pendingSaveRef.current = null;
     const latest = gameStateRef.current;
     try {
       if (!resettingRef.current && latest?.development.hatched) {
@@ -222,11 +234,14 @@ function App() {
   // refreshes the central WorldEnvironment cache. Needs, behaviour and memory
   // interpret that shared state in their own systems.
   const refreshWorldWeather = useCallback(async (force = false) => {
+    // An accelerated future cannot have truthful live observations. Let any
+    // existing snapshot age out through the normal cache/fallback rules.
+    if (isDevTimeSimulationActive()) return;
     const currentState = gameStateRef.current;
     const world = currentState?.world;
     const location = world?.settings.location;
     if (!currentState || !world || !location || (world.settings.mode !== 'device' && world.settings.mode !== 'city')) return;
-    const now = Date.now();
+    const now = authoritativeNow();
     if (!navigator.onLine) {
       const due = !world.current || now >= world.nextRefreshAt;
       if (due && world.lastError !== 'offline') {
@@ -270,7 +285,7 @@ function App() {
         const selectedMode = previous?.world.settings.mode;
         if (!previous || !selected || (selectedMode !== 'device' && selectedMode !== 'city')) return previous;
         if (weatherLocationKey(selected) !== requestedLocationKey) return previous;
-        const updated = { ...previous, world: failWeatherRefresh(previous.world, 'weather_unavailable', Date.now()) };
+        const updated = { ...previous, world: failWeatherRefresh(previous.world, 'weather_unavailable', authoritativeNow()) };
         gameStateRef.current = updated;
         queueSave(updated);
         return updated;
@@ -341,7 +356,7 @@ function App() {
         // Physiology, rest and daily moments stop with the life. The save
         // stays, the room stays, only the body no longer changes.
         if (isDead(prev)) return prev;
-        const now = Date.now();
+        const now = authoritativeNow();
         const advanced = advanceHealth(advanceNeeds(prev, now), now);
         const updated = ensureDailyMoment(applyCircadianSleep(advanced, now), now);
         queueSave(updated);
@@ -349,7 +364,7 @@ function App() {
       });
     };
     advance();
-    needsTimerRef.current = setInterval(advance, 30_000);
+    needsTimerRef.current = setInterval(advance, cadenceDelay(30_000));
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') advance();
     };
@@ -392,8 +407,8 @@ function App() {
   const handleReset = useCallback(async () => {
     const previous = gameStateRef.current;
     resettingRef.current = true;
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = undefined;
+    saveSchedulerRef.current?.cancel();
+    pendingSaveRef.current = null;
     // Prevent pagehide from recreating the just-deleted creature during the
     // reload that follows a successful reset.
     gameStateRef.current = null;
@@ -461,6 +476,11 @@ function App() {
       <div className="h-screen w-screen overflow-hidden relative">
         <Room state={safeState} onStateChange={handleStateChange} onReset={handleReset} version={APP_VERSION} buildId={__BUILD_ID__} pwaUpdateStatus={pwaUpdateStatus} localSaveStatus={localSaveStatus} onCheckForUpdate={checkForPwaUpdate} />
       </div>
+      {import.meta.env.DEV && import.meta.env.MODE === 'simulation' ? (
+        <div className="fixed left-2 top-2 z-[100] rounded-md border border-amber-300/60 bg-black/85 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-amber-200 pointer-events-none">
+          Dev simulation · 1 creature day / 1 real minute
+        </div>
+      ) : null}
       <PwaUpdateNotice language={uiLanguage(safeState.conversation.language)} needRefresh={needRefresh} setNeedRefresh={setNeedRefresh} updateServiceWorker={updateServiceWorker} onBeforeUpdate={prepareForUpdate} onUpdateFailed={handleUpdateFailed} />
     </>
   );

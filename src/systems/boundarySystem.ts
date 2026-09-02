@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { BondEventType, GameState, Memory, TouchBoundaryState } from '../types';
 
 const WINDOW_MS = 12_000;
@@ -72,7 +73,7 @@ function recordBoundary(state: GameState, boundary: TouchBoundaryState, now: num
   };
 }
 
-export function evaluateTouchBoundary(state: GameState, type: Extract<BondEventType, 'tap' | 'stroke' | 'hold'>, now = Date.now()): TouchBoundaryResult {
+export function evaluateTouchBoundary(state: GameState, type: Extract<BondEventType, 'tap' | 'stroke' | 'hold'>, now = authoritativeNow()): TouchBoundaryResult {
   const saved = migrateTouchBoundaryState(state.touchBoundaries);
   const resetWindow = saved.windowStartedAt === 0 || now - saved.windowStartedAt >= WINDOW_MS;
   const boundary = resetWindow ? { ...saved, windowStartedAt: now, touchesInWindow: 0 } : saved;

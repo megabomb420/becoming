@@ -1,4 +1,5 @@
 import { ConversationLanguage, OpenConversationLoop, UserFactKind } from '../types';
+import { getDevelopmentMilestoneText, getDevelopmentStageFromMemory } from './developmentSystem';
 
 export type SupportedUiLanguage = 'en' | 'pl';
 
@@ -124,6 +125,8 @@ const STORED_MEMORY_TRANSLATIONS: Record<string, string> = {
 };
 
 export function formatStoredMemory(content: string, language: SupportedUiLanguage): string {
+  const developmentStage = getDevelopmentStageFromMemory(content);
+  if (developmentStage) return getDevelopmentMilestoneText(developmentStage, language);
   if (language === 'en') return content;
   const translated = STORED_MEMORY_TRANSLATIONS[content.trim()];
   if (translated) return translated;

@@ -1,3 +1,4 @@
+import { authoritativeNow } from './authoritativeTime';
 import { ChatMessage, GameState, LifePathId, SemanticWorldAction } from '../types';
 import {
   getLifePathDescription,
@@ -433,7 +434,7 @@ function buildWeatherOverlay(state: GameState, now: number) {
   return overlay;
 }
 
-export function shouldCreatureSelfSpeak(state: GameState, now = Date.now()): boolean {
+export function shouldCreatureSelfSpeak(state: GameState, now = authoritativeNow()): boolean {
   if (isDead(state) || state.sleepState === 'sleeping' || state.development.stage === 'egg') return false;
   const clock = creatureClock(state, now);
   if (clock.rest) return false;
@@ -445,7 +446,7 @@ export function buildCreatureMindRequest(
   state: GameState,
   options: { kind?: CreatureMindRequestKind; now?: number; aboutTo?: SelfCareAboutTo } = {},
 ): CreatureMindRequest {
-  const now = options.now ?? Date.now();
+  const now = options.now ?? authoritativeNow();
   const care = careContext(state);
   const facts = compactFacts(state);
   const habits = compactHabits(state);

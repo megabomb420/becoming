@@ -116,6 +116,17 @@ assert.equal(isHatchableBoot(recoveredLate), false, 'a slow first open must neve
 await saveGameState(blockedLife);
 closeDatabaseConnections();
 const healthyIndexedDB = globalThis.indexedDB;
+const schemaConnection = await new Promise<IDBDatabase>((resolve, reject) => {
+  const request = healthyIndexedDB.open('becoming-db', 1);
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error ?? new Error('Could not inspect Becoming schema.'));
+});
+assert.equal(
+  schemaConnection.objectStoreNames.contains('memoryBook'),
+  false,
+  'new databases keep biography in GameState instead of creating a competing Memory Book store',
+);
+schemaConnection.close();
 let openCalls = 0;
 const stall = new FakeIDBOpenDBRequest();
 const hangFirstOpen = new Proxy(healthyIndexedDB, {
