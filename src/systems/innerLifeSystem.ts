@@ -14,6 +14,7 @@ import {
   SelfAwarenessStage,
 } from '../types';
 import { getLifePathTitle } from './lifePathSystem';
+import { getDevelopmentMilestoneText, getDevelopmentStageFromMemory } from './developmentSystem';
 
 interface TopicDefinition {
   label: string;
@@ -599,8 +600,10 @@ function dreamMood(state: GameState): CreatureDream['mood'] {
   return 'warm';
 }
 
-function compactMemory(memory?: Memory) {
+function compactMemory(memory: Memory | undefined, language: 'en' | 'pl') {
   if (!memory) return 'the room breathing in the dark';
+  const developmentStage = getDevelopmentStageFromMemory(memory.content);
+  if (developmentStage) return getDevelopmentMilestoneText(developmentStage, language);
   return memory.content.replace(/^user\s+/i, 'you ').replace(/[.!]$/, '').slice(0, 90);
 }
 
@@ -619,14 +622,14 @@ export function generateDreamAfterSleep(state: GameState, sleptMs: number, now =
   const label = getInterestLabel(topic, polish ? 'pl' : 'en');
   const mood = dreamMood(state);
   const fragments = polish ? [
-    `${compactMemory(first)}, ale każde drzwi prowadziły z powrotem do „${label}”.`,
-    `${compactMemory(first)} unosiło się nad „${compactMemory(second)}” i nikogo to nie dziwiło.`,
-    `Pokój nie miał ścian. Gdzieś daleko „${compactMemory(first)}” działo się od końca.`,
+    `${compactMemory(first, 'pl')}, ale każde drzwi prowadziły z powrotem do „${label}”.`,
+    `${compactMemory(first, 'pl')} unosiło się nad „${compactMemory(second, 'pl')}” i nikogo to nie dziwiło.`,
+    `Pokój nie miał ścian. Gdzieś daleko „${compactMemory(first, 'pl')}” działo się od końca.`,
     `„${label}” mówiło twoim głosem. Zadało pytanie, którego po przebudzeniu już nie pamiętałem.`,
   ] : [
-    `${compactMemory(first)}, but every doorway led back to ${label}.`,
-    `${compactMemory(first)} floated above ${compactMemory(second)}, and neither one thought this was strange.`,
-    `The room had no walls. Somewhere far away, ${compactMemory(first)} kept happening in reverse.`,
+    `${compactMemory(first, 'en')}, but every doorway led back to ${label}.`,
+    `${compactMemory(first, 'en')} floated above ${compactMemory(second, 'en')}, and neither one thought this was strange.`,
+    `The room had no walls. Somewhere far away, ${compactMemory(first, 'en')} kept happening in reverse.`,
     `${label} had your voice. It asked a question I could not remember after waking.`,
   ];
   const titles = polish

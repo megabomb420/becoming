@@ -107,6 +107,16 @@ import {
 import { appendCreatureMessage, beginConversationTurn, isRestingChatGate } from '../systems/conversationSystem';
 import { isLlmAvailable, requestCreatureReply, SelfCareKind, shouldCreatureSelfSpeak } from '../systems/llmConversation';
 import {
+  beginSelfCareSpeech,
+  canSpeakSelfCare,
+  createSelfCareSpeechPolicy,
+  dominantSpokenCareNeed,
+  failActiveSelfCareSpeech,
+  finishSelfCareSpeech,
+  isSelfCareSpeechCurrent,
+  recordStandaloneSelfCareSpeech,
+} from '../systems/selfCareSpeechPolicy';
+import {
   applyWorldObjectReaction,
   applyConversationMicroReaction,
   beginWorldObjectApproach,
@@ -412,7 +422,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   const returnTraceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const careEffectTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const lastCareSignalRef = useRef(0);
-  const lastSelfCareSpeechRef = useRef<Partial<Record<SelfCareKind | 'any', number>>>({});
+  const selfCareSpeechPolicyRef = useRef(createSelfCareSpeechPolicy());
   const lastSpeechAtRef = useRef(0);
   const lastSelfSpeakAtRef = useRef(0);
   const selfSpeakInFlightRef = useRef(false);
@@ -570,23 +580,22 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   // clock, place and activity in its context — or stay silent. The action
   // proceeds regardless; a failed mind call means silence, never a canned
   // substitute. Only a mature mind narrates its own body.
-  const announceSelfCare = useCallback((kind: SelfCareKind) => {
-    const now = authoritativeNow();
-    const last = lastSelfCareSpeechRef.current;
-    if (now - (last.any ?? 0) < 120_000) return;
-    if (now - (last[kind] ?? 0) < 360_000) return;
+  const announceSelfCare = useCallback((kind: SelfCareKind): number | null => {
     const current = stateRef.current;
-    if (current.development.stage !== 'mature') return;
-    if (!isLlmAvailable()) return;
-    last.any = now;
-    last[kind] = now;
+    if (current.development.stage !== 'mature') return null;
+    if (!isLlmAvailable()) return null;
+    const token = beginSelfCareSpeech(selfCareSpeechPolicyRef.current, current, kind);
+    if (token === null) return null;
     void requestCreatureReply(current, { kind: 'self', aboutTo: { action: kind } })
       .then(result => {
-        if (result.reply.trim()) triggerSpeech(result.reply, false);
+        if (result.reply.trim() && isSelfCareSpeechCurrent(selfCareSpeechPolicyRef.current, token)) {
+          triggerSpeech(result.reply, false);
+        }
       })
       .catch(() => {
         // The body acts; silence is valid.
       });
+    return token;
   }, [triggerSpeech]);
 
   useEffect(() => {
@@ -621,6 +630,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
   }, []);
 
   const clearActionTimers = useCallback(() => {
+    failActiveSelfCareSpeech(selfCareSpeechPolicyRef.current);
     clearTimeout(noticeTimerRef.current);
     clearTimeout(movementTimerRef.current);
     clearTimeout(reactionTimerRef.current);
@@ -638,6 +648,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     initiatedByUser: boolean,
     worldIntent?: WorldIntent,
     onWorldResult?: (result: WorldActionResult) => void,
+    selfCareSpeechToken?: number | null,
   ) => {
     setIsMoving(false);
 
@@ -646,6 +657,9 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     const reactionDuration = reaction.duration;
     const reactionEmotion = reaction.emotion;
     onStateChange(prev => applyWorldObjectReaction(prev, objectId, reaction, target, localizedReaction, initiatedByUser));
+    if (selfCareSpeechToken != null) {
+      finishSelfCareSpeech(selfCareSpeechPolicyRef.current, selfCareSpeechToken, 'completed');
+    }
 
     behaviorRef.current = reaction.behavior;
     showCreatureCue({ icon: reaction.icon, label: localizedReaction, tone: 'reaction' }, reactionDuration);
@@ -679,6 +693,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     object: RoomObject,
     initiatedByUser = true,
     autonomousMomentId?: Parameters<typeof recordAutonomousMoment>[1],
+    selfCareKind?: SelfCareKind,
     worldIntent?: WorldIntent,
     onWorldResult?: (result: WorldActionResult) => void,
   ) => {
@@ -700,6 +715,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     }
 
     clearActionTimers();
+    const selfCareSpeechToken = selfCareKind ? announceSelfCare(selfCareKind) : null;
     activeObjectRef.current = object.id;
     setIsMoving(false);
     const currentPos = creaturePosRef.current;
@@ -739,11 +755,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
 
       movementTimerRef.current = setTimeout(() => {
         if (activeObjectRef.current === object.id) {
-          finishObjectInteraction(object.id, object.type, target, initiatedByUser, worldIntent, onWorldResult);
+          finishObjectInteraction(object.id, object.type, target, initiatedByUser, worldIntent, onWorldResult, selfCareSpeechToken);
         }
       }, travelTime);
     }, noticeDelay);
-  }, [clearActionTimers, finishObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue]);
+  }, [announceSelfCare, clearActionTimers, finishObjectInteraction, onStateChange, polish, setTemporaryEmotion, showCreatureCue]);
 
   const walkToIdlePosition = useCallback((targetInput: { x: number; y: number }, options?: { outdoors?: boolean }) => {
     if (activeObjectRef.current || stateRef.current.sleepState === 'sleeping' || isDead(stateRef.current)) return;
@@ -974,11 +990,11 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       const disposition = getCircadianDisposition(time, currentState.needs.energy, false, schedule);
       if (!goal && creatureMaySleep(time, currentState.needs.energy, schedule) && !getSleepBlocker(currentState)) {
         const blanket = closestOfType(['blanket']);
-        announceSelfCare('sleep');
         if (blanket) {
-          beginObjectInteraction(blanket, false);
+          beginObjectInteraction(blanket, false, undefined, 'sleep');
           return;
         }
+        announceSelfCare('sleep');
         onStateChange(putToSleep(currentState, now));
         return;
       }
@@ -1022,8 +1038,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       }
 
       if (goal) {
-        if (goalKind) announceSelfCare(goalKind);
-        beginObjectInteraction(goal, false);
+        beginObjectInteraction(goal, false, undefined, goalKind ?? undefined);
         return;
       }
       startAmbientMoment();
@@ -1077,11 +1092,16 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       if (authoritativeNow() - lastSpeechAtRef.current < 90_000) return;
       if (authoritativeNow() - lastSelfSpeakAtRef.current < 180_000) return;
       if (!shouldCreatureSelfSpeak(currentState)) return;
+      const careKind = dominantSpokenCareNeed(currentState);
+      if (careKind && !canSpeakSelfCare(selfCareSpeechPolicyRef.current, currentState, careKind)) return;
       selfSpeakInFlightRef.current = true;
       lastSelfSpeakAtRef.current = authoritativeNow();
       void requestCreatureReply(currentState, { kind: 'self' })
         .then(result => {
-          if (result.reply.trim()) triggerSpeech(result.reply);
+          if (result.reply.trim()) {
+            if (careKind) recordStandaloneSelfCareSpeech(selfCareSpeechPolicyRef.current, currentState, careKind);
+            triggerSpeech(result.reply);
+          }
         })
         .catch(() => {})
         .finally(() => {
@@ -1492,7 +1512,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       return;
     }
     showCreatureCue({ icon: '!', label: polish ? `zauważa: ${objectLabel(type, true)}` : `notices the ${objectLabel(type, false)}`, tone: 'notice' });
-    window.setTimeout(() => beginObjectInteraction(object, true, undefined, intent, completeWorldAction), 180);
+    window.setTimeout(() => beginObjectInteraction(object, true, undefined, undefined, intent, completeWorldAction), 180);
   }, [beginObjectInteraction, completeWorldAction, onStateChange, polish, showCreatureCue]);
 
   const runWorldIntent = useCallback((intent: WorldIntent) => {
@@ -1507,7 +1527,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
         ? stateRef.current.roomObjects.find(item => item.type === desiredType)
         : stateRef.current.roomObjects.find(item => item.type === 'apple' || item.type === 'broccoli');
       if (object) {
-        beginObjectInteraction(object, true, undefined, intent, completeWorldAction);
+        beginObjectInteraction(object, true, undefined, undefined, intent, completeWorldAction);
         return;
       }
       const inventoryType = desiredType ?? stateRef.current.inventory.find(item => item === 'apple' || item === 'broccoli');
@@ -1530,7 +1550,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       }
       const blanket = stateRef.current.roomObjects.find(object => object.type === 'blanket');
       if (blanket) {
-        beginObjectInteraction(blanket, true, undefined, intent, completeWorldAction);
+        beginObjectInteraction(blanket, true, undefined, undefined, intent, completeWorldAction);
         return;
       }
       emitCue('sleep');

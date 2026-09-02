@@ -2,8 +2,8 @@
 
 > **Working Title:** Becoming  
 > **Tagline:** Watch something become someone.  
-> **Version:** 0.14.11
-> **Last Updated:** 2026-09-01
+> **Version:** 0.14.12
+> **Last Updated:** 2026-09-02
 
 ---
 
@@ -66,6 +66,7 @@ becoming/
 │   ├── weather_environment_checks.ts # Open-Meteo, cache, solar light, reaction checks
 │   ├── persona_overlay_checks.ts # Thin mind payload, earned overlays, DeepSeek-only bubbles
 │   ├── grounded_speech_checks.ts # Authoritative clock/situation context, about_to, no fallback speech
+│   ├── longitudinal_qa_checks.ts # Continuity/polish regressions from accelerated QA
 │   ├── accelerated_time_checks.ts # Dev-clock isolation plus deterministic 30-day system pass
 │   ├── verify_production_time.mjs # Rejects production bundles containing simulation activation/UI
 │   ├── object_interaction_checks.ts # Tap uses, drag moves, drag-to-inventory puts away
@@ -88,8 +89,8 @@ becoming/
 │   │   ├── languageSystem.ts   # Stage-constrained speech generation
 │   │   ├── conversationSystem.ts # Persistent dialogue, user facts, growing mind
 │   │   ├── llmConversation.ts  # Thin always-on mind request plus earned overlays
+│   │   ├── selfCareSpeechPolicy.ts # Unresolved-intent speech eligibility
 │   │   ├── offlineSimulation.ts # Time-passed simulation when app closed
-│   │   ├── memoryBook.ts       # Emergent biography generation
 │   │   ├── lifePathSystem.ts    # Paths, hybrids, consequences, and recovery
 │   │   ├── innerLifeSystem.ts   # Interests, opinions, dreams, private thoughts
 │   │   ├── continuitySystem.ts  # Chapters, open loops, and check-ins
@@ -153,7 +154,7 @@ becoming/
 | Sleep / wake cycle | ✅ | Ordinary lives sleep on their solar night and wake on their solar day, independent of when the player is around. A committed party/alcohol/degen life inverts that clock. Exhaustion or urgent hunger/toilet can still interrupt. Touch and chat can wake them; they are not commanded to bed |
 | Offline simulation | ✅ | Uses the same needs rates as active play, samples local night rest across date/timezone/DST changes, and applies diminishing long-absence pressure with non-punitive floors |
 | Persistent state | ✅ | IndexedDB survives refresh, restart and reopening; the first room waits for a durable write; migration preserves living identity and placed objects; only a successful empty read or `indexedDB.databases()` confirming `becoming-db` is gone enters hatching. Chrome is given one `indexedDB.open` at a time — a timeout never abandons that request to queue another. A worker fallback may read the record while the main open is pending. Busy is never an egg |
-| Memory Book | ✅ | Emergent biography from significant memories |
+| Memory Book | ✅ | A read-only biography projection of the single persisted `GameState`: memories, firsts, dreams, creations, relationship threads, absences and shared language. There is no second biography store |
 | Mobile-first UX | ✅ | Tested at 390×844 and 320×568, including the separate Room weather control, horizontal Today forecast, weather onboarding, city results, compact settings, real day/night rooms and offline cache messaging |
 | Social Learning & Imitation | ✅ | Behaviour parsing, observation tracking, imitation engine |
 | Creature-initiated chat | ✅ | Creature can start conversations based on observations |
@@ -161,7 +162,7 @@ becoming/
 | Live AI mind | 🚧 | DeepSeek replies through a private backend; the browser never receives the API key. Every request carries one authoritative clock, place, activity and situation; self-care announcements ride the same `/chat` with the true about-to action and fail empty. 0.12.5 stops canned room lines and local fallback on worker failure. The empty production-failure path is live-proven; a successful clock-aware model reply is not yet live-proven |
 | Life paths | ✅ | 12 slowly forming lifestyles shaped by conversation, objects, repeated choices, consequences, and recovery |
 | Crossbreeds | ✅ | Compatible dominant tendencies combine into named hybrid identities such as Fog Gamer, Chill Sage, or Gentle Anchor |
-| Daily moments | ✅ | One authored dilemma per creature-day, offered only in their wake. Night-life hours wait for a settled nocturnal life |
+| Daily moments | ✅ | One authored dilemma per creature-day, offered only in their wake. Night-life hours wait for a settled nocturnal life; stable seeded selection avoids the recent exact-template window when alternatives exist |
 | Visual evolution | ✅ | Body shape, gaze, colour, aura, room tint, marks, and accessories change with the current path and hybrid |
 | Becoming view | ✅ | Shows the current identity, their day or night clock, visible clues, possible lives, recovery, skin stage, and turns in the road |
 | Organic interests | ✅ | Conversation and object play grow curiosities into interests, passions, and obsessions without a manual skill tree |
@@ -181,7 +182,7 @@ becoming/
 | Life while away | ✅ | Up to 12 absence episodes preserve sleep, exploration, quiet time, and room activity for greetings, memories, and later chat |
 | Touch boundaries | ✅ | Caution, independence, bond, and rapid-touch pressure decide when the creature accepts holding or asks for space |
 | Shared sayings | ✅ | Safe short phrases repeated two or three times can become persistent inside language visible in Memory Book and available to chat |
-| Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, and output validation keep DeepSeek inside the creature role |
+| Role protection | ✅ | Server-side jailbreak detection, role lock, poisoned-history redaction, task blocking, action-stage narration rejection, and output validation keep DeepSeek inside the creature role |
 | Automated verification | ✅ | Deterministic gameplay, weather/privacy/cache/solar, Worker and production-build checks run before every GitHub Pages deployment |
 | Isolated time simulation | ✅ | Explicit local dev server at 1440× authoritative time (one creature day per real minute), using existing cadences/systems; production builds are forced to real time and scanned for simulation activation/UI |
 | Version display | ✅ | Shown in Memory Book and the compact Settings About / Diagnostics footer, alongside build, update, runtime, save, weather-cache and mind status |
@@ -720,7 +721,7 @@ The melt was too wide and spilled past the head outline. The flush is smaller an
 
 ### v0.14.0 — A mature mind says what its body is doing
 
-Self-care was already autonomous from hatching — the creature walks to the bowl, the litter box, the basin and the blanket on its own. What a mature mind adds is the voice: before the trip, it says so, in its own tone. At the time this shipped as local one-liners; since v0.14.6 the wording comes from DeepSeek with the true about-to action in context (see below). The throttled announcements still ride the existing seven-second room cadence and the same need thresholds as always.
+Self-care was already autonomous from hatching — the creature walks to the bowl, the litter box, the basin and the blanket on its own. What a mature mind adds is the voice: before the trip, it says so, in its own tone. At the time this shipped as local one-liners; since v0.14.6 the wording comes from DeepSeek with the true about-to action in context (see below). Announcements still ride the existing seven-second room cadence and the same need thresholds; v0.14.12 replaces the accelerated-time cooldown with unresolved-intent eligibility.
 
 ### v0.14.4 — Care state stays settled; the mind proposes bounded actions
 
@@ -749,7 +750,7 @@ Two production polish slices: the creature's language now comes from the mind, a
 **DeepSeek is the source of creature speech.** Local code decides every fact — clock, solar phase, rest/wake, needs, autonomy, current activity, place, weather, persistence — and DeepSeek supplies the natural wording. The root cause of the wrong day/night lines was `selfCareSpeech.ts`: canned one-liners like "I am crashing. Night." could fire at 2pm because they were tone-picked tables, not grounded facts. That module is deleted. The rest-phase murmur is gone too: a resting creature is a closed conversation window — quiet, no mind call, no canned line.
 
 - **One authoritative context.** Every mind request carries a single `clock` (phase, schedule, rest, sleeping, localTime) plus a new `situation` block: `place` (indoor/outdoors), the exact `activity`, and — for self-care — `aboutTo` (a real action local autonomy already decided). The Worker whitelists all of it (`cleanSituation`, `SITUATION_PROMPT`) and never lets the model claim a different time, place, action or state. No conflicting time representations exist: one `getTimeOfDay` call feeds phase and localTime together.
-- **Self-care announcements ride `/chat`.** `announceSelfCare` now sends `requestCreatureReply(state, { kind: 'self', aboutTo: { action } })` — the mind may phrase one short line about the true about-to action, or stay silent (empty replies are valid). The canonical action always continues: notice → walk → react runs regardless of the reply, a failed call means silence, and nothing is ever gated on the model. Mature-stage gate and the existing 2/6-minute throttle are kept.
+- **Self-care announcements ride `/chat`.** `announceSelfCare` now sends `requestCreatureReply(state, { kind: 'self', aboutTo: { action } })` — the mind may phrase one short line about the true about-to action, or stay silent (empty replies are valid). The canonical action always continues: notice → walk → react runs regardless of the reply, a failed call means silence, and nothing is ever gated on the model. The mature-stage gate remains; v0.14.12 replaces the original 2/6-minute throttle with unresolved-intent state.
 - **Silence beats fake fallback.** Worker/Turnstile/model failure → the action happens, the bubble stays empty. `groundedWorldReply` remains the fast-path ack for direct world commands and the return greeting stays a clock-grounded presence ritual — both are facts decided locally, not pretended mind speech; everything else in the bubble is DeepSeek.
 - **Reasoning is selective; ordinary embodied speech stays fast.** The provider contract keeps `thinking: { type: 'disabled' }` for every request: all current turns (conversation, self-speak, announcements) are embodied speech where latency matters more than deliberation. Per-request thinking budgets are deferred until `deepseek-v4-flash` thinking is live-verified; the design note is a local complexity heuristic setting a `reasoning` flag the Worker would map to a thinking budget.
 
@@ -796,6 +797,21 @@ Persistence stays reliable under acceleration without a new loop. The save debou
 Live weather refresh is intentionally paused during acceleration: a forecast for an invented future would be false. A prior observation ages out through the existing cache/freshness rules, and solar light falls back to the existing deterministic seasonal calculation. A fresh simulation origin starts with weather unconfigured, which is the recommended month-run setup.
 
 `npm run test:simulation` performs a fast deterministic 30-day active-system pass using the production needs, health, circadian sleep, development, daily-moment, autonomy and care transitions. The current proof resolves 30 daily moments, observes repeated dawn/day/dusk/night and sleep/wake transitions, and keeps the supported creature alive with ordinary threshold-based calls to the existing care actions. It also proves the production clock remains an exact wall-clock adapter, App and Room gain no intervals, and the DeepSeek request receives the authoritative simulated phase/situation. A dedicated save-scheduler regression drives the one-second cadence for thirty real seconds and proves the capped debounce keeps persisting every few seconds — in either timer ordering — without writing on every gameplay tick, while sporadic interaction still coalesces into one write one second after the last update.
+
+### v0.14.12 — Longitudinal continuity and polish
+
+The completed accelerated 30-day QA was **dev-simulation proof**, not thirty days of production real-time use. It ran the explicit local 1440× harness for roughly thirty real minutes and exercised the same gameplay state transitions against a sacrificial local origin. That observation showed persistent identity across the simulated month, slow seed-faithful personality drift, no instant life-path adoption, no user-mirroring-driven interests, reliable save/reload continuity, and strong DeepSeek grounding in the authoritative accelerated clock and state. Those successful systems were not retuned. Production remains an exact real-time clock and the capped `SaveScheduler` persistence fix remains intact.
+
+The continuity defects found by that run are fixed narrowly:
+
+- **Unresolved self-care no longer repeats itself.** `selfCareSpeechPolicy.ts` remembers the need value behind the last spoken or about-to intent. The same unresolved action cannot announce again merely because accelerated game time crossed a cooldown; an underway approach owns one speech token, interruption invalidates it, and a reply arriving after the reaction begins is discarded. A different dominant action may speak, and the same action becomes eligible only after a material body-state change. Rare generic self-speak shares this gate. The existing autonomy cadence and single `/chat` request path are unchanged; model failure and invalid/late replies remain silence with no local substitute.
+- **The Worker enforces the no-action-narration contract.** A narrow output validator rejects asterisk-delimited stage directions that begin with an embodied action (including the observed `*sits up, looking around*`). Markdown emphasis such as `That is *really* odd` remains valid. Invalid self-speak returns an empty reply; ordinary invalid chat output fails as an invalid provider answer. Role/security guards and the structured world-action channel are unchanged.
+- **Development stage IDs stay internal.** New milestone memories use the existing English stage copy instead of storing `reached first_words`. A shared stage-memory parser maps legacy IDs through `getDevelopmentLabel()` at Memory Book and dream-generation boundaries, so old saves are preserved without leaking snake_case into displayed memory or generated dream prose.
+- **Memory Book has one source of truth.** The UI has always projected biography from `GameState` (`memories`, development firsts, `innerLife`, creations, presence, continuity and shared language). The unused `generateMemoryBookEntry()` path and its unread persistence API are removed. New version-1 databases no longer create a `memoryBook` object store; an existing legacy store may remain inert until the normal explicit Start over deletes the database. There is no DB-version bump, no boot-contract change, no migration rewrite and no duplicate biography state.
+- **Exact daily moments get a short memory.** Authored moments now carry stable template IDs. Seeded hashing chooses among eligible templates without array-order first-winner bias, while the last four resolved template IDs are excluded whenever another wake/rest-eligible moment exists. Night-life eligibility, life-path effects and local-only selection are unchanged.
+- **Bond accounting was verified, not retuned.** The canonical completed user object reaction records exactly one relationship event. The notice/approach phase records none, so an interrupted approach does not count; the same completed reaction with `initiatedByUser = false` develops the creature's object experience without counting user care. The accelerated caretaker frequently interrupted or autonomously completed approaches, explaining the tentative result. Bond effects and tentative/familiar/close/bonded thresholds are unchanged, and rapid repeated taps/feeding gain no new path to farm bond.
+
+Focused deterministic coverage now exercises each contract above, including legacy stage prose through dreams and Memory Book display, a new-database schema without the redundant store, recent-moment avoidance and fresh-seed diversity, and the completed/interrupted/autonomous bond path. Worker regressions cover narration rejection, quiet self-speak failure and ordinary asterisk emphasis. `npm run test:simulation` and the full `npm run check` remain the release gates.
 
 ---
 
@@ -852,6 +868,7 @@ Live weather refresh is intentionally paused during acceleration: a forecast for
 - **Weather is interpreted, not scored.** Open-Meteo supplies observations only. `WorldEnvironment` translates them into bounded stimuli, and gameplay combines those with needs, personality, preferences and memories before a reaction. No rule maps a condition directly to happiness loss.
 - **Location minimisation.** Geolocation is opt-in, high accuracy is disabled, coordinates are rounded to two decimals before requests or persistence, manual city selection remains available, and disabling weather stops forecast refreshes.
 - **Local-first with one optional observation source.** All core systems and the last successful weather state run from IndexedDB. Open-Meteo enriches the world when enabled. AI remains reserved for higher-level cognition and is composed as a thin always-on prompt plus earned overlays; weather still degrades offline, while room speech does not invent a substitute line.
+- **One saved life, one Memory Book.** `GameState` is the only biography persistence model. `MemoryBookView` derives its pages from the saved memories, firsts, inner life, creations, presence, continuity and shared language. A legacy `memoryBook` IndexedDB store is ignored rather than migrated into competing state; new databases do not create it, and explicit Start over eventually deletes any old inert copy with the whole database.
 - **One weather cache, one cadence, local-calendar presentation.** The Room atmosphere, compact weather control, Today sheet, solar clock and outdoor interpretation all read the same persisted `WorldEnvironment.current` snapshot. Only `App.tsx` refreshes it. Today is selected by the weather location's IANA local date (never UTC or device date by accident), a cached second local day can bridge midnight, and stale/legacy data is labelled rather than completed with invented forecast values. Hourly forecast data is UI-only and never enlarges the bounded DeepSeek weather grounding.
 - **Deterministic personality.** Each creature has a persistent seed. Same seed = same starting temperament. Randomness after birth is constrained and feels like "one persistent individual."
 - **Development constrains the AI voice.** The Worker applies stage-specific voice instructions and output validation, while the local fallback and room speech use the same age ladder.
@@ -865,6 +882,7 @@ Live weather refresh is intentionally paused during acceleration: a forecast for
 - **Nocturnal Terrarium art direction.** Room is a quiet habitat, Chat is a voice-led presence, Memory Book is a material keepsake, Becoming is a narrative portrait, and Settings is a functional sheet. Decorative assets support these roles but never define the creature.
 - **Visible development is staged, not scored.** Meaningful firsts, small gestures, object initiative, and physical return traces communicate growth. The stored numeric model remains hidden.
 - **One autonomy heartbeat.** Ordinary autonomous behaviour is selected locally inside the existing Room cadence with deterministic weights, cooldowns, and persistent recency. It must not gain its own loop or LLM dependency. Rare self-speak and short outdoor visits reuse that cadence; they do not add a second timer.
+- **Self-care speech follows intent state, not elapsed cooldown alone.** One unresolved self-care action can own at most one about-to announcement. The same need stays quiet while unchanged, an underway/late/invalid mind reply cannot create a second line, and different dominant care or a material body-state change can reopen eligibility. This policy shares the existing autonomy cadence and `/chat` path; it never supplies canned speech.
 - **Thin mind, earned overlays.** The default DeepSeek call is role lock, a short base, stage, language, name, age, mood, and recent messages. Overlay prompt blocks and JSON keys exist only when the corresponding evidence exists.
 - **One physiology heartbeat.** Hunger, cleanliness, bladder, bowel, accidents, and health advance through the original needs cadence and the existing offline pass. Care must not add polling loops, visible meters, or manipulative absence mechanics. Sickness and death exist only through the causal health model above, never as pressure on the player.
 - **One authoritative time source, with a dev-only adapter.** Production time is exactly `Date.now()`. The explicit local simulation server scales that source before the existing systems see it; it does not patch global time, duplicate transitions, or expose a runtime/query/local-storage switch. The simulation command uses port 7101 so its sacrificial IndexedDB origin is isolated from ordinary local development on port 7100. Persistence scheduling may use wall-clock pacing — the capped save debounce in `saveScheduler.ts` — because it only paces real IndexedDB writes; simulated time remains authoritative for gameplay.

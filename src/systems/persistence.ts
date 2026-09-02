@@ -1,6 +1,6 @@
 import { authoritativeNow } from './authoritativeTime';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { GameState, MemoryBookEntry, Needs, ObjectType } from '../types';
+import { GameState, Needs, ObjectType } from '../types';
 import { migrateBondState, migrateObjectPreferences } from './relationshipSystem';
 import { migrateConversationState } from './conversationSystem';
 import { migrateDevelopmentExperience, syncDevelopmentWithAge } from './developmentSystem';
@@ -19,10 +19,6 @@ interface BecomingDB extends DBSchema {
   gameState: {
     key: string;
     value: GameState;
-  };
-  memoryBook: {
-    key: string;
-    value: MemoryBookEntry;
   };
   snapshots: {
     key: number;
@@ -129,7 +125,6 @@ function getDB(): Promise<IDBPDatabase<BecomingDB>> {
         // A half-created v1 database is recoverable. Only create stores that
         // are actually absent rather than throwing during the repair open.
         if (!db.objectStoreNames.contains('gameState')) db.createObjectStore('gameState');
-        if (!db.objectStoreNames.contains('memoryBook')) db.createObjectStore('memoryBook');
         if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots', { keyPath: 'timestamp' });
       },
       blocked() {
@@ -540,22 +535,4 @@ interface NewLifePersistence {
 export async function resetForNewLife(store?: NewLifePersistence): Promise<void> {
   const persistence = store ?? { reset: resetAllLocalData };
   await persistence.reset();
-}
-
-export async function loadMemoryBook(): Promise<MemoryBookEntry[]> {
-  const db = await getDB();
-  const entries = await db.getAll('memoryBook');
-  return entries.sort((a, b) => a.timestamp - b.timestamp);
-}
-
-export async function addMemoryBookEntry(entry: MemoryBookEntry): Promise<void> {
-  const db = await getDB();
-  await db.put('memoryBook', entry, `${entry.day}-${entry.timestamp}`);
-}
-
-export async function clearAllData(): Promise<void> {
-  const db = await getDB();
-  await db.clear('gameState');
-  await db.clear('memoryBook');
-  await db.clear('snapshots');
 }

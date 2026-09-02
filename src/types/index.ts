@@ -239,6 +239,7 @@ export interface DailyMomentChoice {
 export interface DailyMoment {
   id: string;
   day: number;
+  templateId?: string;
   title: string;
   titlePl?: string;
   prompt: string;
@@ -260,6 +261,7 @@ export interface LifePathState {
   lastDailyMomentDay: number;
   pendingMoment: DailyMoment | null;
   resolvedMomentIds: string[];
+  recentDailyMomentTemplateIds: string[];
 }
 
 export interface DevelopmentState {
@@ -818,12 +820,6 @@ export interface GameState {
   position: { x: number; y: number };
   facing: 'left' | 'right';
   creatureBehavior: CreatureBehavior;
-}
-
-export interface MemoryBookEntry {
-  day: number;
-  text: string;
-  timestamp: number;
 }
 
 export interface OfflineActivity {

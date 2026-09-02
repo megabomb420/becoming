@@ -116,7 +116,7 @@ function hatched(name: string, seed: number): GameState {
 {
   assert.equal(existsSync('src/systems/selfCareSpeech.ts'), false, 'the canned self-care one-liner module must be gone');
   const roomSource = readFileSync('src/components/Room.tsx', 'utf8');
-  assert.doesNotMatch(roomSource, /getSelfCareLine|selfCareSpeech/, 'Room must not import canned one-liners');
+  assert.doesNotMatch(roomSource, /getSelfCareLine|systems\/selfCareSpeech['"]/, 'Room must not import canned one-liners');
   const announceStart = roomSource.indexOf('const announceSelfCare');
   const announceEnd = roomSource.indexOf('useEffect(() => {', announceStart);
   const announceBody = roomSource.slice(announceStart, announceEnd);
@@ -133,11 +133,19 @@ function hatched(name: string, seed: number): GameState {
   const chooseStart = roomSource.indexOf('const chooseBehavior');
   const chooseEnd = roomSource.indexOf('const kickoff = setTimeout', chooseStart);
   const chooseBody = roomSource.slice(chooseStart, chooseEnd);
-  assert.ok(
-    chooseBody.indexOf('announceSelfCare') < chooseBody.indexOf('beginObjectInteraction(goal, false)'),
-    'the autonomy loop announces first, then always runs the canonical action',
+  assert.match(
+    chooseBody,
+    /beginObjectInteraction\(goal, false, undefined, goalKind \?\? undefined\)/,
+    'the autonomy loop passes the decided care intent into the canonical action',
   );
-  assert.doesNotMatch(chooseBody, /if \(.*announceSelfCare.*\).*return/, 'a failed announcement must not stop the action');
+  const beginStart = roomSource.indexOf('const beginObjectInteraction');
+  const beginEnd = roomSource.indexOf('const walkToIdlePosition', beginStart);
+  const beginBody = roomSource.slice(beginStart, beginEnd);
+  assert.ok(
+    beginBody.indexOf('announceSelfCare(selfCareKind)') < beginBody.indexOf('activeObjectRef.current = object.id'),
+    'the request begins before the real approach and never gates it',
+  );
+  assert.doesNotMatch(beginBody, /if \(.*announceSelfCare.*\).*return/, 'a failed announcement must not stop the action');
 }
 
 // 7. Development still constrains the voice: the Worker applies the stage

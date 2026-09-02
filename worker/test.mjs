@@ -593,6 +593,48 @@ actionReply = await response.json();
 assert.equal(actionReply.action, undefined);
 assert.equal(actionReply.reply, 'I did it.');
 
+// Action-stage narration is an invalid creature reply even when the provider
+// ignores the prompt. Ordinary conversational emphasis remains valid.
+globalThis.fetch = async () => new Response(JSON.stringify({
+  choices: [{ message: { content: '*sits up, looking around*' } }],
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Narrator', stage: 'sentences', language: 'en' },
+    messages: [{ role: 'user', content: 'Are you awake?' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 502);
+assert.equal((await response.json()).error, 'The mind returned an invalid answer.');
+
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Narrator', stage: 'sentences', language: 'en' },
+    promptKind: 'self',
+    messages: [],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+assert.deepEqual(await response.json(), { reply: '' }, 'invalid self-speak narration fails quietly');
+
+globalThis.fetch = async () => new Response(JSON.stringify({
+  choices: [{ message: { content: 'That is *really* odd, but I like it.' } }],
+}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+response = await request('/chat', {
+  method: 'POST',
+  headers: { Origin: origin, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creature: { name: 'Punctuation', stage: 'sentences', language: 'en' },
+    messages: [{ role: 'user', content: 'What do you think?' }],
+  }),
+}, { DEEPSEEK_API_KEY: 'test-only' });
+assert.equal(response.status, 200);
+assert.equal((await response.json()).reply, 'That is *really* odd, but I like it.');
+
 globalThis.fetch = originalFetch;
 
 console.log('Worker checks passed.');

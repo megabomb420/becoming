@@ -339,7 +339,7 @@ export function updateDevelopment(state: GameState, activeMinutes: number, now =
     const stageMemories: Memory[] = [{
       id: `mem-stage-${now}`,
       timestamp: now,
-      content: `reached ${newStage}`,
+      content: getDevelopmentMilestoneText(newStage, 'en'),
       importance: 8,
       emotionalValence: 0.6,
       tags: ['development', 'milestone'],
@@ -390,7 +390,7 @@ function addGrowthMilestone(previous: GameState, next: GameState): GameState {
   const memory: Memory = {
     id: `mem-stage-${now}`,
     timestamp: now,
-    content: `reached ${next.development.stage}`,
+    content: getDevelopmentMilestoneText(next.development.stage, 'en'),
     importance: 8,
     emotionalValence: 0.6,
     tags: ['development', 'milestone'],
@@ -492,6 +492,23 @@ export function getDevelopmentLabel(stage: DevelopmentStage, language: 'en' | 'p
     mature: 'Dojrzały umysł',
   }[stage];
   return language === 'pl' ? polish : english;
+}
+
+export function getDevelopmentMilestoneText(stage: DevelopmentStage, language: 'en' | 'pl' = 'en'): string {
+  const label = getDevelopmentLabel(stage, language);
+  return language === 'pl' ? `Osiągnęło etap: ${label}` : `Reached ${label}`;
+}
+
+export function getDevelopmentStageFromMemory(content: string): DevelopmentStage | null {
+  const match = content.trim().match(/^(?:reached|osiągnęło etap:)\s+(.+)$/i);
+  if (!match) return null;
+  const value = match[1].trim().toLocaleLowerCase();
+  const stages: DevelopmentStage[] = ['egg', 'newborn', 'animal', 'communicating', 'first_words', 'combining', 'sentences', 'mature'];
+  return stages.find(stage => (
+    stage === value
+    || getDevelopmentLabel(stage, 'en').toLocaleLowerCase() === value
+    || getDevelopmentLabel(stage, 'pl').toLocaleLowerCase() === value
+  )) ?? null;
 }
 
 export function getDevelopmentDescription(stage: DevelopmentStage, language: 'en' | 'pl' = 'en'): string {

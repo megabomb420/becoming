@@ -316,6 +316,17 @@ function responseLooksHijacked(value) {
   return false;
 }
 
+const STAGE_DIRECTION_OPENING = /^(?:i\s+)?(?:sit|sits|sitting|stand|stands|standing|look|looks|looking|turn|turns|turning|nod|nods|nodding|shake|shakes|shaking|smile|smiles|smiling|laugh|laughs|laughing|sigh|sighs|sighing|blink|blinks|blinking|stretch|stretches|stretching|yawn|yawns|yawning|walk|walks|walking|step|steps|stepping|curl|curls|curling|raise|raises|raising|lower|lowers|lowering|siada|siadam|wstaje|wstaję|patrzy|patrzę|rozgląda|odwraca|kiwa|uśmiecha|uśmiecham|wzdycha|mruga|przeciąga|ziewa|idzie|podchodzi|zwija)\b/i;
+
+function responseNarratesAction(value) {
+  if (!value) return false;
+  const stageDirections = value.matchAll(/(?:^|\s)\*([^*\n]{1,240})\*(?=\s|$|[.,!?])/g);
+  for (const match of stageDirections) {
+    if (STAGE_DIRECTION_OPENING.test(match[1].trim())) return true;
+  }
+  return false;
+}
+
 function modelMessages(payload) {
   const mapped = payload.messages.map(message => {
     if (message.role === 'assistant') return message;
@@ -765,6 +776,10 @@ async function chat(request, env, origin) {
       if (payload.promptKind === 'self') return json({ reply: '' }, 200, origin);
       return json({ reply: guardedReply(payload), guarded: true }, 200, origin);
     }
+    if (responseNarratesAction(finalReply)) {
+      if (payload.promptKind === 'self') return json({ reply: '' }, 200, origin);
+      return json({ error: 'The mind returned an invalid answer.' }, 502, origin);
+    }
     const body = { reply: finalReply };
     if (action) body.action = action;
     return json(body, 200, origin);
@@ -776,7 +791,7 @@ async function chat(request, env, origin) {
   }
 }
 
-export { systemPrompt, cleanPayload, cleanAction, PATH_PROMPT, INFLUENCE_PROMPT, CARE_PROMPT };
+export { systemPrompt, cleanPayload, cleanAction, responseNarratesAction, PATH_PROMPT, INFLUENCE_PROMPT, CARE_PROMPT };
 
 export default {
   async fetch(request, env) {
