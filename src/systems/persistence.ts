@@ -5,7 +5,7 @@ import { migrateBondState, migrateObjectPreferences } from './relationshipSystem
 import { migrateConversationState } from './conversationSystem';
 import { mapLegacyStageIdsInProse, migrateDevelopmentExperience, syncDevelopmentWithAge } from './developmentSystem';
 import { bootstrapLifePathState, migrateLifePathState } from './lifePathSystem';
-import { migrateInnerLifeState, migrateInterests } from './innerLifeSystem';
+import { migrateInnerLifeState, migrateInterests, repairMalformedDreamProse } from './innerLifeSystem';
 import { migrateContinuityState } from './continuitySystem';
 import { migratePresenceState } from './presenceSystem';
 import { migrateCreations } from './creationSystem';
@@ -320,6 +320,35 @@ export function migrateGameState(state: GameState): GameState {
         : message),
       lastCreatureMessage: typeof migrated.conversation.lastCreatureMessage === 'string'
         ? mapLegacyStageIdsInProse(migrated.conversation.lastCreatureMessage)
+        : migrated.conversation.lastCreatureMessage,
+    };
+  }
+
+  // Dreams written before the dream-image fix splice milestone UI copy into
+  // prose as a noun ("Reached First words floated above the room…"). Repair
+  // only that recognisable construction inside stored dream prose — dream
+  // fragments, "dreamed:" memories, and creature speech quoting the dream.
+  // User-authored text is never touched and no other prose is paraphrased.
+  if (migrated.innerLife) {
+    migrated.innerLife = {
+      ...migrated.innerLife,
+      dreams: (migrated.innerLife.dreams ?? []).map(dream => ({
+        ...dream,
+        fragment: repairMalformedDreamProse(dream.fragment),
+      })),
+    };
+  }
+  migrated.memories = (migrated.memories ?? []).map(memory => memory.tags?.includes('dream')
+    ? { ...memory, content: repairMalformedDreamProse(memory.content) }
+    : memory);
+  if (migrated.conversation) {
+    migrated.conversation = {
+      ...migrated.conversation,
+      messages: (migrated.conversation.messages ?? []).map(message => message.sender === 'creature'
+        ? { ...message, text: repairMalformedDreamProse(message.text) }
+        : message),
+      lastCreatureMessage: typeof migrated.conversation.lastCreatureMessage === 'string'
+        ? repairMalformedDreamProse(migrated.conversation.lastCreatureMessage)
         : migrated.conversation.lastCreatureMessage,
     };
   }

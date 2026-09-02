@@ -3,6 +3,7 @@ import {
   BondStage,
   CreatureDream,
   CreatureOpinion,
+  DevelopmentStage,
   GameState,
   InnerLifeState,
   Interest,
@@ -14,7 +15,7 @@ import {
   SelfAwarenessStage,
 } from '../types';
 import { getLifePathTitle } from './lifePathSystem';
-import { getDevelopmentMilestoneText, getDevelopmentStageFromMemory } from './developmentSystem';
+import { DEVELOPMENT_STAGES, getDevelopmentLabel, getDevelopmentStageFromMemory } from './developmentSystem';
 
 interface TopicDefinition {
   label: string;
@@ -600,11 +601,94 @@ function dreamMood(state: GameState): CreatureDream['mood'] {
   return 'warm';
 }
 
-function compactMemory(memory: Memory | undefined, language: 'en' | 'pl') {
+// A dream is made of noun-like images, not database/UI strings. Development
+// milestone memories become the experience itself (words arriving, thoughts
+// joining) instead of the "Reached …" milestone copy, which production smoke
+// showed spliced as a noun ("Reached First words floated above the room…").
+const DEVELOPMENT_DREAM_IMAGES: Record<DevelopmentStage, { en: string; pl: string }> = {
+  egg: { en: 'the quiet before hatching', pl: 'cisza przed wykluciem' },
+  newborn: { en: 'the first sounds of a new voice', pl: 'pierwsze dźwięki nowego głosu' },
+  animal: { en: 'the shape of listening', pl: 'kształt nasłuchiwania' },
+  communicating: { en: 'a voice learning to mean', pl: 'głos uczący się znaczyć' },
+  first_words: { en: 'the arrival of the first words', pl: 'nadejście pierwszych słów' },
+  combining: { en: 'thoughts beginning to join', pl: 'myśli zaczynające się łączyć' },
+  sentences: { en: 'young sentences learning to stand', pl: 'młode zdania uczące się stać' },
+  mature: { en: 'a mind grown whole', pl: 'umysł, który urósł w całość' },
+};
+
+const ABSENCE_DREAM_IMAGE = {
+  en: 'the quiet hours of an empty room',
+  pl: 'ciche godziny pustego pokoju',
+};
+
+// Learned user facts are records ("learned the user likes X"); a dream turns
+// them into what the user means to the creature, never the record itself.
+const USER_FACT_DREAM_IMAGES: Record<string, { en: string; pl: string }> = {
+  name: { en: 'your name', pl: 'twoje imię' },
+  like: { en: 'the thing you like', pl: 'to, co lubisz' },
+  dislike: { en: 'the thing you dislike', pl: 'to, czego nie lubisz' },
+  feeling: { en: 'the feeling you carried', pl: 'uczucie, które zostało z tobą' },
+  goal: { en: 'the thing you hoped for', pl: 'twoje pragnienie' },
+  place: { en: 'the place you belong to', pl: 'miejsce, do którego należysz' },
+  work: { en: 'the work you do', pl: 'twoja praca' },
+  other: { en: 'something about you', pl: 'coś o tobie' },
+};
+
+function capitalizeFirst(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** A stored "Title: outcome" memory (a resolved daily moment) reads as its title image. */
+function memoryTitleImage(content: string): string | null {
+  const match = content.match(/^(.{2,64}?):\s+\S/s);
+  if (!match) return null;
+  const title = match[1].trim();
+  return /[.!?]$/.test(title) ? null : title;
+}
+
+function memoryAsDreamImage(memory: Memory | undefined, language: 'en' | 'pl'): string {
   if (!memory) return 'the room breathing in the dark';
   const developmentStage = getDevelopmentStageFromMemory(memory.content);
-  if (developmentStage) return getDevelopmentMilestoneText(developmentStage, language);
+  if (developmentStage) return DEVELOPMENT_DREAM_IMAGES[developmentStage][language];
+  if (memory.tags.includes('absence')) return ABSENCE_DREAM_IMAGE[language];
+  if (memory.tags.includes('daily-moment')) {
+    const title = memoryTitleImage(memory.content);
+    if (title) return title;
+  }
+  if (memory.tags.includes('user')) {
+    const kind = memory.tags.find(tag => tag in USER_FACT_DREAM_IMAGES);
+    return USER_FACT_DREAM_IMAGES[kind ?? 'other'][language];
+  }
   return memory.content.replace(/^user\s+/i, 'you ').replace(/[.!]$/, '').slice(0, 90);
+}
+
+/**
+ * Repairs only the recognisable malformed construction that older dream
+ * generations stored: milestone UI copy ("Reached First words", legacy
+ * "reached first_words" and their Polish forms) spliced into dream prose as a
+ * noun image. The phrase is replaced with the same dream-safe image the
+ * generator now uses; nothing else in the prose is paraphrased.
+ */
+const MILESTONE_PHRASE_LOOKUP = new Map<string, { stage: DevelopmentStage; language: 'en' | 'pl' }>();
+for (const stage of DEVELOPMENT_STAGES) {
+  MILESTONE_PHRASE_LOOKUP.set(stage.toLocaleLowerCase(), { stage, language: 'en' });
+  MILESTONE_PHRASE_LOOKUP.set(getDevelopmentLabel(stage, 'en').toLocaleLowerCase(), { stage, language: 'en' });
+  MILESTONE_PHRASE_LOOKUP.set(getDevelopmentLabel(stage, 'pl').toLocaleLowerCase(), { stage, language: 'pl' });
+}
+const MILESTONE_PHRASE_PATTERN = new RegExp(
+  `(?:reached|osiągnęło etap:)\\s+(${[...MILESTONE_PHRASE_LOOKUP.keys()].sort((a, b) => b.length - a.length).join('|')})\\b`,
+  'gi',
+);
+
+export function repairMalformedDreamProse(text: string): string {
+  if (!text || !/reached|osiągnęło etap:/i.test(text)) return text;
+  return text.replace(MILESTONE_PHRASE_PATTERN, (match, value: string, offset: number, whole: string) => {
+    const entry = MILESTONE_PHRASE_LOOKUP.get(value.toLocaleLowerCase());
+    if (!entry) return match;
+    const image = DEVELOPMENT_DREAM_IMAGES[entry.stage][entry.language];
+    const lead = whole.slice(0, offset);
+    return lead.length === 0 || /[:„]\s*$|[.!?]\s+$/.test(lead) ? capitalizeFirst(image) : image;
+  });
 }
 
 export function generateDreamAfterSleep(state: GameState, sleptMs: number, now = authoritativeNow()): GameState {
@@ -622,14 +706,14 @@ export function generateDreamAfterSleep(state: GameState, sleptMs: number, now =
   const label = getInterestLabel(topic, polish ? 'pl' : 'en');
   const mood = dreamMood(state);
   const fragments = polish ? [
-    `${compactMemory(first, 'pl')}, ale każde drzwi prowadziły z powrotem do „${label}”.`,
-    `${compactMemory(first, 'pl')} unosiło się nad „${compactMemory(second, 'pl')}” i nikogo to nie dziwiło.`,
-    `Pokój nie miał ścian. Gdzieś daleko „${compactMemory(first, 'pl')}” działo się od końca.`,
+    `${capitalizeFirst(memoryAsDreamImage(first, 'pl'))}, ale każde drzwi prowadziły z powrotem do „${label}”.`,
+    `„${memoryAsDreamImage(first, 'pl')}” unosiło się nad „${memoryAsDreamImage(second, 'pl')}” i nikogo to nie dziwiło.`,
+    `Pokój nie miał ścian. Gdzieś daleko „${memoryAsDreamImage(first, 'pl')}” działo się od końca.`,
     `„${label}” mówiło twoim głosem. Zadało pytanie, którego po przebudzeniu już nie pamiętałem.`,
   ] : [
-    `${compactMemory(first, 'en')}, but every doorway led back to ${label}.`,
-    `${compactMemory(first, 'en')} floated above ${compactMemory(second, 'en')}, and neither one thought this was strange.`,
-    `The room had no walls. Somewhere far away, ${compactMemory(first, 'en')} kept happening in reverse.`,
+    `${capitalizeFirst(memoryAsDreamImage(first, 'en'))}, but every doorway led back to ${label}.`,
+    `${capitalizeFirst(memoryAsDreamImage(first, 'en'))} floated above ${memoryAsDreamImage(second, 'en')}, and neither one thought this was strange.`,
+    `The room had no walls. Somewhere far away, ${memoryAsDreamImage(first, 'en')} kept happening in reverse.`,
     `${label} had your voice. It asked a question I could not remember after waking.`,
   ];
   const titles = polish
