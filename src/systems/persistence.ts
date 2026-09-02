@@ -3,7 +3,7 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { GameState, Needs, ObjectType } from '../types';
 import { migrateBondState, migrateObjectPreferences } from './relationshipSystem';
 import { migrateConversationState } from './conversationSystem';
-import { migrateDevelopmentExperience, syncDevelopmentWithAge } from './developmentSystem';
+import { mapLegacyStageIdsInProse, migrateDevelopmentExperience, syncDevelopmentWithAge } from './developmentSystem';
 import { bootstrapLifePathState, migrateLifePathState } from './lifePathSystem';
 import { migrateInnerLifeState, migrateInterests } from './innerLifeSystem';
 import { migrateContinuityState } from './continuitySystem';
@@ -290,6 +290,34 @@ export function migrateGameState(state: GameState): GameState {
   // backwards-compatible inner life. Placeholder interests are preserved.
   migrated.interests = migrateInterests(migrated.interests);
   migrated.innerLife = migrateInnerLifeState(migrated.innerLife);
+
+  // v0.14.12 fixes milestone *writing* and dream *generation*, but saves that
+  // booted under an older version can already store prose embedding the raw
+  // internal stage id (a dream fragment, its "dreamed:" memory, or a transcript
+  // quoting the dream). Repair that stored prose once on load so no display
+  // surface ever shows the internal id again.
+  migrated.memories = (migrated.memories ?? []).map(memory => ({
+    ...memory,
+    content: mapLegacyStageIdsInProse(memory.content),
+  }));
+  if (migrated.innerLife) {
+    migrated.innerLife = {
+      ...migrated.innerLife,
+      dreams: (migrated.innerLife.dreams ?? []).map(dream => ({
+        ...dream,
+        fragment: mapLegacyStageIdsInProse(dream.fragment),
+      })),
+    };
+  }
+  if (migrated.conversation) {
+    migrated.conversation = {
+      ...migrated.conversation,
+      messages: (migrated.conversation.messages ?? []).map(message => ({
+        ...message,
+        text: mapLegacyStageIdsInProse(message.text),
+      })),
+    };
+  }
 
   // Ensure hatched creatures never have stage 'egg'
   if (migrated.development.hatched && migrated.development.stage === 'egg') {

@@ -3,9 +3,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createHatchedCreature, createNewCreature } from '../src/systems/creatureFactory';
 import {
   getDevelopmentStageFromMemory,
+  mapLegacyStageIdsInProse,
   syncDevelopmentWithAge,
 } from '../src/systems/developmentSystem';
 import { generateDreamAfterSleep } from '../src/systems/innerLifeSystem';
+import { migrateGameState } from '../src/systems/persistence';
 import { ensureDailyMoment, resolveDailyMoment } from '../src/systems/lifePathSystem';
 import {
   beginSelfCareSpeech,
@@ -106,6 +108,57 @@ function awakeCreature(name: string, seed: number): GameState {
   const milestone = aged.memories.find(memory => memory.tags.includes('development'));
   assert.ok(milestone);
   assert.doesNotMatch(milestone!.content, /\b[a-z]+_[a-z]+\b/);
+}
+
+// Stored prose that older versions generated with the raw stage id embedded —
+// a dream fragment, its "dreamed:" memory, or a transcript quoting it — is
+// repaired once on load. Regression from the live production smoke of a real
+// pre-0.14.12 save whose first v0.14.12 boot displayed the leak in Memory Book
+// and chat. Only genuinely snake-case ids are remapped inside prose; ordinary
+// words such as "animal" or "egg" are never rewritten.
+{
+  const dirtyFragment = 'reached first_words floated above the room breathing in the dark, and neither one thought this was strange.';
+  const clean = mapLegacyStageIdsInProse(dirtyFragment);
+  assert.equal(
+    clean,
+    'Reached First words floated above the room breathing in the dark, and neither one thought this was strange.',
+  );
+  assert.doesNotMatch(clean, /first_words/);
+  assert.equal(mapLegacyStageIdsInProse('dreamed: reached first_words floated'), 'dreamed: Reached First words floated', 'a dreamed: prefix keeps its form');
+  assert.equal(mapLegacyStageIdsInProse('Reached First words'), 'Reached First words', 'repair is idempotent');
+  assert.equal(mapLegacyStageIdsInProse('The creature reached the animal shelter safely.'), 'The creature reached the animal shelter safely.', 'ordinary prose words are never rewritten');
+  assert.equal(mapLegacyStageIdsInProse('The cushion is my favourite.'), 'The cushion is my favourite.');
+
+  const base = awakeCreature('Stored', 602);
+  const dirty: GameState = {
+    ...base,
+    memories: [
+      ...base.memories,
+      {
+        id: 'mem-legacy-stage', timestamp: NOW - 10, content: 'reached first_words', importance: 8,
+        emotionalValence: 0.6, tags: ['development', 'milestone'], mentioned: false, understood: true, compressed: false,
+      },
+      {
+        id: 'mem-legacy-dream', timestamp: NOW - 9, content: `dreamed: ${dirtyFragment}`, importance: 6,
+        emotionalValence: 0.4, tags: ['dream', 'bright'], mentioned: false, understood: true, compressed: false,
+      },
+    ],
+    innerLife: {
+      ...base.innerLife,
+      dreams: [{ id: 'dream-legacy', timestamp: NOW - 9, title: 'The borrowed voice', fragment: dirtyFragment, mood: 'bright', shared: false }],
+    },
+    conversation: {
+      ...base.conversation,
+      messages: [
+        ...base.conversation.messages,
+        { id: 'msg-legacy', sender: 'creature', text: `I had a strange dream: ${dirtyFragment}`, timestamp: NOW - 9 },
+      ],
+    },
+  };
+  const repaired = migrateGameState(dirty);
+  assert.doesNotMatch(repaired.innerLife.dreams.at(-1)?.fragment ?? '', /first_words/, 'a stored dream fragment is repaired on load');
+  assert.ok(repaired.memories.every(memory => !/[a-z]+_[a-z]+/.test(memory.content)), 'stored memory prose carries no raw stage id after load');
+  assert.ok(repaired.conversation.messages.every(message => !/[a-z]+_[a-z]+/.test(message.text)), 'stored transcripts carry no raw stage id after load');
 }
 
 // The Memory Book is a projection of the saved GameState. The dead generator
