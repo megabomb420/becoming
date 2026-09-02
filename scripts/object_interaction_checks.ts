@@ -38,11 +38,15 @@ assert.equal(resolveObjectRelease(roomDrag, true), 'put_away', 'dropping on the 
 assert.equal(resolveObjectRelease(trayDrag, true), 'place_at', 'inventory drag places at the release position');
 assert.equal(resolveObjectRelease(trayTap, false), 'place_auto', 'inventory tap places on an auto slot');
 
-// Put-away stays reachable without a popup: pointer users drag onto the open
-// tray/drop target, and keyboard activation of a room object while the shelf
-// is open is the accessible path (kept in Room's own keyboard handler).
+// Put-away stays reachable without a popup as an explicit, labelled action:
+// pointer users drag onto the open tray/drop target; with the shelf open each
+// room object also shows a dedicated Put away control that keyboard/AT users
+// can activate. Activation of the object itself always means Use.
 assert.doesNotMatch(roomSource, /resolveObjectRelease\([^)]*showInventory/, 'the tap decision no longer depends on the shelf state');
-assert.match(roomSource, /if \(showInventory\) putAwayRoomObject\(obj\.id\)/, 'keyboard activation with the shelf open is the accessible put-away path');
+assert.doesNotMatch(roomSource, /if \(showInventory\) putAwayRoomObject\(obj\.id\)/, 'activation always means Use — no hidden shelf-state keyboard meaning');
+assert.doesNotMatch(roomSource, /title=\{showInventory \? t\('Put away'/, 'the object title no longer disagrees with its tap meaning');
+assert.match(roomSource, /Put away \$\{objectLabel\(obj\.type, false\)\}/, 'an explicit labelled Put away control is rendered');
+assert.match(roomSource, /putAwayRoomObject\(obj\.id\)/, 'the explicit control is wired to put the object away');
 
 // 15. The movement threshold prevents an accidental Use after a drag: a small
 //     jitter stays a tap, movement beyond the threshold becomes a drag.

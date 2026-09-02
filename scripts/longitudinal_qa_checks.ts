@@ -152,13 +152,19 @@ function awakeCreature(name: string, seed: number): GameState {
       messages: [
         ...base.conversation.messages,
         { id: 'msg-legacy', sender: 'creature', text: `I had a strange dream: ${dirtyFragment}`, timestamp: NOW - 9 },
+        { id: 'msg-user', sender: 'user', text: 'I keep typing first_words on purpose in my own notes', timestamp: NOW - 8 },
       ],
+      lastCreatureMessage: `I had a strange dream: ${dirtyFragment}`,
     },
   };
   const repaired = migrateGameState(dirty);
   assert.doesNotMatch(repaired.innerLife.dreams.at(-1)?.fragment ?? '', /first_words/, 'a stored dream fragment is repaired on load');
   assert.ok(repaired.memories.every(memory => !/[a-z]+_[a-z]+/.test(memory.content)), 'stored memory prose carries no raw stage id after load');
-  assert.ok(repaired.conversation.messages.every(message => !/[a-z]+_[a-z]+/.test(message.text)), 'stored transcripts carry no raw stage id after load');
+  const creatureMessages = repaired.conversation.messages.filter(message => message.sender === 'creature');
+  const userMessages = repaired.conversation.messages.filter(message => message.sender === 'user');
+  assert.ok(creatureMessages.every(message => !/[a-z]+_[a-z]+/.test(message.text)), 'creature transcripts carry no raw stage id after load');
+  assert.ok(userMessages.every(message => message.text === 'I keep typing first_words on purpose in my own notes'), 'user-authored message text is preserved byte-for-byte');
+  assert.equal(repaired.conversation.lastCreatureMessage, 'I had a strange dream: Reached First words floated above the room breathing in the dark, and neither one thought this was strange.', 'lastCreatureMessage is repaired like other creature prose');
 }
 
 // The Memory Book is a projection of the saved GameState. The dead generator

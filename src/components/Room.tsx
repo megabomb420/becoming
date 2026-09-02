@@ -1901,49 +1901,70 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
       ))}
 
       {/* Room objects (only placed ones) */}
-      {state.roomObjects.map(obj => (
-        <button
-          type="button"
-          key={obj.id}
-          aria-label={showInventory
-            ? (polish ? `Odłóż: ${objectLabel(obj.type, true)}` : `Put away ${objectLabel(obj.type, false)}`)
-            : (polish ? `Użyj: ${objectLabel(obj.type, true)}` : `Use ${objectLabel(obj.type, false)}`)}
-          title={t('Use', 'Użyj')}
-          className="absolute z-20 select-none p-3 -m-3 bg-transparent border-0 transition-opacity duration-700"
-          style={{
-            left: `${obj.x}%`,
-            top: `${obj.y}%`,
-            transform: 'translate(-50%, -50%)',
-            cursor: 'grab',
-            touchAction: 'none',
-            opacity: draggingObjectId === obj.id ? 0.25 : outdoors ? 0.28 : Math.min(1, 0.9 + Math.min(1, Math.max(0, (obj.y - 60) / 16)) * 0.1),
-          }}
-          onPointerDown={(e) => startPointerSession({ source: 'room', type: obj.type, objectId: obj.id }, e)}
-          onClick={(e) => {
-            // Keyboard activation: a tap uses. With the shelf open the same
-            // activation is the accessible put-away path; pointer taps always
-            // use (the classifier), so opening the shelf never makes care or
-            // object use unavailable.
-            if (e.detail === 0) {
-              if (showInventory) putAwayRoomObject(obj.id);
-              else if (stateRef.current.sleepState === 'sleeping') {
-                showCreatureCue({ icon: '·', label: t('is sleeping too deeply right now', 'teraz śpi zbyt mocno'), tone: 'ambient' }, 2400);
-              } else {
-                beginObjectInteraction(obj, true);
-              }
-            }
-          }}
-        >
-          <span className={`relative block transition-transform duration-200 ${obj.state.returnTraceId === returnTrace?.id ? 'trace-halo' : ''} ${obj.beingUsedByCreature ? 'scale-110 drop-shadow-[0_0_12px_rgba(220,195,150,0.45)]' : 'hover:scale-105'}`}>
-            <span
-              className="room-object-ground"
-              style={{ transform: `translateX(-50%) scaleX(${(0.74 + Math.min(1, Math.max(0, (obj.y - 60) / 34)) * 0.5).toFixed(2)})` }}
-              aria-hidden="true"
-            />
-            <ObjectIcon type={obj.type} status={obj.state.status} size={Math.round(58 * (0.86 + Math.min(1, Math.max(0, (obj.y - 60) / 16)) * 0.22))} className="room-object-icon" />
-          </span>
-        </button>
-      ))}
+      {state.roomObjects.map(obj => {
+        const iconSize = Math.round(58 * (0.86 + Math.min(1, Math.max(0, (obj.y - 60) / 16)) * 0.22));
+        return (
+          <React.Fragment key={obj.id}>
+            <button
+              type="button"
+              aria-label={polish ? `Użyj: ${objectLabel(obj.type, true)}` : `Use ${objectLabel(obj.type, false)}`}
+              title={t('Use', 'Użyj')}
+              className="absolute z-20 select-none p-3 -m-3 bg-transparent border-0 transition-opacity duration-700"
+              style={{
+                left: `${obj.x}%`,
+                top: `${obj.y}%`,
+                transform: 'translate(-50%, -50%)',
+                cursor: 'grab',
+                touchAction: 'none',
+                opacity: draggingObjectId === obj.id ? 0.25 : outdoors ? 0.28 : Math.min(1, 0.9 + Math.min(1, Math.max(0, (obj.y - 60) / 16)) * 0.1),
+              }}
+              onPointerDown={(e) => startPointerSession({ source: 'room', type: obj.type, objectId: obj.id }, e)}
+              onClick={(e) => {
+                // Activation — pointer or keyboard — uses the object in every
+                // shelf state. Put-away is never a hidden meaning of this
+                // button: it is the explicit control beside it.
+                if (e.detail === 0) {
+                  if (stateRef.current.sleepState === 'sleeping') {
+                    showCreatureCue({ icon: '·', label: t('is sleeping too deeply right now', 'teraz śpi zbyt mocno'), tone: 'ambient' }, 2400);
+                  } else {
+                    beginObjectInteraction(obj, true);
+                  }
+                }
+              }}
+            >
+              <span className={`relative block transition-transform duration-200 ${obj.state.returnTraceId === returnTrace?.id ? 'trace-halo' : ''} ${obj.beingUsedByCreature ? 'scale-110 drop-shadow-[0_0_12px_rgba(220,195,150,0.45)]' : 'hover:scale-105'}`}>
+                <span
+                  className="room-object-ground"
+                  style={{ transform: `translateX(-50%) scaleX(${(0.74 + Math.min(1, Math.max(0, (obj.y - 60) / 34)) * 0.5).toFixed(2)})` }}
+                  aria-hidden="true"
+                />
+                <ObjectIcon type={obj.type} status={obj.state.status} size={iconSize} className="room-object-icon" />
+              </span>
+            </button>
+            {/* With the shelf open, each room object shows an explicit Put away
+                control, reachable by keyboard and screen reader. It never
+                changes what the object itself means on tap; drag into the open
+                tray is the equivalent pointer gesture. */}
+            {showInventory && draggingObjectId !== obj.id && (
+              <button
+                type="button"
+                aria-label={polish ? `Odłóż: ${objectLabel(obj.type, true)}` : `Put away ${objectLabel(obj.type, false)}`}
+                title={t('Put away', 'Odłóż')}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); putAwayRoomObject(obj.id); }}
+                className="absolute z-30 grid h-6 w-6 place-items-center rounded-full border border-warm-100/25 bg-room-dark/95 text-[11px] text-warm-100 shadow-lg"
+                style={{
+                  left: `calc(${obj.x}% + ${Math.round(iconSize / 2)}px)`,
+                  top: `calc(${obj.y}% - ${Math.round(iconSize / 2)}px)`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              >
+                ↓
+              </button>
+            )}
+          </React.Fragment>
+        );
+      })}
 
       {/* While a room object is being dragged, a quiet shelf target appears at
           the bottom. Dropping there puts the object away; it disappears with

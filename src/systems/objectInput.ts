@@ -26,8 +26,9 @@ export function isPointInRect(
  * - room tap -> Use (the shelf being open never changes a tap: care and object
  *   use stay available while the tray is up)
  * - room drag -> reposition, or Put away when released over the inventory target
- * A drag never falls through to Use. Put-away by keyboard (activating a room
- * object while the shelf is open) is handled separately by the button itself.
+ * A drag never falls through to Use. Put-away is an explicit separate action:
+ * a drag onto the open tray/drop target, or the dedicated Put away control
+ * shown beside each room object while the shelf is open.
  */
 export function resolveObjectRelease(
   session: { source: 'inventory' | 'room'; moved: boolean; objectId?: string },

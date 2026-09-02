@@ -310,12 +310,17 @@ export function migrateGameState(state: GameState): GameState {
     };
   }
   if (migrated.conversation) {
+    // Only creature-authored text is repaired: user messages are the player's
+    // own words and must survive byte-for-byte. The standalone last-creature
+    // message field can also carry the legacy prose.
     migrated.conversation = {
       ...migrated.conversation,
-      messages: (migrated.conversation.messages ?? []).map(message => ({
-        ...message,
-        text: mapLegacyStageIdsInProse(message.text),
-      })),
+      messages: (migrated.conversation.messages ?? []).map(message => message.sender === 'creature'
+        ? { ...message, text: mapLegacyStageIdsInProse(message.text) }
+        : message),
+      lastCreatureMessage: typeof migrated.conversation.lastCreatureMessage === 'string'
+        ? mapLegacyStageIdsInProse(migrated.conversation.lastCreatureMessage)
+        : migrated.conversation.lastCreatureMessage,
     };
   }
 
