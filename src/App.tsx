@@ -25,7 +25,7 @@ import {
 import { authoritativeNow, cadenceDelay, isDevTimeSimulationActive } from './systems/authoritativeTime';
 import { SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS, SaveScheduler } from './systems/saveScheduler';
 
-const APP_VERSION = '0.14.11';
+const APP_VERSION = '0.14.12';
 export type PwaUpdateStatus = 'up_to_date' | 'update_available' | 'checking' | 'offline' | 'unknown';
 export type LocalSaveStatus = 'saved' | 'saving' | 'unavailable' | 'unknown';
 
