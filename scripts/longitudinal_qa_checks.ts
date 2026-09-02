@@ -6,7 +6,7 @@ import {
   mapLegacyStageIdsInProse,
   syncDevelopmentWithAge,
 } from '../src/systems/developmentSystem';
-import { generateDreamAfterSleep } from '../src/systems/innerLifeSystem';
+import { generateDreamAfterSleep, isDreamRetelling, repairMalformedDreamProse } from '../src/systems/innerLifeSystem';
 import { migrateGameState } from '../src/systems/persistence';
 import { ensureDailyMoment, resolveDailyMoment } from '../src/systems/lifePathSystem';
 import {
@@ -23,7 +23,7 @@ import {
   beginWorldObjectApproach,
   offerObjectFromInventory,
 } from '../src/systems/worldActionSystem';
-import { GameState } from '../src/types';
+import { GameState, Memory } from '../src/types';
 
 const NOW = Date.UTC(2026, 8, 2, 12, 0);
 
@@ -142,29 +142,211 @@ function awakeCreature(name: string, seed: number): GameState {
         id: 'mem-legacy-dream', timestamp: NOW - 9, content: `dreamed: ${dirtyFragment}`, importance: 6,
         emotionalValence: 0.4, tags: ['dream', 'bright'], mentioned: false, understood: true, compressed: false,
       },
+      {
+        id: 'mem-malformed-dream', timestamp: NOW - 8, content: 'dreamed: Reached First words floated above the room breathing in the dark, and neither one thought this was strange.', importance: 6,
+        emotionalValence: 0.4, tags: ['dream', 'bright'], mentioned: false, understood: true, compressed: false,
+      },
     ],
     innerLife: {
       ...base.innerLife,
-      dreams: [{ id: 'dream-legacy', timestamp: NOW - 9, title: 'The borrowed voice', fragment: dirtyFragment, mood: 'bright', shared: false }],
+      dreams: [
+        { id: 'dream-legacy', timestamp: NOW - 9, title: 'The borrowed voice', fragment: dirtyFragment, mood: 'bright', shared: false },
+        { id: 'dream-malformed', timestamp: NOW - 8, title: 'The borrowed voice', fragment: 'Reached First words floated above the room breathing in the dark, and neither one thought this was strange.', mood: 'bright', shared: false },
+      ],
     },
     conversation: {
       ...base.conversation,
       messages: [
         ...base.conversation.messages,
         { id: 'msg-legacy', sender: 'creature', text: `I had a strange dream: ${dirtyFragment}`, timestamp: NOW - 9 },
+        { id: 'msg-creature-ordinary', sender: 'creature', text: 'Reached First words is what the milestone page calls it', timestamp: NOW - 8 },
         { id: 'msg-user', sender: 'user', text: 'I keep typing first_words on purpose in my own notes', timestamp: NOW - 8 },
+        { id: 'msg-user-milestone', sender: 'user', text: 'Reached First words floated above the room and I typed that myself', timestamp: NOW - 7 },
       ],
       lastCreatureMessage: `I had a strange dream: ${dirtyFragment}`,
     },
   };
   const repaired = migrateGameState(dirty);
   assert.doesNotMatch(repaired.innerLife.dreams.at(-1)?.fragment ?? '', /first_words/, 'a stored dream fragment is repaired on load');
+  const repairedDreams = repaired.innerLife.dreams.map(dream => dream.fragment);
+  assert.ok(repairedDreams.every(fragment => !/first_words|\bReached\b/.test(fragment)), 'stored malformed dream prose becomes dream imagery, never milestone copy');
+  assert.ok(repairedDreams.some(fragment => fragment.startsWith('The arrival of the first words floated')), 'the repaired dream uses the milestone dream image');
   assert.ok(repaired.memories.every(memory => !/[a-z]+_[a-z]+/.test(memory.content)), 'stored memory prose carries no raw stage id after load');
   const creatureMessages = repaired.conversation.messages.filter(message => message.sender === 'creature');
   const userMessages = repaired.conversation.messages.filter(message => message.sender === 'user');
-  assert.ok(creatureMessages.every(message => !/[a-z]+_[a-z]+/.test(message.text)), 'creature transcripts carry no raw stage id after load');
-  assert.ok(userMessages.every(message => message.text === 'I keep typing first_words on purpose in my own notes'), 'user-authored message text is preserved byte-for-byte');
-  assert.equal(repaired.conversation.lastCreatureMessage, 'I had a strange dream: Reached First words floated above the room breathing in the dark, and neither one thought this was strange.', 'lastCreatureMessage is repaired like other creature prose');
+  const quoted = creatureMessages.filter(message => message.text.startsWith('I had a strange dream:'));
+  const ordinary = creatureMessages.filter(message => !message.text.startsWith('I had a strange dream:'));
+  assert.ok(quoted.every(message => !/[a-z]+_[a-z]+/.test(message.text) && !/\bReached\b/.test(message.text)), 'creature speech retelling the malformed dream is repaired');
+  assert.ok(ordinary.every(message => message.text === 'Reached First words is what the milestone page calls it'), 'ordinary creature speech containing milestone copy is never rewritten');
+  assert.ok(userMessages.some(message => message.text === 'I keep typing first_words on purpose in my own notes'), 'user-authored message text is preserved byte-for-byte');
+  assert.ok(userMessages.some(message => message.text === 'Reached First words floated above the room and I typed that myself'), 'a user message containing the milestone phrase is never rewritten');
+  assert.equal(repaired.conversation.lastCreatureMessage, 'I had a strange dream: The arrival of the first words floated above the room breathing in the dark, and neither one thought this was strange.', 'lastCreatureMessage is repaired like other creature prose');
+}
+
+// Dreams use dream imagery, not milestone/record copy. The reported production
+// example ("Reached First words floated above the room…") must never recur,
+// and no raw stage id may reach a fragment.
+{
+  const base = awakeCreature('Dreamer', 701);
+  const milestoneMemory: Memory = {
+    id: 'mem-first-words', timestamp: NOW - 1, content: 'Reached First words', importance: 10,
+    emotionalValence: 0.6, tags: ['development', 'milestone'], mentioned: false, understood: true, compressed: false,
+  };
+  const fragments: string[] = [];
+  for (let hour = 0; hour < 48; hour += 1) {
+    const dreamed = generateDreamAfterSleep({
+      ...base,
+      memories: [milestoneMemory],
+      innerLife: { ...base.innerLife, lastDreamAt: 0 },
+    }, 30 * 60_000, NOW + hour * 3_600_000);
+    const fragment = dreamed.innerLife.dreams.at(-1)?.fragment ?? '';
+    fragments.push(fragment);
+    assert.doesNotMatch(fragment, /first_words/, `no raw stage id in fragment ${hour}`);
+    assert.doesNotMatch(fragment, /\bReached\b|\bOsiągnęło etap:/, `milestone UI copy is never spliced into a dream (fragment ${hour})`);
+    assert.doesNotMatch(fragment, /Reached First words floated/, 'the reported production example cannot recur');
+  }
+  assert.ok(fragments.some(fragment => fragment.includes('the arrival of the first words')), 'the milestone becomes a natural dream image');
+  assert.ok(fragments.every(fragment => fragment.length > 0), 'every dream still carries a fragment');
+}
+
+// Other record-shaped memories (absences, resolved moment titles, learned user
+// facts) become noun-like images instead of being spliced as raw records.
+{
+  const recordsBase = awakeCreature('Records', 702);
+  const recordFragments: Array<{ memory: Memory; forbidden: RegExp; expected: RegExp }> = [
+    {
+      memory: {
+        id: 'mem-absence', timestamp: NOW - 2, content: 'the room had 4 quiet hours of its own', importance: 9,
+        emotionalValence: 0.08, tags: ['absence', 'presence'], mentioned: false, understood: true, compressed: false,
+      },
+      forbidden: /the room had 4 quiet hours of its own/,
+      expected: /the quiet hours of an empty room/i,
+    },
+    {
+      memory: {
+        id: 'mem-moment', timestamp: NOW - 2, content: 'The Easy Bet: Walking away felt strangely powerful.', importance: 7,
+        emotionalValence: 0.35, tags: ['daily-moment', 'choice', 'unwritten'], mentioned: false, understood: true, compressed: false,
+      },
+      forbidden: /The Easy Bet: Walking away/,
+      expected: /\bThe Easy Bet\b/i,
+    },
+    {
+      memory: {
+        id: 'mem-fact', timestamp: NOW - 2, content: "learned the user's name is Moth", importance: 8,
+        emotionalValence: 0.5, tags: ['conversation', 'user', 'name'], mentioned: false, understood: true, compressed: false,
+      },
+      forbidden: /learned the user/,
+      expected: /\byour name\b/i,
+    },
+  ];
+  for (const { memory, forbidden, expected } of recordFragments) {
+    const dreamed = generateDreamAfterSleep({
+      ...recordsBase,
+      memories: [memory],
+      innerLife: { ...recordsBase.innerLife, lastDreamAt: 0 },
+    }, 30 * 60_000, NOW);
+    const fragment = dreamed.innerLife.dreams.at(-1)?.fragment ?? '';
+    assert.doesNotMatch(fragment, forbidden, 'a record-shaped memory is never spliced raw into a dream');
+    assert.doesNotMatch(fragment, /[a-z]+_[a-z]+/);
+    if (!/had your voice|miało twoim głosem/.test(fragment)) {
+      assert.match(fragment, expected, 'the record becomes a noun-like dream image when its template carries an image');
+    }
+  }
+}
+
+// Polish dreams: the missing-memory fallback is localized (never the English
+// "the room breathing in the dark"), and every development-stage image passes
+// through the Polish templates, which never make the inserted image the
+// subject of an agreeing verb (quoted pairs use the non-personal plural, the
+// reverse template is impersonal). No noun gender or number agreement is ever
+// required.
+{
+  const polishCreature = awakeCreature('Polski', 703);
+  const polishBase = {
+    ...polishCreature,
+    conversation: { ...polishCreature.conversation, language: 'pl' as const },
+  };
+
+  const noMemoryDreams: string[] = [];
+  for (let hour = 0; hour < 12; hour += 1) {
+    const dreamed = generateDreamAfterSleep({
+      ...polishBase,
+      memories: [],
+      innerLife: { ...polishBase.innerLife, lastDreamAt: 0 },
+    }, 30 * 60_000, NOW + hour * 3_600_000);
+    const fragment = dreamed.innerLife.dreams.at(-1)?.fragment ?? '';
+    assert.doesNotMatch(fragment, /the room breathing in the dark/, 'the Polish missing-memory fallback never leaks English');
+    noMemoryDreams.push(fragment);
+  }
+  assert.ok(noMemoryDreams.some(fragment => fragment.includes('pokój oddychający w ciemności')), 'the Polish missing-memory fallback is used');
+
+  const polishStageDreams: string[] = [];
+  for (const stage of ['newborn', 'animal', 'communicating', 'first_words', 'combining', 'sentences', 'mature'] as const) {
+    const memory: Memory = {
+      id: `mem-${stage}`, timestamp: NOW - 1, content: `reached ${stage}`, importance: 10,
+      emotionalValence: 0.6, tags: ['development', 'milestone'], mentioned: false, understood: true, compressed: false,
+    };
+    const seen = new Set<string>();
+    for (let hour = 0; hour < 16; hour += 1) {
+      const dreamed = generateDreamAfterSleep({
+        ...polishBase,
+        memories: [memory],
+        innerLife: { ...polishBase.innerLife, lastDreamAt: 0 },
+      }, 30 * 60_000, NOW + hour * 3_600_000);
+      const fragment = dreamed.innerLife.dreams.at(-1)?.fragment ?? '';
+      assert.ok(fragment.length > 0, `stage ${stage} still produces a Polish dream`);
+      assert.doesNotMatch(fragment, /the room breathing in the dark|first_words|\bReached\b|\bOsiągnęło etap:/, `stage ${stage} Polish dream is localized and clean`);
+      seen.add(fragment);
+      polishStageDreams.push(fragment);
+    }
+    assert.ok(seen.size >= 3, `stage ${stage} image passes through most Polish templates (${seen.size} distinct fragments)`);
+  }
+  assert.ok(polishStageDreams.length >= 7 * 16, 'every stage image generated Polish fragments across the template cycle');
+}
+
+// The repair targets only the recognisable milestone construction in dream
+// prose; it is idempotent and leaves everything else verbatim.
+{
+  assert.equal(
+    repairMalformedDreamProse('Reached First words floated above the room breathing in the dark, and neither one thought this was strange.'),
+    'The arrival of the first words floated above the room breathing in the dark, and neither one thought this was strange.',
+    'the v0.14.12 form of the malformed dream is repaired',
+  );
+  assert.equal(
+    repairMalformedDreamProse('reached first_words floated above the room breathing in the dark, and neither one thought this was strange.'),
+    'The arrival of the first words floated above the room breathing in the dark, and neither one thought this was strange.',
+    'the legacy raw-id form is repaired the same way',
+  );
+  assert.equal(
+    repairMalformedDreamProse('Somewhere far away, reached combining kept happening in reverse.'),
+    'Somewhere far away, thoughts beginning to join kept happening in reverse.',
+    'mid-prose milestone phrases become lowercase images',
+  );
+  assert.equal(
+    repairMalformedDreamProse('I had a strange dream: Reached First words floated above the room.'),
+    'I had a strange dream: The arrival of the first words floated above the room.',
+    'a chat line quoting the malformed dream is repaired',
+  );
+  assert.equal(
+    repairMalformedDreamProse('The arrival of the first words floated above the room breathing in the dark, and neither one thought this was strange.'),
+    'The arrival of the first words floated above the room breathing in the dark, and neither one thought this was strange.',
+    'repair is idempotent',
+  );
+  assert.equal(
+    repairMalformedDreamProse('The creature walked to the water bowl and drank.'),
+    'The creature walked to the water bowl and drank.',
+    'ordinary dream prose is never paraphrased',
+  );
+}
+
+// Conversation repair is limited to recognisable dream retellings; ordinary
+// creature speech is never rewritten by the migration gate.
+{
+  assert.equal(isDreamRetelling('I had a strange dream: Reached First words floated above the room.'), true);
+  assert.equal(isDreamRetelling('Miałem dziwny sen: Osiągnęło etap: Pierwsze słowa unosiło się nad pokojem.'), true);
+  assert.equal(isDreamRetelling('Reached First words is what the milestone page calls it'), false);
+  assert.equal(isDreamRetelling('   I had a strange dream: it floated.'), true, 'leading whitespace is tolerated');
+  assert.equal(isDreamRetelling(''), false);
 }
 
 // The Memory Book is a projection of the saved GameState. The dead generator

@@ -511,7 +511,7 @@ export function getDevelopmentStageFromMemory(content: string): DevelopmentStage
   )) ?? null;
 }
 
-const DEVELOPMENT_STAGES: DevelopmentStage[] = ['egg', 'newborn', 'animal', 'communicating', 'first_words', 'combining', 'sentences', 'mature'];
+export const DEVELOPMENT_STAGES: DevelopmentStage[] = ['egg', 'newborn', 'animal', 'communicating', 'first_words', 'combining', 'sentences', 'mature'];
 
 /**
  * Repairs prose that older versions generated with the raw internal stage id
