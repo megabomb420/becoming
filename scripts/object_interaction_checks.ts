@@ -7,17 +7,21 @@ import {
   resolveObjectRelease,
 } from '../src/systems/objectInput';
 
-// The object release decision is a pure projection of (source, moved, target,
-// tray): a tap uses, a drag moves, and a drop on the inventory target puts the
-// object away. No stale handler can blur tap and drag.
+// The object release decision is a pure projection of (source, moved, target):
+// a tap uses, a drag moves, and a drop on the inventory target puts the object
+// away. Opening the shelf never changes a tap. No stale handler can blur tap
+// and drag.
 
 const roomTap = { source: 'room' as const, objectId: 'apple-1', moved: false };
 const roomDrag = { source: 'room' as const, objectId: 'apple-1', moved: true };
 const trayTap = { source: 'inventory' as const, moved: false };
 const trayDrag = { source: 'inventory' as const, moved: true };
 
-// 10. Tap on a room object -> Use (no menu, no popup).
-assert.equal(resolveObjectRelease(roomTap, false, false), 'use', 'tap on a room object starts Use');
+// 10. Tap on a room object -> Use (no menu, no popup). The shelf being open
+//     must not change this: normal care/object use stays available while the
+//     tray is up (regression from live QA of the accelerated harness).
+assert.equal(resolveObjectRelease(roomTap, false), 'use', 'tap on a room object starts Use');
+assert.equal(resolveObjectRelease({ ...roomTap, objectId: 'water-1' }, false), 'use', 'tap still Uses with the shelf open');
 
 // 11. A tap never opens the old Use/Put away popup (no selection state remains).
 const roomSource = readFileSync('src/components/Room.tsx', 'utf8');
@@ -25,20 +29,20 @@ assert.doesNotMatch(roomSource, /setSelectedObjectId|selectedObject/, 'the selec
 assert.doesNotMatch(roomSource, /Use or put away|Options for|Opcje:/, 'the popup copy is gone');
 
 // 12. Drag a room object -> reposition, never Use.
-assert.equal(resolveObjectRelease(roomDrag, false, false), 'reposition', 'a drag moves the object');
-assert.equal(resolveObjectRelease(roomDrag, false, true), 'reposition', 'a drag with the tray open but off-target still repositions');
+assert.equal(resolveObjectRelease(roomDrag, false), 'reposition', 'a drag moves the object');
 
 // 13. Drag a room object onto the inventory target -> Put away.
-assert.equal(resolveObjectRelease(roomDrag, true, false), 'put_away', 'dropping on the drag target puts the object away');
-assert.equal(resolveObjectRelease(roomDrag, true, true), 'put_away', 'dropping inside the open tray also puts it away');
+assert.equal(resolveObjectRelease(roomDrag, true), 'put_away', 'dropping on the drag target puts the object away');
 
 // 14. Drag from inventory -> place at the spot; tap from inventory -> auto place.
-assert.equal(resolveObjectRelease(trayDrag, true, true), 'place_at', 'inventory drag places at the release position');
-assert.equal(resolveObjectRelease(trayTap, false, false), 'place_auto', 'inventory tap places on an auto slot');
+assert.equal(resolveObjectRelease(trayDrag, true), 'place_at', 'inventory drag places at the release position');
+assert.equal(resolveObjectRelease(trayTap, false), 'place_auto', 'inventory tap places on an auto slot');
 
-// With the shelf open, a plain tap on a room object is the accessible
-// Put-away path (no permanent toolbar, no popup).
-assert.equal(resolveObjectRelease(roomTap, false, true), 'put_away', 'tap with the shelf open puts the object away');
+// Put-away stays reachable without a popup: pointer users drag onto the open
+// tray/drop target, and keyboard activation of a room object while the shelf
+// is open is the accessible path (kept in Room's own keyboard handler).
+assert.doesNotMatch(roomSource, /resolveObjectRelease\([^)]*showInventory/, 'the tap decision no longer depends on the shelf state');
+assert.match(roomSource, /if \(showInventory\) putAwayRoomObject\(obj\.id\)/, 'keyboard activation with the shelf open is the accessible put-away path');
 
 // 15. The movement threshold prevents an accidental Use after a drag: a small
 //     jitter stays a tap, movement beyond the threshold becomes a drag.

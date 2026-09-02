@@ -1314,7 +1314,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
     const dropBarRect = dropTargetRef.current?.getBoundingClientRect();
     const droppedOnDropBar = Boolean(dropBarRect && isPointInRect(e.clientX, e.clientY, dropBarRect));
 
-    const outcome = resolveObjectRelease(session, droppedInTray || droppedOnDropBar, showInventory);
+    const outcome = resolveObjectRelease(session, droppedInTray || droppedOnDropBar);
     if (outcome === 'place_auto') {
       placeInventoryObject(session.type);
       resetPointerSession();
@@ -1908,7 +1908,7 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
           aria-label={showInventory
             ? (polish ? `Odłóż: ${objectLabel(obj.type, true)}` : `Put away ${objectLabel(obj.type, false)}`)
             : (polish ? `Użyj: ${objectLabel(obj.type, true)}` : `Use ${objectLabel(obj.type, false)}`)}
-          title={showInventory ? t('Put away', 'Odłóż') : t('Use', 'Użyj')}
+          title={t('Use', 'Użyj')}
           className="absolute z-20 select-none p-3 -m-3 bg-transparent border-0 transition-opacity duration-700"
           style={{
             left: `${obj.x}%`,
@@ -1920,7 +1920,10 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
           }}
           onPointerDown={(e) => startPointerSession({ source: 'room', type: obj.type, objectId: obj.id }, e)}
           onClick={(e) => {
-            // Keyboard activation: a tap uses, or puts away while the shelf is open.
+            // Keyboard activation: a tap uses. With the shelf open the same
+            // activation is the accessible put-away path; pointer taps always
+            // use (the classifier), so opening the shelf never makes care or
+            // object use unavailable.
             if (e.detail === 0) {
               if (showInventory) putAwayRoomObject(obj.id);
               else if (stateRef.current.sleepState === 'sleeping') {
@@ -1938,9 +1941,6 @@ const Room: React.FC<RoomProps> = ({ state, onStateChange, onReset, version, bui
               aria-hidden="true"
             />
             <ObjectIcon type={obj.type} status={obj.state.status} size={Math.round(58 * (0.86 + Math.min(1, Math.max(0, (obj.y - 60) / 16)) * 0.22))} className="room-object-icon" />
-            {showInventory && (
-              <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full border border-warm-100/25 bg-room-dark/95 text-[11px] text-warm-100 shadow-lg" aria-hidden="true">↓</span>
-            )}
           </span>
         </button>
       ))}
